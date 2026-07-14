@@ -35,6 +35,12 @@ jobs:
       - name: Validate composer files
         run: composer validate --no-check-publish
 
+      - name: Verify generated setup.php is up to date
+        run: |
+          php bin/build_setup.php
+          git diff --exit-code setup.php
+          php -l setup.php
+
       - name: Install dependencies
         run: composer install --no-interaction --no-progress
 
