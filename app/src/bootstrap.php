@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 use App\Config\Config;
 use App\Config\Paths;
+use App\Container;
 use App\Http\Kernel;
 use App\Http\Router;
 use App\Http\StaticFileHandler;
 use App\Support\Version;
-use App\View\View;
 
 // The ONLY place for global runtime setup (timezone convention: everything
 // is stored and interpreted as Europe/Berlin, see CLAUDE.md section 12).
@@ -23,15 +23,16 @@ $paths = new Paths($releaseRoot);
 $config = Config::fromFile(getenv('APP_CONFIG_FILE') ?: $paths->configFile());
 $version = Version::fromFile($paths->versionFile());
 
-$view = new View($paths->viewsDir(), $version->value);
+$container = new Container($config, $paths, $version);
 
 $router = new Router();
-(require __DIR__ . '/routes.php')($router, $view, $version);
+(require __DIR__ . '/routes.php')($router, $container);
 
-// No PDO connection here: routes request one lazily when they need it.
+// No PDO connection here: the container opens one lazily when a route
+// actually needs the database.
 return new Kernel(
     router: $router,
     staticFiles: new StaticFileHandler($paths->publicDir(), longCache: !$version->isDev()),
-    view: $view,
+    view: $container->view(),
     debug: $config->debug,
 );

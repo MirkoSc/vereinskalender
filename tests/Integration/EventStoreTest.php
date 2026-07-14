@@ -1,0 +1,129 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Tests\Integration;
+
+use App\Domain\AggregateType;
+use App\Domain\EventContext;
+use App\Domain\EventSource;
+use App\Domain\EventType;
+use App\Tests\Support\DatabaseTestCase;
+
+final class EventStoreTest extends DatabaseTestCase
+{
+    /** @return array<string, mixed> */
+    private static function teamPayload(string $name = 'E2'): array
+    {
+        return [
+            'bereich' => 'E',
+            'name' => $name,
+            'kuerzel' => 'E2',
+            'farbe' => '#0969da',
+            'aktiv' => true,
+            'sortierung' => 5,
+        ];
+    }
+
+    public function testAppendWritesEventAndProjectionInOneGo(): void
+    {
+        $event = $this->eventStore()->append(
+            AggregateType::Team,
+            null,
+            EventType::Created,
+            self::teamPayload(),
+            $this->context(),
+        );
+
+        self::assertSame(1, $event->aggregateId, 'first id from the aggregate sequence');
+
+        $eventRows = $this->dumpTable('event');
+        self::assertCount(1, $eventRows);
+        self::assertSame('team', $eventRows[0]['aggregat_typ']);
+        self::assertSame('created', $eventRows[0]['event_typ']);
+        self::assertSame('Tester', $eventRows[0]['editor_name']);
+        self::assertSame('203.0.113.1', $eventRows[0]['ip']);
+        self::assertSame('admin', $eventRows[0]['quelle']);
+
+        $teams = $this->dumpTable('team');
+        self::assertCount(1, $teams);
+        self::assertSame('E2', $teams[0]['name']);
+        self::assertSame(1, (int) $teams[0]['aktiv']);
+        self::assertSame(5, (int) $teams[0]['sortierung']);
+    }
+
+    public function testUpdateAndDeleteMaintainProjectionAndKeepHistory(): void
+    {
+        $store = $this->eventStore();
+        $context = $this->context();
+
+        $id = $store->append(AggregateType::Team, null, EventType::Created, self::teamPayload(), $context)->aggregateId;
+        $store->append(AggregateType::Team, $id, EventType::Updated, self::teamPayload('E2 neu'), $context);
+
+        $teams = $this->dumpTable('team');
+        self::assertCount(1, $teams);
+        self::assertSame('E2 neu', $teams[0]['name']);
+
+        $store->append(AggregateType::Team, $id, EventType::Deleted, self::teamPayload('E2 neu'), $context);
+
+        self::assertSame([], $this->dumpTable('team'), 'delete event removes the projection row');
+        self::assertCount(3, $this->dumpTable('event'), 'history is fully preserved');
+    }
+
+    public function testFailedProjectionRollsBackTheEvent(): void
+    {
+        $payload = self::teamPayload();
+        $payload['name'] = str_repeat('x', 500); // exceeds VARCHAR(100), strict mode fails
+
+        try {
+            $this->eventStore()->append(AggregateType::Team, null, EventType::Created, $payload, $this->context());
+            self::fail('Expected the projection insert to fail');
+        } catch (\PDOException) {
+            // expected
+        }
+
+        self::assertSame([], $this->dumpTable('event'), 'event must not survive a failed projection');
+        self::assertSame([], $this->dumpTable('team'));
+    }
+
+    public function testAppendRejectsEmptyEditorName(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->eventStore()->append(
+            AggregateType::Team,
+            null,
+            EventType::Created,
+            self::teamPayload(),
+            new EventContext('   ', '203.0.113.1', EventSource::Web),
+        );
+    }
+
+    public function testAggregateSequenceNeverReusesIds(): void
+    {
+        $store = $this->eventStore();
+        $context = $this->context();
+
+        $first = $store->append(AggregateType::Team, null, EventType::Created, self::teamPayload('A'), $context)->aggregateId;
+        $store->append(AggregateType::Team, $first, EventType::Deleted, self::teamPayload('A'), $context);
+        $second = $store->append(AggregateType::Team, null, EventType::Created, self::teamPayload('B'), $context)->aggregateId;
+
+        self::assertGreaterThan($first, $second, 'ids come from the sequence, deletions never free them');
+    }
+
+    public function testExcludeMarksEventWithoutTouchingProjection(): void
+    {
+        $store = $this->eventStore();
+        $event = $store->append(AggregateType::Team, null, EventType::Created, self::teamPayload(), $this->context());
+
+        $store->exclude($event->id, 'admin', 'Testausschluss');
+
+        $row = $store->find($event->id);
+        self::assertNotNull($row);
+        self::assertNotNull($row->excludedAt);
+        self::assertSame('admin', $row->excludedVon);
+        self::assertSame('Testausschluss', $row->excludedGrund);
+
+        self::assertCount(1, $this->dumpTable('team'), 'projection only changes on the next rebuild');
+    }
+}

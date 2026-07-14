@@ -21,6 +21,11 @@ final readonly class Response implements ResponseInterface
         return new self($status, ['Content-Type' => 'text/html; charset=utf-8'], $body);
     }
 
+    public static function redirect(string $location, int $status = 302): self
+    {
+        return new self($status, ['Location' => $location]);
+    }
+
     public static function json(mixed $data, int $status = 200): self
     {
         return new self(

@@ -24,6 +24,7 @@ final readonly class Request
         public array $query = [],
         public array $post = [],
         public array $headers = [],
+        public string $ip = '',
     ) {
     }
 
@@ -41,6 +42,7 @@ final readonly class Request
             query: $_GET,
             post: $_POST,
             headers: self::headersFromServer($_SERVER),
+            ip: (string) ($_SERVER['REMOTE_ADDR'] ?? ''),
         );
     }
 

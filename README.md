@@ -15,7 +15,8 @@ docker run --rm -v ${PWD}:/app -w /app composer:2 install
 # Umgebung starten → http://localhost:8080
 docker compose up --build
 
-# Tests (laufen im App-Container unter PHP 8.5)
+# Tests (laufen im App-Container unter PHP 8.5; DB-Integrationstests
+# nutzen die MariaDB aus docker compose und legen vereinskalender_test an)
 docker compose run --rm app php vendor/bin/phpunit
 
 # Migrationen anwenden
