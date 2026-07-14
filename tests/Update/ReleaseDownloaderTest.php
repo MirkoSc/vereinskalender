@@ -147,6 +147,20 @@ final class ReleaseDownloaderTest extends TestCase
         rmdir($target . '/app');
     }
 
+    /**
+     * Regression for the setup.php installation failure: the local file
+     * must keep the asset name, otherwise verifyChecksum never finds an
+     * entry in checksums.txt.
+     */
+    public function testZipFilenameKeepsAssetName(): void
+    {
+        self::assertSame(
+            'vereinskalender-v0.3.0.zip',
+            ReleaseDownloader::zipFilename('https://github.com/MirkoSc/vereinskalender/releases/download/v0.3.0/vereinskalender-v0.3.0.zip'),
+        );
+        self::assertSame('release.zip', ReleaseDownloader::zipFilename('https://example.test/'));
+    }
+
     public function testDownloadToCopiesLocalStream(): void
     {
         $source = $this->temp('.src');

@@ -70,6 +70,18 @@ final class ReleaseDownloader
     }
 
     /**
+     * Local filename for a downloaded release ZIP. MUST be the original
+     * asset name: verifyChecksum() matches checksums.txt entries by
+     * basename, so an arbitrary local name would never match.
+     */
+    public static function zipFilename(string $zipUrl): string
+    {
+        $name = basename((string) parse_url($zipUrl, PHP_URL_PATH));
+
+        return $name !== '' ? $name : 'release.zip';
+    }
+
+    /**
      * Streams the (possibly large) ZIP to disk without loading it into
      * memory; GitHub asset URLs redirect, follow_location handles that.
      */
