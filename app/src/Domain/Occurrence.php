@@ -10,9 +10,12 @@ namespace App\Domain;
  */
 final readonly class Occurrence
 {
+    /**
+     * @param list<int> $teamIds 1..n teams (joint training shares one slot)
+     */
     public function __construct(
         public int $slotId,
-        public int $teamId,
+        public array $teamIds,
         public int $pitchId,
         public string $datum,
         public \DateTimeImmutable $start,

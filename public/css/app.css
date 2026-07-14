@@ -450,6 +450,35 @@ fieldset {
     margin: 0 0 0.75rem;
 }
 
+/* team/weekday multi-select in the booking dialog (touch targets >= 44px) */
+.checkbox-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.75rem;
+}
+
+.checkbox-list label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 44px;
+    white-space: nowrap;
+}
+
+.checkbox-list input[type="checkbox"] {
+    width: 1.15rem;
+    height: 1.15rem;
+}
+
+.dialog-actions.vertical {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.dialog-actions.vertical .button {
+    width: 100%;
+}
+
 button,
 .button {
     display: inline-block;

@@ -50,37 +50,54 @@
     <dialog id="booking-dialog" class="sheet">
         <h3 id="booking-title">Belegung eintragen</h3>
         <form id="booking-form">
-            <label>Team
-                <select name="team_id" required id="booking-team"></select>
-            </label>
+            <input type="hidden" name="edit_scope">
+            <input type="hidden" name="slot_id">
+            <input type="hidden" name="datum">
+            <fieldset class="checkbox-group">
+                <legend>Teams (mehrere möglich, z.&nbsp;B. gemeinsames Training)</legend>
+                <div id="booking-teams" class="checkbox-list"></div>
+            </fieldset>
             <label>Platz
                 <select name="pitch_id" required id="booking-pitch"></select>
             </label>
-            <label>Wochentag
-                <select name="wochentag" required>
-                    <option value="1">Montag</option>
-                    <option value="2">Dienstag</option>
-                    <option value="3">Mittwoch</option>
-                    <option value="4">Donnerstag</option>
-                    <option value="5">Freitag</option>
-                    <option value="6">Samstag</option>
-                    <option value="7">Sonntag</option>
-                </select>
-            </label>
+            <fieldset class="checkbox-group" id="booking-wochentage-feld">
+                <legend>Wochentage (mehrere möglich)</legend>
+                <div class="checkbox-list">
+                    <label><input type="checkbox" name="wochentage[]" value="1"> Mo</label>
+                    <label><input type="checkbox" name="wochentage[]" value="2"> Di</label>
+                    <label><input type="checkbox" name="wochentage[]" value="3"> Mi</label>
+                    <label><input type="checkbox" name="wochentage[]" value="4"> Do</label>
+                    <label><input type="checkbox" name="wochentage[]" value="5"> Fr</label>
+                    <label><input type="checkbox" name="wochentage[]" value="6"> Sa</label>
+                    <label><input type="checkbox" name="wochentage[]" value="7"> So</label>
+                </div>
+            </fieldset>
             <div class="field-row">
                 <label>Beginn <input type="time" name="beginn" required></label>
                 <label>Ende <input type="time" name="ende" required></label>
             </div>
-            <div class="field-row">
-                <label>Gültig ab <input type="date" name="gueltig_ab" required></label>
-                <label>Gültig bis <input type="date" name="gueltig_bis" required></label>
+            <div class="field-row" id="booking-gueltig-feld">
+                <label>Gültig ab <input type="date" name="gueltig_ab"></label>
+                <label>Gültig bis <input type="date" name="gueltig_bis"></label>
             </div>
+            <label id="booking-datum-feld" hidden>Datum <input type="date" name="datum_neu"></label>
             <p id="booking-feedback" aria-live="polite"></p>
             <div class="dialog-actions">
                 <button type="submit" class="button">Speichern</button>
                 <button type="button" class="linklike" id="booking-cancel">Abbrechen</button>
             </div>
         </form>
+    </dialog>
+
+    <dialog id="scope-dialog" class="sheet">
+        <h3>Was möchtest du bearbeiten?</h3>
+        <p>Die Belegung ist eine wiederkehrende Serie.</p>
+        <div class="dialog-actions vertical">
+            <button type="button" class="button" data-scope="einzeln">Nur diesen Termin</button>
+            <button type="button" class="button" data-scope="nachfolgende">Diesen und alle folgenden Termine</button>
+            <button type="button" class="button" data-scope="alle">Alle Termine der Serie</button>
+            <button type="button" class="linklike" id="scope-cancel">Abbrechen</button>
+        </div>
     </dialog>
 
     <dialog id="ausfall-dialog" class="sheet">

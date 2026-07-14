@@ -60,7 +60,9 @@ final class IcsExporterTest extends DatabaseTestCase
         $pitchId = $this->createPitch($venueId);
         $teamId = $this->createTeam('E1');
 
-        // Sundays 19:00 local across the fall transition (2026-10-25)
+        // Sundays 19:00 local across the fall transition (2026-10-25).
+        // Deliberately the pre-migration-008 payload shape (team_id/
+        // wochentag): the projector must upgrade it to the list format.
         $this->eventStore()->append(
             \App\Domain\AggregateType::TrainingSlot,
             null,

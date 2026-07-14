@@ -55,9 +55,9 @@ final class AvailabilityServiceTest extends DatabaseTestCase
     public function testBookingSplitsTheFreeWindow(): void
     {
         $this->bookingService()->createSlot([
-            'team_id' => $this->teamId,
+            'team_ids' => [$this->teamId],
             'pitch_id' => $this->pitchId,
-            'wochentag' => 2,
+            'wochentage' => [2],
             'beginn' => '19:00',
             'ende' => '20:30',
             'gueltig_ab' => '2026-08-01',
@@ -93,9 +93,9 @@ final class AvailabilityServiceTest extends DatabaseTestCase
     public function testGesperrtWinsOverBooking(): void
     {
         $this->bookingService()->createSlot([
-            'team_id' => $this->teamId,
+            'team_ids' => [$this->teamId],
             'pitch_id' => $this->pitchId,
-            'wochentag' => 2,
+            'wochentage' => [2],
             'beginn' => '19:00',
             'ende' => '20:30',
             'gueltig_ab' => '2026-08-01',
@@ -123,9 +123,9 @@ final class AvailabilityServiceTest extends DatabaseTestCase
     public function testEingeschraenktAppearsAsStateAndAsLayer(): void
     {
         $this->bookingService()->createSlot([
-            'team_id' => $this->teamId,
+            'team_ids' => [$this->teamId],
             'pitch_id' => $this->pitchId,
-            'wochentag' => 2,
+            'wochentage' => [2],
             'beginn' => '19:00',
             'ende' => '20:00',
             'gueltig_ab' => '2026-08-01',

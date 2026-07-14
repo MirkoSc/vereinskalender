@@ -21,9 +21,9 @@ final class EventFeedTest extends DatabaseTestCase
         $this->createBegriff($this->venueId, 'Musterstadt');
 
         $this->bookingService()->createSlot([
-            'team_id' => $this->teamId,
+            'team_ids' => [$this->teamId],
             'pitch_id' => $this->pitchId,
-            'wochentag' => 2,
+            'wochentage' => [2],
             'beginn' => '19:00',
             'ende' => '20:30',
             'gueltig_ab' => '2026-08-01',
@@ -99,6 +99,36 @@ final class EventFeedTest extends DatabaseTestCase
         self::assertCount(1, $feed->events([...$range, 'bereich' => 'Herren']));
         self::assertCount(1, $feed->events([...$range, 'venue' => 'auswaerts']), 'away match only');
         self::assertCount(1, $feed->events([...$range, 'venue' => (string) $this->venueId]), 'occupancy at own venue');
+    }
+
+    public function testJointTrainingCarriesAllTeamsAndMatchesEitherFilter(): void
+    {
+        $team2 = $this->createTeam('E2', 'E');
+        $this->bookingService()->createSlot([
+            'team_ids' => [$this->teamId, $team2],
+            'pitch_id' => $this->pitchId,
+            'wochentage' => [4], // Donnerstag
+            'beginn' => '17:00',
+            'ende' => '18:30',
+            'gueltig_ab' => '2026-08-01',
+            'gueltig_bis' => '2026-08-31',
+        ], $this->context());
+
+        $feed = $this->eventFeedService();
+        $range = ['von' => '2026-08-06', 'bis' => '2026-08-06', 'typ' => 'belegung'];
+
+        $events = $feed->events($range);
+        self::assertCount(1, $events);
+        self::assertSame([$this->teamId, $team2], $events[0]['team_ids']);
+        self::assertSame('E1+E2 Training', $events[0]['titel']);
+        self::assertSame('E1 + E2', $events[0]['team_name']);
+        self::assertSame([4], $events[0]['wochentage'], 'series data for the edit dialog');
+        self::assertSame('2026-08-01', $events[0]['gueltig_ab']);
+
+        self::assertCount(1, $feed->events([...$range, 'team' => (string) $team2]), 'second team matches too');
+        $team3 = $this->createTeam('D1', 'D');
+        self::assertCount(0, $feed->events([...$range, 'team' => (string) $team3]));
+        self::assertCount(1, $feed->events([...$range, 'bereich' => 'E']));
     }
 
     public function testRestrictionAppearsAsSperrungEvent(): void

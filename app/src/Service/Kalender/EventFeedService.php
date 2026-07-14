@@ -75,11 +75,18 @@ final readonly class EventFeedService
         }
         $auswaertsFarbe = $this->settings->get('auswaerts_farbe', '#57606a');
 
-        $matchesTeam = function (int $teamId) use ($teamFilter, $bereichFilter, $teams): bool {
-            if ($teamFilter !== null && $teamId !== $teamFilter) {
+        // a multi-team booking matches when ANY of its teams matches
+        $matchesTeams = function (array $teamIds) use ($teamFilter, $bereichFilter, $teams): bool {
+            if ($teamFilter !== null && !in_array($teamFilter, $teamIds, true)) {
                 return false;
             }
-            if ($bereichFilter !== '' && (string) ($teams[$teamId]['bereich'] ?? '') !== $bereichFilter) {
+            if ($bereichFilter !== '') {
+                foreach ($teamIds as $teamId) {
+                    if ((string) ($teams[$teamId]['bereich'] ?? '') === $bereichFilter) {
+                        return true;
+                    }
+                }
+
                 return false;
             }
 
@@ -98,6 +105,10 @@ final readonly class EventFeedService
 
         if ($typ === '' || $typ === 'belegung') {
             $slotRows = $this->slots->findOverlapping($von, $bis);
+            $slotsById = [];
+            foreach ($slotRows as $slotRow) {
+                $slotsById[(int) $slotRow['id']] = $slotRow;
+            }
             $occurrences = SlotExpander::expand(
                 $slotRows,
                 $this->exceptions->findForSlots(array_map(static fn(array $s): int => (int) $s['id'], $slotRows)),
@@ -106,12 +117,17 @@ final readonly class EventFeedService
             );
 
             foreach ($occurrences as $occurrence) {
-                $team = $teams[$occurrence->teamId] ?? null;
+                $slotTeams = array_values(array_filter(array_map(
+                    static fn(int $teamId): ?array => $teams[$teamId] ?? null,
+                    $occurrence->teamIds,
+                )));
                 $pitch = $pitches[$occurrence->pitchId] ?? null;
                 $venueId = $pitch !== null ? (int) $pitch['venue_id'] : null;
-                if ($team === null || !$matchesTeam($occurrence->teamId) || !$matchesVenue($venueId)) {
+                if ($slotTeams === [] || !$matchesTeams($occurrence->teamIds) || !$matchesVenue($venueId)) {
                     continue;
                 }
+                $slotRow = $slotsById[$occurrence->slotId];
+                $kuerzel = implode('+', array_map(static fn(array $t): string => (string) $t['kuerzel'], $slotTeams));
 
                 $events[] = [
                     'id' => sprintf('slot-%d-%s', $occurrence->slotId, $occurrence->datum),
@@ -119,17 +135,22 @@ final readonly class EventFeedService
                     'slot_id' => $occurrence->slotId,
                     'start' => $occurrence->start->format('Y-m-d\TH:i:s'),
                     'ende' => $occurrence->end->format('Y-m-d\TH:i:s'),
-                    'titel' => (string) $team['kuerzel'] . ' Training',
-                    'team_id' => $occurrence->teamId,
-                    'team_name' => (string) $team['name'],
-                    'team_kuerzel' => (string) $team['kuerzel'],
-                    'team_farbe' => (string) $team['farbe'],
+                    'titel' => $kuerzel . ' Training',
+                    'team_id' => $occurrence->teamIds[0],
+                    'team_ids' => $occurrence->teamIds,
+                    'team_name' => implode(' + ', array_map(static fn(array $t): string => (string) $t['name'], $slotTeams)),
+                    'team_kuerzel' => $kuerzel,
+                    'team_farbe' => (string) $slotTeams[0]['farbe'],
                     'venue_id' => $venueId,
                     'venue_farbe' => $venueId !== null
                         ? (string) ($venues[$venueId]['farbe'] ?? $auswaertsFarbe)
                         : $auswaertsFarbe,
                     'pitch_id' => $occurrence->pitchId,
                     'pitch_name' => $pitch !== null ? (string) $pitch['name'] : null,
+                    // series data for the public edit dialog (scope choice)
+                    'wochentage' => array_map(intval(...), (array) json_decode((string) $slotRow['wochentage'], true)),
+                    'gueltig_ab' => (string) $slotRow['gueltig_ab'],
+                    'gueltig_bis' => (string) $slotRow['gueltig_bis'],
                 ];
             }
 
@@ -167,7 +188,7 @@ final readonly class EventFeedService
             foreach ($this->matches->findInRange($von . ' 00:00:00', $bis . ' 23:59:59') as $match) {
                 $teamId = (int) $match['team_id'];
                 $team = $teams[$teamId] ?? null;
-                if ($team === null || !$matchesTeam($teamId)) {
+                if ($team === null || !$matchesTeams([$teamId])) {
                     continue;
                 }
 
