@@ -13,7 +13,7 @@ final class MigrationRunTest extends DatabaseTestCase
     {
         $migrator = new Migrator($this->pdo(), $this->migrationsDir());
 
-        self::assertSame(4, $migrator->currentVersion());
+        self::assertSame(5, $migrator->currentVersion());
         self::assertSame([], $migrator->pending());
 
         $tables = $this->pdo()
@@ -24,6 +24,7 @@ final class MigrationRunTest extends DatabaseTestCase
             'schema_version', 'event', 'aggregate_sequence', 'admin',
             'team', 'pitch', 'venue', 'venue_begriff',
             'training_slot', 'slot_exception', 'pitch_restriction', 'match', 'setting',
+            'import_source',
         ];
         foreach ($expectedTables as $expected) {
             self::assertContains($expected, $tables, sprintf('Table %s missing after migration run', $expected));
@@ -36,6 +37,6 @@ final class MigrationRunTest extends DatabaseTestCase
         $result = $migrator->migrate();
 
         self::assertSame([], $result->applied);
-        self::assertSame(4, $result->toVersion);
+        self::assertSame(5, $result->toVersion);
     }
 }

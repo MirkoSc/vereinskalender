@@ -11,6 +11,7 @@ use App\Http\Response;
 use App\Http\Session;
 use App\Service\Kalender\BookingService;
 use App\Service\Kalender\ConflictException;
+use App\Service\Kalender\MatchService;
 use App\Service\Kalender\RestrictionService;
 use App\Service\ValidationException;
 
@@ -26,6 +27,7 @@ final readonly class BookingApiController
         private Session $session,
         private BookingService $booking,
         private RestrictionService $restrictions,
+        private MatchService $matches,
     ) {
     }
 
@@ -137,6 +139,20 @@ final readonly class BookingApiController
     {
         try {
             $this->restrictions->delete((int) $params['id'], $this->context($request));
+
+            return Response::json(['ok' => true]);
+        } catch (ValidationException $e) {
+            return Response::json(['fehler' => $e->getErrors()], 422);
+        }
+    }
+
+    /**
+     * @param array<string, string> $params
+     */
+    public function assignPitch(Request $request, array $params): Response
+    {
+        try {
+            $this->matches->assignPitch((int) $params['id'], $request->post, $this->context($request));
 
             return Response::json(['ok' => true]);
         } catch (ValidationException $e) {

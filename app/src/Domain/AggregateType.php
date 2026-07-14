@@ -14,4 +14,5 @@ enum AggregateType: string
     case SlotException = 'slot_exception';
     case PitchRestriction = 'pitch_restriction';
     case Match = 'match';
+    case ImportSource = 'import_source';
 }

@@ -17,6 +17,7 @@
             <a href="/admin/teams">Teams</a>
             <a href="/admin/plaetze">Plätze</a>
             <a href="/admin/spielstaetten">Spielstätten</a>
+            <a href="/admin/import-quellen">Import</a>
             <a href="/admin/rebuild">Rebuild</a>
             <form method="post" action="/admin/logout" class="inline-form">
                 <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">

@@ -61,6 +61,11 @@ return static function (Router $router, Container $c): void {
     $router->post('/api/ausnahmen/{id:\d+}/loeschen', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->deleteException($r, $p)));
     $router->post('/api/sperrungen', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->createRestriction($r)));
     $router->post('/api/sperrungen/{id:\d+}/loeschen', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->deleteRestriction($r, $p)));
+    $router->post('/api/spiele/{id:\d+}/platz', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->assignPitch($r, $p)));
+
+    // ---- cron (secret token, no session; CLAUDE.md section 7) ----
+
+    $router->get('/cron/import', static fn(Request $r, array $p): Response => $c->cronController()->import($r));
 
     // ---- admin ----
 
@@ -112,6 +117,14 @@ return static function (Router $router, Container $c): void {
     $router->post('/admin/spielstaetten/{id:\d+}/loeschen', $guard(fn(Request $r, array $p) => $c->venueController()->delete($r, $p)));
     $router->post('/admin/spielstaetten/{id:\d+}/begriffe', $guard(fn(Request $r, array $p) => $c->venueController()->addBegriff($r, $p)));
     $router->post('/admin/begriffe/{id:\d+}/loeschen', $guard(fn(Request $r, array $p) => $c->venueController()->deleteBegriff($r, $p)));
+
+    $router->get('/admin/import-quellen', $guard(fn(Request $r, array $p) => $c->importSourceController()->index($r)));
+    $router->get('/admin/import-quellen/neu', $guard(fn(Request $r, array $p) => $c->importSourceController()->createForm($r)));
+    $router->post('/admin/import-quellen', $guard(fn(Request $r, array $p) => $c->importSourceController()->create($r)));
+    $router->get('/admin/import-quellen/{id:\d+}', $guard(fn(Request $r, array $p) => $c->importSourceController()->editForm($r, $p)));
+    $router->post('/admin/import-quellen/{id:\d+}', $guard(fn(Request $r, array $p) => $c->importSourceController()->update($r, $p)));
+    $router->post('/admin/import-quellen/{id:\d+}/loeschen', $guard(fn(Request $r, array $p) => $c->importSourceController()->delete($r, $p)));
+    $router->post('/admin/import/run', $guard(fn(Request $r, array $p) => $c->importSourceController()->run($r)));
 
     $router->get('/admin/rebuild', $guard(fn(Request $r, array $p) => $c->rebuildController()->page($r)));
     $router->post('/admin/rebuild/start', $guard(fn(Request $r, array $p) => $c->rebuildController()->start($r)));
