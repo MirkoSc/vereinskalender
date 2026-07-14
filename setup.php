@@ -1,0 +1,363 @@
+<?php
+
+/**
+ * setup.php - Bootstrap installer (CLAUDE.md section 10, Nextcloud style).
+ *
+ * GENERATED FILE - edit bin/setup.template.php and the shared class
+ * app/src/Service/Update/ReleaseDownloader.php, then run
+ * `php bin/build_setup.php`. CI verifies freshness.
+ *
+ * Upload this single file via FTP into the /web docroot, open it in the
+ * browser: environment checklist -> download + verify + unpack the newest
+ * release -> create the web/ shim and shared/ -> redirect to /install.
+ * It deletes itself once the installer has written the config.
+ */
+
+declare(strict_types=1);
+
+namespace App\Service\Update {
+/**
+ * Shared release download/verify/extract logic (CLAUDE.md section 10):
+ * used by the self-updater AND inlined into setup.php by
+ * bin/build_setup.php - keep this class dependency-free (no App\ imports).
+ *
+ * The download URL is hardwired to the project repository and never comes
+ * from user input.
+ */
+final class ReleaseDownloader
+{
+    public const string REPO = 'MirkoSc/vereinskalender';
+
+    /** @var \Closure(string): string */
+    private readonly \Closure $httpGet;
+
+    /**
+     * @param (\Closure(string): string)|null $httpGet override for tests
+     */
+    public function __construct(?\Closure $httpGet = null)
+    {
+        $this->httpGet = $httpGet ?? self::defaultHttpGet(...);
+    }
+
+    /**
+     * Channel 'stable' uses /releases/latest (GitHub excludes pre-releases
+     * there); 'beta' takes the newest release including pre-releases.
+     *
+     * @return array{version: string, zip_url: string, checksums_url: string}|null
+     */
+    public function findLatestRelease(string $channel = 'stable'): ?array
+    {
+        $base = 'https://api.github.com/repos/' . self::REPO;
+
+        try {
+            if ($channel === 'beta') {
+                $releases = json_decode(($this->httpGet)($base . '/releases?per_page=10'), true);
+                foreach (is_array($releases) ? $releases : [] as $release) {
+                    if (is_array($release) && ($release['draft'] ?? false) !== true) {
+                        $info = self::releaseInfo($release);
+                        if ($info !== null) {
+                            return $info;
+                        }
+                    }
+                }
+
+                return null;
+            }
+
+            $release = json_decode(($this->httpGet)($base . '/releases/latest'), true);
+
+            return is_array($release) ? self::releaseInfo($release) : null;
+        } catch (\RuntimeException $e) {
+            // no (regular) release yet: GitHub answers 404 on /releases/latest
+            if (str_contains($e->getMessage(), 'HTTP 404')) {
+                return null;
+            }
+            throw $e;
+        }
+    }
+
+    public function fetchText(string $url): string
+    {
+        return ($this->httpGet)($url);
+    }
+
+    /**
+     * Streams the (possibly large) ZIP to disk without loading it into
+     * memory; GitHub asset URLs redirect, follow_location handles that.
+     */
+    public function downloadTo(string $url, string $targetFile): void
+    {
+        $dir = dirname($targetFile);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0775, true);
+        }
+
+        $source = @fopen($url, 'rb', context: self::httpContext());
+        if ($source === false) {
+            throw new \RuntimeException('Download fehlgeschlagen: ' . $url);
+        }
+        $target = fopen($targetFile, 'wb');
+        if ($target === false) {
+            fclose($source);
+            throw new \RuntimeException('Zieldatei nicht beschreibbar: ' . $targetFile);
+        }
+
+        stream_copy_to_stream($source, $target);
+        fclose($source);
+        fclose($target);
+
+        if (filesize($targetFile) === 0) {
+            throw new \RuntimeException('Download ist leer: ' . $url);
+        }
+    }
+
+    /**
+     * checksums.txt format: "<sha256>  <filename>" per line (sha256sum).
+     */
+    public function verifyChecksum(string $zipFile, string $checksumsContent): void
+    {
+        $expected = null;
+        $basename = basename($zipFile);
+        foreach (preg_split('/\r\n|\n|\r/', $checksumsContent) ?: [] as $line) {
+            if (preg_match('/^([0-9a-f]{64})\s+\*?(.+)$/i', trim($line), $m) === 1
+                && trim($m[2]) === $basename) {
+                $expected = strtolower($m[1]);
+                break;
+            }
+        }
+        if ($expected === null) {
+            throw new \RuntimeException('Keine Prüfsumme für ' . $basename . ' in checksums.txt gefunden.');
+        }
+
+        $actual = hash_file('sha256', $zipFile);
+        if ($actual === false || !hash_equals($expected, $actual)) {
+            throw new \RuntimeException('Prüfsummen-Fehler: das heruntergeladene ZIP ist beschädigt oder manipuliert.');
+        }
+    }
+
+    public function extractTo(string $zipFile, string $targetDir): void
+    {
+        if (!is_dir($targetDir)) {
+            mkdir($targetDir, 0775, true);
+        }
+
+        $zip = new \ZipArchive();
+        if ($zip->open($zipFile) !== true) {
+            throw new \RuntimeException('ZIP kann nicht geöffnet werden: ' . $zipFile);
+        }
+        if (!$zip->extractTo($targetDir)) {
+            $zip->close();
+            throw new \RuntimeException('ZIP kann nicht entpackt werden nach: ' . $targetDir);
+        }
+        $zip->close();
+    }
+
+    /**
+     * @param array<string, mixed> $release
+     * @return array{version: string, zip_url: string, checksums_url: string}|null
+     */
+    private static function releaseInfo(array $release): ?array
+    {
+        $version = ltrim((string) ($release['tag_name'] ?? ''), 'v');
+        $zipUrl = null;
+        $checksumsUrl = null;
+
+        foreach (is_array($release['assets'] ?? null) ? $release['assets'] : [] as $asset) {
+            $name = (string) ($asset['name'] ?? '');
+            $url = (string) ($asset['browser_download_url'] ?? '');
+            if ($url === '') {
+                continue;
+            }
+            if (preg_match('/^vereinskalender-.+\.zip$/', $name) === 1) {
+                $zipUrl = $url;
+            } elseif ($name === 'checksums.txt') {
+                $checksumsUrl = $url;
+            }
+        }
+
+        if ($version === '' || $zipUrl === null || $checksumsUrl === null) {
+            return null;
+        }
+
+        return ['version' => $version, 'zip_url' => $zipUrl, 'checksums_url' => $checksumsUrl];
+    }
+
+    private static function defaultHttpGet(string $url): string
+    {
+        $body = @file_get_contents($url, false, self::httpContext());
+        if ($body === false) {
+            throw new \RuntimeException('HTTP-Anfrage fehlgeschlagen: ' . $url);
+        }
+
+        $statusLine = $http_response_header[0] ?? '';
+        if (preg_match('/\s(\d{3})\s/', $statusLine . ' ', $m) === 1 && (int) $m[1] >= 400) {
+            throw new \RuntimeException(sprintf('HTTP %d für %s', (int) $m[1], $url));
+        }
+
+        return $body;
+    }
+
+    /**
+     * @return resource
+     */
+    private static function httpContext()
+    {
+        return stream_context_create([
+            'http' => [
+                'timeout' => 20,
+                'follow_location' => 1,
+                'max_redirects' => 5,
+                'user_agent' => 'Vereinskalender-Updater',
+                'ignore_errors' => true,
+            ],
+        ]);
+    }
+}
+}
+
+namespace {
+
+use App\Service\Update\ReleaseDownloader;
+
+error_reporting(E_ALL);
+ini_set('display_errors', '1');
+
+$webDir = __DIR__;
+$rootDir = dirname(__DIR__);
+
+/** @return list<array{label: string, ok: bool, detail: string}> */
+function setup_checks(string $webDir, string $rootDir): array
+{
+    $checks = [];
+    $checks[] = [
+        'label' => 'PHP-Version ≥ 8.5',
+        'ok' => version_compare(PHP_VERSION, '8.5.0', '>='),
+        'detail' => 'gefunden: ' . PHP_VERSION,
+    ];
+    $checks[] = [
+        'label' => 'ZipArchive verfügbar',
+        'ok' => class_exists(\ZipArchive::class),
+        'detail' => '',
+    ];
+    $checks[] = [
+        'label' => 'PDO MySQL verfügbar',
+        'ok' => extension_loaded('pdo_mysql'),
+        'detail' => '',
+    ];
+    $checks[] = [
+        'label' => 'HTTPS-Downloads möglich (allow_url_fopen + openssl)',
+        'ok' => ini_get('allow_url_fopen') === '1' && extension_loaded('openssl'),
+        'detail' => '',
+    ];
+    $checks[] = [
+        'label' => 'Schreibrechte oberhalb des DocumentRoot',
+        'ok' => is_writable($rootDir),
+        'detail' => $rootDir,
+    ];
+    $checks[] = [
+        'label' => 'Schreibrechte im DocumentRoot',
+        'ok' => is_writable($webDir),
+        'detail' => $webDir,
+    ];
+
+    $renameOk = false;
+    $probe = $rootDir . '/.setup_probe_' . getmypid();
+    if (@file_put_contents($probe, 'x') !== false) {
+        $renameOk = @rename($probe, $probe . '_renamed');
+        @unlink($probe . '_renamed');
+        @unlink($probe);
+    }
+    $checks[] = ['label' => 'rename() funktioniert', 'ok' => (bool) $renameOk, 'detail' => ''];
+
+    return $checks;
+}
+
+function setup_page(string $title, string $body): never
+{
+    header('Content-Type: text/html; charset=utf-8');
+    echo '<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">'
+        . '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        . '<title>' . htmlspecialchars($title, ENT_QUOTES) . '</title>'
+        . '<style>body{font-family:system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem;line-height:1.5}'
+        . 'li.ok::marker{content:"✔ ";color:#1a7f37}li.fehler::marker{content:"✘ ";color:#cf222e}'
+        . 'button{padding:.6rem 1.2rem;font:inherit;background:#1a7f37;color:#fff;border:none;border-radius:6px;cursor:pointer}'
+        . '.fehlertext{color:#cf222e}</style></head><body><h1>Vereinskalender einrichten</h1>'
+        . $body . '</body></html>';
+    exit;
+}
+
+// already installed and switched: hand over to the app installer
+if (is_dir($rootDir . '/current')) {
+    header('Location: /install');
+    exit;
+}
+
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+    $checks = setup_checks($webDir, $rootDir);
+    $allOk = !in_array(false, array_column($checks, 'ok'), true);
+
+    $items = '';
+    foreach ($checks as $check) {
+        $items .= '<li class="' . ($check['ok'] ? 'ok' : 'fehler') . '">'
+            . htmlspecialchars($check['label'], ENT_QUOTES)
+            . ($check['detail'] !== '' ? ' <small>(' . htmlspecialchars($check['detail'], ENT_QUOTES) . ')</small>' : '')
+            . '</li>';
+    }
+
+    $form = $allOk
+        ? '<form method="post"><p><label>Release-Kanal: <select name="kanal">'
+            . '<option value="stable">stable (empfohlen)</option><option value="beta">beta (Pre-Releases, Testinstanz)</option>'
+            . '</select></label></p><button type="submit">Installation starten</button></form>'
+        : '<p class="fehlertext">Bitte zuerst die markierten Punkte beheben und die Seite neu laden.</p>';
+
+    setup_page('Umgebungscheck', '<h2>Umgebungscheck</h2><ul>' . $items . '</ul>' . $form);
+}
+
+// POST: download, verify, unpack, create layout, switch, redirect
+try {
+    $kanal = ($_POST['kanal'] ?? 'stable') === 'beta' ? 'beta' : 'stable';
+    $downloader = new ReleaseDownloader();
+
+    $release = $downloader->findLatestRelease($kanal);
+    if ($release === null) {
+        throw new RuntimeException('Kein Release auf GitHub gefunden (Kanal ' . $kanal . ').');
+    }
+
+    $releasesDir = $rootDir . '/releases';
+    $sharedDir = $rootDir . '/shared';
+    foreach ([$releasesDir, $sharedDir, $sharedDir . '/var', $sharedDir . '/var/log', $sharedDir . '/var/backups'] as $dir) {
+        if (!is_dir($dir)) {
+            mkdir($dir, 0775, true);
+        }
+    }
+
+    $zipFile = $releasesDir . '/download.zip';
+    $downloader->downloadTo($release['zip_url'], $zipFile);
+    $downloader->verifyChecksum($zipFile, $downloader->fetchText($release['checksums_url']));
+
+    $target = $releasesDir . '/v' . $release['version'];
+    $downloader->extractTo($zipFile, $target);
+    unlink($zipFile);
+
+    // production shim - identical content to docker/web/index.php
+    file_put_contents($webDir . '/index.php', "<?php require dirname(__DIR__).'/current/public/index.php';\n");
+    if (!is_file($webDir . '/.htaccess')) {
+        file_put_contents(
+            $webDir . '/.htaccess',
+            "Options -Indexes\nDirectoryIndex index.php\n\nRewriteEngine On\nRewriteCond %{REQUEST_FILENAME} !-f\nRewriteRule ^ index.php [L]\n",
+        );
+    }
+
+    if (!rename($target, $rootDir . '/current')) {
+        throw new RuntimeException('Release kann nicht nach current/ verschoben werden.');
+    }
+
+    header('Location: /install');
+    exit;
+} catch (Throwable $e) {
+    setup_page('Fehler', '<p class="fehlertext">Einrichtung fehlgeschlagen: '
+        . htmlspecialchars($e->getMessage(), ENT_QUOTES)
+        . '</p><p><a href="setup.php">Zurück zum Umgebungscheck</a></p>');
+}
+
+}

@@ -279,8 +279,9 @@ abstract class DatabaseTestCase extends TestCase
      */
     protected function dumpTable(string $table): array
     {
+        // ORDER BY 1 = first column (works for id, version, and `key` PKs)
         return $this->pdo()
-            ->query(sprintf('SELECT * FROM `%s` ORDER BY id', $table))
+            ->query(sprintf('SELECT * FROM `%s` ORDER BY 1', $table))
             ->fetchAll();
     }
 

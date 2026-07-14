@@ -129,4 +129,13 @@ return static function (Router $router, Container $c): void {
     $router->get('/admin/rebuild', $guard(fn(Request $r, array $p) => $c->rebuildController()->page($r)));
     $router->post('/admin/rebuild/start', $guard(fn(Request $r, array $p) => $c->rebuildController()->start($r)));
     $router->post('/admin/rebuild/step', $guard(fn(Request $r, array $p) => $c->rebuildController()->step($r)));
+
+    $router->get('/admin/backups', $guard(fn(Request $r, array $p) => $c->backupController()->index($r)));
+    $router->post('/admin/backups', $guard(fn(Request $r, array $p) => $c->backupController()->create($r)));
+    $router->get('/admin/backups/{name}', $guard(fn(Request $r, array $p) => $c->backupController()->download($r, $p)));
+
+    $router->get('/admin/update', $guard(fn(Request $r, array $p) => $c->updateController()->page($r)));
+    $router->post('/admin/update/kanal', $guard(fn(Request $r, array $p) => $c->updateController()->setChannel($r)));
+    $router->post('/admin/update/reset', $guard(fn(Request $r, array $p) => $c->updateController()->resetState($r)));
+    $router->post('/admin/update/{schritt:[a-z]+}', $guard(fn(Request $r, array $p) => $c->updateController()->step($r, $p)));
 };

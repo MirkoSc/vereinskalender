@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace App;
 
 use App\Admin\AuthController;
+use App\Admin\BackupController;
 use App\Admin\DashboardController;
 use App\Admin\ImportSourceController;
 use App\Admin\PitchController;
 use App\Admin\RebuildController;
 use App\Admin\TeamController;
+use App\Admin\UpdateController;
 use App\Admin\VenueController;
 use App\Api\BookingApiController;
 use App\Api\CronController;
@@ -30,6 +32,7 @@ use App\Repository\TeamRepository;
 use App\Repository\TrainingSlotRepository;
 use App\Repository\VenueRepository;
 use App\Service\Auth\AuthService;
+use App\Service\Backup\BackupService;
 use App\Service\EventStore\EventStore;
 use App\Service\EventStore\RebuildService;
 use App\Service\EventStore\Replayer;
@@ -52,9 +55,13 @@ use App\Service\Projection\TeamProjector;
 use App\Service\Projection\TrainingSlotProjector;
 use App\Service\Projection\VenueBegriffProjector;
 use App\Service\Projection\VenueProjector;
+use App\Service\Migration\Migrator;
 use App\Service\Stammdaten\PitchService;
 use App\Service\Stammdaten\TeamService;
 use App\Service\Stammdaten\VenueService;
+use App\Service\Update\ReleaseDownloader;
+use App\Service\Update\ReleaseSwitcher;
+use App\Service\Update\UpdateService;
 use App\Support\Version;
 use App\View\View;
 
@@ -162,6 +169,47 @@ final class Container
     public function matchRepository(): MatchRepository
     {
         return $this->cached('matchRepository', fn(): MatchRepository => new MatchRepository($this->pdo()));
+    }
+
+    public function backupService(): BackupService
+    {
+        return $this->cached('backupService', fn(): BackupService => new BackupService(
+            $this->pdo(),
+            $this->paths->sharedDir() . '/var/backups',
+            $this->paths->configFile(),
+            $this->version->value,
+        ));
+    }
+
+    public function updateService(): UpdateService
+    {
+        return $this->cached('updateService', fn(): UpdateService => new UpdateService(
+            $this->paths,
+            $this->version->value,
+            $this->settingRepository(),
+            $this->backupService(),
+            new ReleaseDownloader(),
+            new ReleaseSwitcher(dirname($this->paths->releaseRoot)),
+            new Migrator($this->pdo(), $this->paths->migrationsDir()),
+        ));
+    }
+
+    public function updateController(): UpdateController
+    {
+        return $this->cached('updateController', fn(): UpdateController => new UpdateController(
+            $this->view(),
+            $this->session(),
+            $this->updateService(),
+        ));
+    }
+
+    public function backupController(): BackupController
+    {
+        return $this->cached('backupController', fn(): BackupController => new BackupController(
+            $this->view(),
+            $this->session(),
+            $this->backupService(),
+        ));
     }
 
     public function importSourceRepository(): ImportSourceRepository
