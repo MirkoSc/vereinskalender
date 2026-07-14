@@ -10,4 +10,8 @@ enum AggregateType: string
     case Pitch = 'pitch';
     case Venue = 'venue';
     case VenueBegriff = 'venue_begriff';
+    case TrainingSlot = 'training_slot';
+    case SlotException = 'slot_exception';
+    case PitchRestriction = 'pitch_restriction';
+    case Match = 'match';
 }

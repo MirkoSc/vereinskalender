@@ -37,6 +37,243 @@ main {
     padding: clamp(1rem, 4vw, 2rem);
 }
 
+/* --- Public --- */
+
+.brand {
+    color: inherit;
+    text-decoration: none;
+}
+
+.main-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1rem;
+    margin-top: 0.5rem;
+}
+
+.main-nav a {
+    color: var(--color-accent);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.main-nav a:hover {
+    text-decoration: underline;
+}
+
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: 1rem;
+}
+
+.card {
+    display: block;
+    padding: 1rem;
+    border: 1px solid color-mix(in srgb, var(--color-text) 25%, transparent);
+    border-radius: 8px;
+    color: inherit;
+    text-decoration: none;
+}
+
+.card:hover {
+    border-color: var(--color-accent);
+}
+
+.toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 0.75rem 1rem;
+    margin-bottom: 1rem;
+}
+
+.toolbar .filter {
+    margin: 0;
+    font-size: 0.85rem;
+}
+
+.segmented {
+    display: inline-flex;
+    border: 1px solid var(--color-accent);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.segmented button {
+    background: var(--color-bg);
+    color: var(--color-accent);
+    border-radius: 0;
+    padding: 0.45rem 0.9rem;
+    min-height: 44px;
+}
+
+.segmented button.active {
+    background: var(--color-accent);
+    color: #fff;
+}
+
+dialog.sheet {
+    border: none;
+    border-radius: 12px;
+    padding: 1.25rem;
+    max-width: 26rem;
+    width: calc(100% - 2rem);
+    background: var(--color-bg);
+    color: var(--color-text);
+}
+
+dialog.sheet::backdrop {
+    background: rgb(0 0 0 / 0.4);
+}
+
+@media (max-width: 767px) {
+    dialog.sheet {
+        margin: auto 0 0;
+        width: 100%;
+        max-width: none;
+        border-radius: 12px 12px 0 0;
+    }
+}
+
+.dialog-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+}
+
+.field-row {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.field-row label {
+    flex: 1;
+}
+
+.warning-message {
+    color: #bc4c00;
+}
+
+.ev-abgesagt {
+    text-decoration: line-through;
+    opacity: 0.6;
+}
+
+/* --- Availability view --- */
+
+.legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.chip {
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    border: 1px solid color-mix(in srgb, var(--color-text) 30%, transparent);
+}
+
+.chip-frei { background: color-mix(in srgb, #1a7f37 15%, var(--color-bg)); }
+.chip-belegt { background: color-mix(in srgb, #0969da 25%, var(--color-bg)); }
+.chip-eingeschraenkt { background: color-mix(in srgb, #bf8700 30%, var(--color-bg)); }
+.chip-gesperrt { background: color-mix(in srgb, #cf222e 30%, var(--color-bg)); }
+
+.venue-block {
+    margin-bottom: 2rem;
+}
+
+.venue-block .address {
+    margin-top: -0.5rem;
+    font-size: 0.9rem;
+    opacity: 0.8;
+}
+
+.hint {
+    padding: 0.5rem 0.75rem;
+    border-left: 4px solid #bf8700;
+    background: color-mix(in srgb, #bf8700 12%, var(--color-bg));
+}
+
+.pitch-block {
+    margin-bottom: 1rem;
+}
+
+.pitch-block h4 {
+    margin: 0.5rem 0 0.25rem;
+}
+
+.day-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 3px;
+}
+
+.day-label {
+    flex: 0 0 5.5rem;
+    font-size: 0.8rem;
+}
+
+.timeline {
+    position: relative;
+    flex: 1;
+    height: 2rem;
+    background: color-mix(in srgb, #1a7f37 10%, var(--color-bg));
+    border: 1px solid color-mix(in srgb, var(--color-text) 20%, transparent);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.segment,
+.segment-layer {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+}
+
+.segment {
+    border: none;
+    border-radius: 0;
+    padding: 0 0.3rem;
+    font-size: 0.7rem;
+    color: var(--color-text);
+    background: transparent;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    text-align: left;
+    min-height: 0;
+    font-weight: 400;
+    cursor: pointer;
+}
+
+.segment-belegt {
+    background: color-mix(in srgb, #0969da 35%, var(--color-bg));
+}
+
+.segment-eingeschraenkt {
+    background: color-mix(in srgb, #bf8700 40%, var(--color-bg));
+}
+
+.segment-gesperrt {
+    background: color-mix(in srgb, #cf222e 40%, var(--color-bg));
+}
+
+.eingeschraenkt-layer {
+    background: repeating-linear-gradient(
+        45deg,
+        color-mix(in srgb, #bf8700 35%, transparent),
+        color-mix(in srgb, #bf8700 35%, transparent) 6px,
+        transparent 6px,
+        transparent 12px
+    );
+    pointer-events: none;
+}
+
 /* --- Admin --- */
 
 .admin-nav {

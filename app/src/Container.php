@@ -10,21 +10,38 @@ use App\Admin\PitchController;
 use App\Admin\RebuildController;
 use App\Admin\TeamController;
 use App\Admin\VenueController;
+use App\Api\BookingApiController;
+use App\Api\EventsApiController;
 use App\Config\Config;
 use App\Config\Paths;
 use App\Database\ConnectionFactory;
 use App\Http\Session;
+use App\PublicPages\PublicController;
 use App\Repository\AdminRepository;
+use App\Repository\MatchRepository;
 use App\Repository\PitchRepository;
+use App\Repository\PitchRestrictionRepository;
+use App\Repository\SettingRepository;
+use App\Repository\SlotExceptionRepository;
 use App\Repository\TeamRepository;
+use App\Repository\TrainingSlotRepository;
 use App\Repository\VenueRepository;
 use App\Service\Auth\AuthService;
 use App\Service\EventStore\EventStore;
 use App\Service\EventStore\RebuildService;
 use App\Service\EventStore\Replayer;
+use App\Service\Kalender\AvailabilityService;
+use App\Service\Kalender\BookingService;
+use App\Service\Kalender\EventFeedService;
+use App\Service\Kalender\RestrictionService;
+use App\Service\Kalender\VenueMatcher;
+use App\Service\Projection\MatchProjector;
 use App\Service\Projection\PitchProjector;
+use App\Service\Projection\PitchRestrictionProjector;
 use App\Service\Projection\ProjectorRegistry;
+use App\Service\Projection\SlotExceptionProjector;
 use App\Service\Projection\TeamProjector;
+use App\Service\Projection\TrainingSlotProjector;
 use App\Service\Projection\VenueBegriffProjector;
 use App\Service\Projection\VenueProjector;
 use App\Service\Stammdaten\PitchService;
@@ -71,6 +88,10 @@ final class Container
             new VenueBegriffProjector($this->pdo()),
             new PitchProjector($this->pdo()),
             new TeamProjector($this->pdo()),
+            new TrainingSlotProjector($this->pdo()),
+            new SlotExceptionProjector($this->pdo()),
+            new PitchRestrictionProjector($this->pdo()),
+            new MatchProjector($this->pdo()),
         ]));
     }
 
@@ -107,6 +128,116 @@ final class Container
     public function adminRepository(): AdminRepository
     {
         return $this->cached('adminRepository', fn(): AdminRepository => new AdminRepository($this->pdo()));
+    }
+
+    public function settingRepository(): SettingRepository
+    {
+        return $this->cached('settingRepository', fn(): SettingRepository => new SettingRepository($this->pdo()));
+    }
+
+    public function trainingSlotRepository(): TrainingSlotRepository
+    {
+        return $this->cached('trainingSlotRepository', fn(): TrainingSlotRepository => new TrainingSlotRepository($this->pdo()));
+    }
+
+    public function slotExceptionRepository(): SlotExceptionRepository
+    {
+        return $this->cached('slotExceptionRepository', fn(): SlotExceptionRepository => new SlotExceptionRepository($this->pdo()));
+    }
+
+    public function pitchRestrictionRepository(): PitchRestrictionRepository
+    {
+        return $this->cached('pitchRestrictionRepository', fn(): PitchRestrictionRepository => new PitchRestrictionRepository($this->pdo()));
+    }
+
+    public function matchRepository(): MatchRepository
+    {
+        return $this->cached('matchRepository', fn(): MatchRepository => new MatchRepository($this->pdo()));
+    }
+
+    public function venueMatcher(): VenueMatcher
+    {
+        return $this->cached('venueMatcher', fn(): VenueMatcher => VenueMatcher::fromDatabase($this->pdo()));
+    }
+
+    public function bookingService(): BookingService
+    {
+        return $this->cached('bookingService', fn(): BookingService => new BookingService(
+            $this->eventStore(),
+            $this->trainingSlotRepository(),
+            $this->slotExceptionRepository(),
+            $this->pitchRestrictionRepository(),
+            $this->matchRepository(),
+            $this->teamRepository(),
+            $this->pitchRepository(),
+        ));
+    }
+
+    public function restrictionService(): RestrictionService
+    {
+        return $this->cached('restrictionService', fn(): RestrictionService => new RestrictionService(
+            $this->eventStore(),
+            $this->pitchRestrictionRepository(),
+            $this->pitchRepository(),
+        ));
+    }
+
+    public function availabilityService(): AvailabilityService
+    {
+        return $this->cached('availabilityService', fn(): AvailabilityService => new AvailabilityService(
+            $this->trainingSlotRepository(),
+            $this->slotExceptionRepository(),
+            $this->pitchRestrictionRepository(),
+            $this->matchRepository(),
+            $this->teamRepository(),
+            $this->pitchRepository(),
+            $this->venueRepository(),
+            $this->settingRepository(),
+            $this->venueMatcher(),
+        ));
+    }
+
+    public function eventFeedService(): EventFeedService
+    {
+        return $this->cached('eventFeedService', fn(): EventFeedService => new EventFeedService(
+            $this->trainingSlotRepository(),
+            $this->slotExceptionRepository(),
+            $this->pitchRestrictionRepository(),
+            $this->matchRepository(),
+            $this->teamRepository(),
+            $this->pitchRepository(),
+            $this->venueRepository(),
+            $this->settingRepository(),
+            $this->venueMatcher(),
+        ));
+    }
+
+    public function eventsApiController(): EventsApiController
+    {
+        return $this->cached('eventsApiController', fn(): EventsApiController => new EventsApiController(
+            $this->eventFeedService(),
+            $this->availabilityService(),
+        ));
+    }
+
+    public function bookingApiController(): BookingApiController
+    {
+        return $this->cached('bookingApiController', fn(): BookingApiController => new BookingApiController(
+            $this->session(),
+            $this->bookingService(),
+            $this->restrictionService(),
+        ));
+    }
+
+    public function publicController(): PublicController
+    {
+        return $this->cached('publicController', fn(): PublicController => new PublicController(
+            $this->view(),
+            $this->teamRepository(),
+            $this->pitchRepository(),
+            $this->venueRepository(),
+            $this->settingRepository(),
+        ));
     }
 
     public function authService(): AuthService

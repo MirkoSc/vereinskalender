@@ -28,9 +28,9 @@ final class RebuildService
     {
         foreach ($this->projectors->all() as $projector) {
             $table = $projector->tableName();
-            $this->pdo->exec(sprintf('DROP TABLE IF EXISTS %s_rebuild', $table));
-            $this->pdo->exec(sprintf('DROP TABLE IF EXISTS %s_old', $table));
-            $this->pdo->exec(sprintf('CREATE TABLE %s_rebuild LIKE %s', $table, $table));
+            $this->pdo->exec(sprintf('DROP TABLE IF EXISTS `%s_rebuild`', $table));
+            $this->pdo->exec(sprintf('DROP TABLE IF EXISTS `%s_old`', $table));
+            $this->pdo->exec(sprintf('CREATE TABLE `%s_rebuild` LIKE `%s`', $table, $table));
         }
 
         $total = (int) $this->pdo
@@ -100,12 +100,12 @@ final class RebuildService
         $pairs = [];
         foreach ($this->projectors->all() as $projector) {
             $table = $projector->tableName();
-            $pairs[] = sprintf('%1$s TO %1$s_old, %1$s_rebuild TO %1$s', $table);
+            $pairs[] = sprintf('`%1$s` TO `%1$s_old`, `%1$s_rebuild` TO `%1$s`', $table);
         }
         $this->pdo->exec('RENAME TABLE ' . implode(', ', $pairs));
 
         foreach ($this->projectors->all() as $projector) {
-            $this->pdo->exec(sprintf('DROP TABLE IF EXISTS %s_old', $projector->tableName()));
+            $this->pdo->exec(sprintf('DROP TABLE IF EXISTS `%s_old`', $projector->tableName()));
         }
     }
 
