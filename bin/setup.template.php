@@ -76,6 +76,30 @@ function setup_checks(string $webDir, string $rootDir): array
     return $checks;
 }
 
+/**
+ * Heuristic against installing into the FTP root: in the intended layout
+ * (domain docroot = a web/ SUBFOLDER of an otherwise empty directory) the
+ * parent of setup.php contains nothing foreign. Entries besides the
+ * docroot itself and our own directories indicate that setup.php probably
+ * sits directly in the domain folder and the data would land in the
+ * account root.
+ *
+ * @return list<string>
+ */
+function setup_fremde_eintraege(string $webDir, string $rootDir): array
+{
+    $eigene = [basename($webDir), 'current', 'releases', 'shared'];
+    $fremd = [];
+    foreach (scandir($rootDir) ?: [] as $eintrag) {
+        if ($eintrag === '.' || $eintrag === '..' || in_array($eintrag, $eigene, true)) {
+            continue;
+        }
+        $fremd[] = $eintrag;
+    }
+
+    return $fremd;
+}
+
 function setup_page(string $title, string $body): never
 {
     header('Content-Type: text/html; charset=utf-8');
@@ -96,6 +120,8 @@ if (is_dir($rootDir . '/current')) {
     exit;
 }
 
+$fremdeEintraege = setup_fremde_eintraege($webDir, $rootDir);
+
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     $checks = setup_checks($webDir, $rootDir);
     $allOk = !in_array(false, array_column($checks, 'ok'), true);
@@ -108,13 +134,44 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
             . '</li>';
     }
 
+    $layout = '<h2>Verzeichnisse</h2><p>So wird installiert:</p><ul>'
+        . '<li><strong>DocumentRoot</strong> (dieses Verzeichnis): <code>' . htmlspecialchars($webDir, ENT_QUOTES) . '</code>'
+        . ' – hier liegt nur setup.php und später der kleine index.php-Verweis.</li>'
+        . '<li><strong>Datenverzeichnis</strong> (eine Ebene darüber, nicht per Browser erreichbar): <code>'
+        . htmlspecialchars($rootDir, ENT_QUOTES) . '</code>'
+        . ' – hier entstehen <code>current/</code>, <code>releases/</code> und <code>shared/</code>'
+        . ' (Konfiguration, Backups).</li></ul>';
+
+    $warnung = '';
+    $bestaetigung = '';
+    if ($fremdeEintraege !== []) {
+        $liste = htmlspecialchars(implode(', ', array_slice($fremdeEintraege, 0, 8)), ENT_QUOTES)
+            . (count($fremdeEintraege) > 8 ? ', …' : '');
+        $warnung = '<p class="fehlertext"><strong>Achtung:</strong> Das Datenverzeichnis ist nicht leer'
+            . ' (' . $liste . '). Vermutlich liegt setup.php direkt im Domain-Ordner und die Daten'
+            . ' würden im FTP-Hauptverzeichnis landen. Empfohlen: im Domain-Ordner einen Unterordner'
+            . ' <code>web</code> anlegen, die (Sub-)Domain im Kontrollpanel auf diesen <code>web</code>-Ordner zeigen'
+            . ' lassen, setup.php dorthin verschieben und neu aufrufen.</p>';
+        $bestaetigung = '<p><label><input type="checkbox" name="layout_bestaetigt" value="1"> '
+            . 'Ich möchte trotzdem hier installieren – die Datenverzeichnisse sollen in '
+            . '<code>' . htmlspecialchars($rootDir, ENT_QUOTES) . '</code> angelegt werden.</label></p>';
+    }
+
     $form = $allOk
         ? '<form method="post"><p><label>Release-Kanal: <select name="kanal">'
             . '<option value="stable">stable (empfohlen)</option><option value="beta">beta (Pre-Releases, Testinstanz)</option>'
-            . '</select></label></p><button type="submit">Installation starten</button></form>'
+            . '</select></label></p>' . $bestaetigung . '<button type="submit">Installation starten</button></form>'
         : '<p class="fehlertext">Bitte zuerst die markierten Punkte beheben und die Seite neu laden.</p>';
 
-    setup_page('Umgebungscheck', '<h2>Umgebungscheck</h2><ul>' . $items . '</ul>' . $form);
+    setup_page('Umgebungscheck', '<h2>Umgebungscheck</h2><ul>' . $items . '</ul>' . $layout . $warnung . $form);
+}
+
+// POST guard: with a suspicious layout the confirmation checkbox is required
+if ($fremdeEintraege !== [] && ($_POST['layout_bestaetigt'] ?? '') !== '1') {
+    setup_page('Bitte Struktur prüfen', '<p class="fehlertext">Installation nicht gestartet: Das Datenverzeichnis <code>'
+        . htmlspecialchars($rootDir, ENT_QUOTES) . '</code> ist nicht leer. Bitte die empfohlene Struktur mit'
+        . ' <code>web</code>-Unterordner einrichten – oder die Bestätigung auf der vorherigen Seite ankreuzen.</p>'
+        . '<p><a href="setup.php">Zurück zum Umgebungscheck</a></p>');
 }
 
 // POST: download, verify, unpack, create layout, switch, redirect

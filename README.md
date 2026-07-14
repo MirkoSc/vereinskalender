@@ -14,16 +14,25 @@ Self-Update, Backups, Saison-Assistent.
 ## Installation auf shared hosting (Kontrollpanel)
 
 1. **Vorbereiten im Kontrollpanel**
-   - Subdomain oder Domain anlegen; als Ziel ein Verzeichnis wählen und
-     darunter den DocumentRoot auf den Unterordner `/web` stellen
-     (z. B. `/kalender/web`). Der Ordner oberhalb von `web` muss dem
-     PHP-Prozess gehören (Standard bei shared hosting).
+   - Per FTP ein eigenes Verzeichnis mit einem `web`-Unterordner anlegen
+     und die Subdomain/Domain im Kontrollpanel **auf den `web`-Unterordner** zeigen
+     lassen. Die Anwendung legt ihre Daten eine Ebene über dem DocumentRoot
+     ab (nicht per Browser erreichbar) – deshalb ist der Unterordner wichtig,
+     sonst landen die Daten im FTP-Hauptverzeichnis:
+
+     ```
+     /kalender/              ← hier entstehen current/, releases/, shared/
+        web/                 ← DocumentRoot der (Sub-)Domain
+           setup.php         ← einzige hochzuladende Datei
+     ```
    - PHP-Version der (Sub-)Domain auf **PHP 8.5** stellen.
    - MySQL-Datenbank anlegen, Zugangsdaten notieren.
 2. **setup.php hochladen**
    - Vom [neuesten Release](https://github.com/MirkoSc/vereinskalender/releases)
      die Datei `setup.php` laden und per FTP in den `web`-Ordner legen
-     (der einzige FTP-Schritt).
+     (der einzige FTP-Schritt). Der Umgebungscheck zeigt vor der
+     Installation beide Verzeichnisse an und warnt, wenn die Struktur
+     nicht passt.
 3. **setup.php im Browser aufrufen** (`https://deine-domain/setup.php`)
    - Umgebungscheck → „Installation starten": lädt das neueste Release von
      GitHub, prüft die SHA-256-Signatur, entpackt es und legt die
