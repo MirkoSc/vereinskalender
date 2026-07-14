@@ -88,9 +88,11 @@ final class DashboardController extends AdminController
         }
 
         $warnungen = [];
+        // Berlin wall time from PHP, not NOW(): the DB session may run in UTC
+        $jetzt = new \DateTimeImmutable()->format('Y-m-d H:i:s');
         $future = $this->pdo->prepare(
             "SELECT COUNT(*) FROM `match`
-             WHERE import_source_id = ? AND anstoss > NOW() AND status <> 'abgesagt'",
+             WHERE import_source_id = ? AND anstoss > ? AND status <> 'abgesagt'",
         );
         foreach ($sources as $source) {
             $name = (string) ($source['team_name'] ?? ('Quelle #' . $source['id']));
@@ -101,7 +103,7 @@ final class DashboardController extends AdminController
                 $warnungen[] = sprintf('%s: Import fehlerhaft – %s', $name, (string) ($source['fehlertext'] ?? ''));
                 continue;
             }
-            $future->execute([(int) $source['id']]);
+            $future->execute([(int) $source['id'], $jetzt]);
             if ((int) $future->fetchColumn() === 0 && $source['letzter_lauf'] !== null) {
                 $warnungen[] = sprintf('%s: Feed liefert keine Zukunftstermine mehr (Saisonende? URL erneuern).', $name);
             }

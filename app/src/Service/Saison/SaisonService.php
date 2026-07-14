@@ -31,16 +31,18 @@ final readonly class SaisonService
      */
     public function copyCandidates(): array
     {
-        return $this->pdo
-            ->query(
-                'SELECT s.*, t.name AS team_name, p.name AS pitch_name,
-                        (s.gueltig_bis < CURDATE()) AS abgelaufen
-                 FROM training_slot s
-                 LEFT JOIN team t ON t.id = s.team_id
-                 LEFT JOIN pitch p ON p.id = s.pitch_id
-                 ORDER BY abgelaufen DESC, t.sortierung, t.name, s.wochentag, s.beginn',
-            )
-            ->fetchAll();
+        // today boundary from PHP (Europe/Berlin), not CURDATE() (UTC session)
+        $stmt = $this->pdo->prepare(
+            'SELECT s.*, t.name AS team_name, p.name AS pitch_name,
+                    (s.gueltig_bis < ?) AS abgelaufen
+             FROM training_slot s
+             LEFT JOIN team t ON t.id = s.team_id
+             LEFT JOIN pitch p ON p.id = s.pitch_id
+             ORDER BY abgelaufen DESC, t.sortierung, t.name, s.wochentag, s.beginn',
+        );
+        $stmt->execute([new \DateTimeImmutable('today')->format('Y-m-d')]);
+
+        return $stmt->fetchAll();
     }
 
     /**
