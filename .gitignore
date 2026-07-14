@@ -4,3 +4,6 @@ composer.phar
 /.phpunit.cache/
 /dist/
 /docker/shared/var/
+/docker/shared/vapid.json
+/docker/shared/update_state.json
+/docker/shared/maintenance.flag
