@@ -102,7 +102,7 @@ final class Replayer
 
     private function rowExists(string $table, int $id): bool
     {
-        $stmt = $this->pdo->prepare(sprintf('SELECT 1 FROM %s WHERE id = ?', $table));
+        $stmt = $this->pdo->prepare(sprintf('SELECT 1 FROM `%s` WHERE id = ?', $table));
         $stmt->execute([$id]);
 
         return $stmt->fetchColumn() !== false;

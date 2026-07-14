@@ -1,4 +1,17 @@
 <section>
     <h2>Willkommen beim Vereinskalender</h2>
-    <p>Platzbelegung und Spielplan – die Kalenderansichten befinden sich im Aufbau.</p>
+    <div class="card-grid">
+        <a class="card" href="/belegung">
+            <h3>Platzbelegung</h3>
+            <p>Wochenraster: Welches Team trainiert wann auf welchem Platz.</p>
+        </a>
+        <a class="card" href="/spielplan">
+            <h3>Spielplan</h3>
+            <p>Alle Spiele unserer Teams – Heim und Auswärts.</p>
+        </a>
+        <a class="card" href="/verfuegbarkeit">
+            <h3>Verfügbarkeit</h3>
+            <p>Freie Zeiten, Belegungen und Platzsperrungen auf einen Blick.</p>
+        </a>
+    </div>
 </section>

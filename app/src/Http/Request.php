@@ -36,11 +36,22 @@ final readonly class Request
             $path = '/';
         }
 
+        // fetch() sends JSON bodies; expose them like form fields
+        $post = $_POST;
+        $contentType = strtolower((string) ($_SERVER['CONTENT_TYPE'] ?? ''));
+        if (str_contains($contentType, 'application/json')) {
+            $raw = file_get_contents('php://input');
+            $decoded = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
+            if (is_array($decoded)) {
+                $post = $decoded;
+            }
+        }
+
         return new self(
             method: HttpMethod::fromString($_SERVER['REQUEST_METHOD'] ?? 'GET'),
             path: $path,
             query: $_GET,
-            post: $_POST,
+            post: $post,
             headers: self::headersFromServer($_SERVER),
             ip: (string) ($_SERVER['REMOTE_ADDR'] ?? ''),
         );

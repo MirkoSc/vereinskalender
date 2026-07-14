@@ -10,17 +10,57 @@ use App\Http\ResponseInterface;
 use App\Http\Router;
 
 return static function (Router $router, Container $c): void {
-    // ---- public ----
+    // ---- public pages (reading never starts a session) ----
 
-    $router->get('/', static fn(Request $request, array $params): Response => Response::html(
-        $c->view()->render('home', ['title' => 'Vereinskalender']),
-    ));
+    $router->get('/', static fn(Request $r, array $p): Response => $c->publicController()->home($r));
+    $router->get('/belegung', static fn(Request $r, array $p): Response => $c->publicController()->belegung($r));
+    $router->get('/spielplan', static fn(Request $r, array $p): Response => $c->publicController()->spielplan($r));
+    $router->get('/verfuegbarkeit', static fn(Request $r, array $p): Response => $c->publicController()->verfuegbarkeit($r));
+
+    // ---- public read API ----
+
+    $router->get('/api/events', static fn(Request $r, array $p): Response => $c->eventsApiController()->events($r));
+    $router->get('/api/verfuegbarkeit', static fn(Request $r, array $p): Response => $c->eventsApiController()->verfuegbarkeit($r));
 
     // Also the self-test target of the updater step chain (milestone 5).
     $router->get('/api/health', static fn(Request $request, array $params): Response => Response::json([
         'status' => 'ok',
         'version' => $c->version->value,
     ]));
+
+    // ---- public write API (CLAUDE.md section 6) ----
+    // Session only for the CSRF token; every write must carry an
+    // editor_name (rejected otherwise, deliberately not verified further).
+
+    $router->get('/api/csrf', static function (Request $r, array $p) use ($c): Response {
+        $c->session()->start();
+
+        return $c->bookingApiController()->csrf($r);
+    });
+
+    $publicWrite = static function (\Closure $handler) use ($c): \Closure {
+        return static function (Request $request, array $params) use ($handler, $c): ResponseInterface {
+            $session = $c->session();
+            $session->start();
+            if (!$session->checkCsrf($request)) {
+                return Response::json(['fehler' => ['csrf' => 'Ungültiges oder fehlendes CSRF-Token.']], 403);
+            }
+            if (trim((string) ($request->post['editor_name'] ?? '')) === '') {
+                return Response::json(['fehler' => ['editor_name' => 'Bitte zuerst einen Namen angeben.']], 422);
+            }
+
+            return $handler($request, $params);
+        };
+    };
+
+    $router->post('/api/slots/pruefen', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->check($r)));
+    $router->post('/api/slots', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->createSlot($r)));
+    $router->post('/api/slots/{id:\d+}', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->updateSlot($r, $p)));
+    $router->post('/api/slots/{id:\d+}/loeschen', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->deleteSlot($r, $p)));
+    $router->post('/api/slots/{id:\d+}/ausfall', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->addException($r, $p)));
+    $router->post('/api/ausnahmen/{id:\d+}/loeschen', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->deleteException($r, $p)));
+    $router->post('/api/sperrungen', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->createRestriction($r)));
+    $router->post('/api/sperrungen/{id:\d+}/loeschen', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->deleteRestriction($r, $p)));
 
     // ---- admin ----
 

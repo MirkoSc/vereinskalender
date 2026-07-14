@@ -25,7 +25,7 @@ abstract class TableProjector implements Projector
         $table = $this->tableName() . $tableSuffix;
 
         if ($eventType === EventType::Deleted) {
-            $stmt = $this->pdo->prepare(sprintf('DELETE FROM %s WHERE id = ?', $table));
+            $stmt = $this->pdo->prepare(sprintf('DELETE FROM `%s` WHERE id = ?', $table));
             $stmt->execute([$aggregateId]);
 
             return;
@@ -40,7 +40,7 @@ abstract class TableProjector implements Projector
         );
 
         $sql = sprintf(
-            'INSERT INTO %s (id, %s) VALUES (%s) ON DUPLICATE KEY UPDATE %s',
+            'INSERT INTO `%s` (id, %s) VALUES (%s) ON DUPLICATE KEY UPDATE %s',
             $table,
             implode(', ', $columns),
             implode(', ', array_fill(0, count($columns) + 1, '?')),

@@ -10,9 +10,13 @@ use App\Service\EventStore\EventStore;
 use App\Service\EventStore\RebuildService;
 use App\Service\EventStore\Replayer;
 use App\Service\Migration\Migrator;
+use App\Service\Projection\MatchProjector;
 use App\Service\Projection\PitchProjector;
+use App\Service\Projection\PitchRestrictionProjector;
 use App\Service\Projection\ProjectorRegistry;
+use App\Service\Projection\SlotExceptionProjector;
 use App\Service\Projection\TeamProjector;
+use App\Service\Projection\TrainingSlotProjector;
 use App\Service\Projection\VenueBegriffProjector;
 use App\Service\Projection\VenueProjector;
 use PHPUnit\Framework\TestCase;
@@ -66,6 +70,10 @@ abstract class DatabaseTestCase extends TestCase
             new VenueBegriffProjector($this->pdo()),
             new PitchProjector($this->pdo()),
             new TeamProjector($this->pdo()),
+            new TrainingSlotProjector($this->pdo()),
+            new SlotExceptionProjector($this->pdo()),
+            new PitchRestrictionProjector($this->pdo()),
+            new MatchProjector($this->pdo()),
         ]);
     }
 
@@ -101,6 +109,139 @@ abstract class DatabaseTestCase extends TestCase
         return new EventContext($editor, $ip, EventSource::Admin);
     }
 
+    // ---- scenario helpers (master data via the event store) ----
+
+    protected function createVenue(string $name = 'SV Musterstadt', string $adresse = 'Sportweg 1'): int
+    {
+        return $this->eventStore()->append(
+            \App\Domain\AggregateType::Venue,
+            null,
+            \App\Domain\EventType::Created,
+            ['name' => $name, 'farbe' => '#1a7f37', 'adresse' => $adresse, 'default_pitch_id' => null, 'sortierung' => 0],
+            $this->context(),
+        )->aggregateId;
+    }
+
+    protected function createPitch(int $venueId, string $name = 'Rasenplatz 1'): int
+    {
+        return $this->eventStore()->append(
+            \App\Domain\AggregateType::Pitch,
+            null,
+            \App\Domain\EventType::Created,
+            ['venue_id' => $venueId, 'name' => $name, 'typ' => 'Rasen', 'flutlicht' => true, 'adresse' => null, 'sortierung' => 0],
+            $this->context(),
+        )->aggregateId;
+    }
+
+    protected function createTeam(string $name = 'E1', string $bereich = 'E', string $farbe = '#0969da'): int
+    {
+        return $this->eventStore()->append(
+            \App\Domain\AggregateType::Team,
+            null,
+            \App\Domain\EventType::Created,
+            ['bereich' => $bereich, 'name' => $name, 'kuerzel' => $name, 'farbe' => $farbe, 'aktiv' => true, 'sortierung' => 0],
+            $this->context(),
+        )->aggregateId;
+    }
+
+    protected function createBegriff(int $venueId, string $begriff, int $sortierung = 0): int
+    {
+        return $this->eventStore()->append(
+            \App\Domain\AggregateType::VenueBegriff,
+            null,
+            \App\Domain\EventType::Created,
+            ['venue_id' => $venueId, 'begriff' => $begriff, 'sortierung' => $sortierung],
+            $this->context(),
+        )->aggregateId;
+    }
+
+    /**
+     * @param array<string, mixed> $overrides
+     */
+    protected function createMatch(int $teamId, array $overrides = []): int
+    {
+        return $this->eventStore()->append(
+            \App\Domain\AggregateType::Match,
+            null,
+            \App\Domain\EventType::Created,
+            [
+                'team_id' => $teamId,
+                'anstoss' => '2026-08-08 15:00:00',
+                'gegner' => 'FC Gegner',
+                'heimspiel' => false,
+                'ort_text' => 'Stadion Gegnerhausen',
+                'pitch_id' => null,
+                'status' => 'geplant',
+                'import_source_id' => null,
+                'ics_uid' => '',
+                'ics_sequence' => 0,
+                'sync_hash' => '',
+                ...$overrides,
+            ],
+            $this->context(),
+        )->aggregateId;
+    }
+
+    protected function bookingService(): \App\Service\Kalender\BookingService
+    {
+        $pdo = $this->pdo();
+
+        return new \App\Service\Kalender\BookingService(
+            $this->eventStore(),
+            new \App\Repository\TrainingSlotRepository($pdo),
+            new \App\Repository\SlotExceptionRepository($pdo),
+            new \App\Repository\PitchRestrictionRepository($pdo),
+            new \App\Repository\MatchRepository($pdo),
+            new \App\Repository\TeamRepository($pdo),
+            new \App\Repository\PitchRepository($pdo),
+        );
+    }
+
+    protected function restrictionService(): \App\Service\Kalender\RestrictionService
+    {
+        $pdo = $this->pdo();
+
+        return new \App\Service\Kalender\RestrictionService(
+            $this->eventStore(),
+            new \App\Repository\PitchRestrictionRepository($pdo),
+            new \App\Repository\PitchRepository($pdo),
+        );
+    }
+
+    protected function availabilityService(): \App\Service\Kalender\AvailabilityService
+    {
+        $pdo = $this->pdo();
+
+        return new \App\Service\Kalender\AvailabilityService(
+            new \App\Repository\TrainingSlotRepository($pdo),
+            new \App\Repository\SlotExceptionRepository($pdo),
+            new \App\Repository\PitchRestrictionRepository($pdo),
+            new \App\Repository\MatchRepository($pdo),
+            new \App\Repository\TeamRepository($pdo),
+            new \App\Repository\PitchRepository($pdo),
+            new \App\Repository\VenueRepository($pdo),
+            new \App\Repository\SettingRepository($pdo),
+            \App\Service\Kalender\VenueMatcher::fromDatabase($pdo),
+        );
+    }
+
+    protected function eventFeedService(): \App\Service\Kalender\EventFeedService
+    {
+        $pdo = $this->pdo();
+
+        return new \App\Service\Kalender\EventFeedService(
+            new \App\Repository\TrainingSlotRepository($pdo),
+            new \App\Repository\SlotExceptionRepository($pdo),
+            new \App\Repository\PitchRestrictionRepository($pdo),
+            new \App\Repository\MatchRepository($pdo),
+            new \App\Repository\TeamRepository($pdo),
+            new \App\Repository\PitchRepository($pdo),
+            new \App\Repository\VenueRepository($pdo),
+            new \App\Repository\SettingRepository($pdo),
+            \App\Service\Kalender\VenueMatcher::fromDatabase($pdo),
+        );
+    }
+
     protected function migrationsDir(): string
     {
         return dirname(__DIR__, 2) . '/migrations';
@@ -112,7 +253,7 @@ abstract class DatabaseTestCase extends TestCase
     protected function dumpTable(string $table): array
     {
         return $this->pdo()
-            ->query(sprintf('SELECT * FROM %s ORDER BY id', $table))
+            ->query(sprintf('SELECT * FROM `%s` ORDER BY id', $table))
             ->fetchAll();
     }
 
@@ -163,7 +304,7 @@ abstract class DatabaseTestCase extends TestCase
         if ($tables !== []) {
             $pdo->exec('SET FOREIGN_KEY_CHECKS = 0');
             foreach ($tables as $table) {
-                $pdo->exec(sprintf('DROP TABLE IF EXISTS %s', (string) $table));
+                $pdo->exec(sprintf('DROP TABLE IF EXISTS `%s`', (string) $table));
             }
             $pdo->exec('SET FOREIGN_KEY_CHECKS = 1');
         }
