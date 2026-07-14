@@ -8,6 +8,7 @@ use App\Config\Paths;
 use App\Repository\SettingRepository;
 use App\Service\Backup\BackupService;
 use App\Service\Migration\Migrator;
+use App\Service\Stats\AlarmMailer;
 
 /**
  * Update step chain (CLAUDE.md section 10): the admin UI calls each step
@@ -26,6 +27,7 @@ final class UpdateService
         private readonly ReleaseDownloader $downloader,
         private readonly ReleaseSwitcher $switcher,
         private readonly Migrator $migrator,
+        private readonly ?AlarmMailer $alarmMailer = null,
     ) {
     }
 
@@ -229,6 +231,11 @@ final class UpdateService
             $state = $work($state)->mit(abgeschlossenerSchritt: $schritt);
         } catch (\Throwable $e) {
             $state = $state->mit(fehler: $e->getMessage());
+            $this->alarmMailer?->alert(
+                'updatefehler',
+                'Update-Schritt fehlgeschlagen',
+                sprintf("Schritt '%s' beim Update auf %s:\n\n%s\n", $schritt, (string) $state->zielVersion, $e->getMessage()),
+            );
         }
 
         $this->save($state);

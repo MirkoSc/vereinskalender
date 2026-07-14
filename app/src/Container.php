@@ -7,35 +7,48 @@ namespace App;
 use App\Admin\AuthController;
 use App\Admin\BackupController;
 use App\Admin\DashboardController;
+use App\Admin\EventHistoryController;
 use App\Admin\ImportSourceController;
+use App\Admin\PageAdminController;
 use App\Admin\PitchController;
 use App\Admin\RebuildController;
+use App\Admin\SaisonController;
+use App\Admin\SettingsController;
 use App\Admin\TeamController;
 use App\Admin\UpdateController;
 use App\Admin\VenueController;
 use App\Api\BookingApiController;
 use App\Api\CronController;
 use App\Api\EventsApiController;
+use App\Api\ExportController;
+use App\Api\PushApiController;
+use App\Api\StatController;
 use App\Config\Config;
 use App\Config\Paths;
 use App\Database\ConnectionFactory;
 use App\Http\Session;
 use App\PublicPages\PublicController;
 use App\Repository\AdminRepository;
+use App\Repository\EventHistoryRepository;
 use App\Repository\ImportSourceRepository;
 use App\Repository\MatchRepository;
+use App\Repository\NotificationQueueRepository;
+use App\Repository\PageRepository;
 use App\Repository\PitchRepository;
 use App\Repository\PitchRestrictionRepository;
+use App\Repository\PushSubscriptionRepository;
 use App\Repository\SettingRepository;
 use App\Repository\SlotExceptionRepository;
 use App\Repository\TeamRepository;
 use App\Repository\TrainingSlotRepository;
+use App\Repository\UsageStatRepository;
 use App\Repository\VenueRepository;
 use App\Service\Auth\AuthService;
 use App\Service\Backup\BackupService;
 use App\Service\EventStore\EventStore;
 use App\Service\EventStore\RebuildService;
 use App\Service\EventStore\Replayer;
+use App\Service\Export\IcsExporter;
 use App\Service\Import\HttpIcsFeedFetcher;
 use App\Service\Import\IcsImportService;
 use App\Service\Import\ImportSourceService;
@@ -43,8 +56,14 @@ use App\Service\Kalender\AvailabilityService;
 use App\Service\Kalender\BookingService;
 use App\Service\Kalender\EventFeedService;
 use App\Service\Kalender\MatchService;
+use App\Service\Kalender\OfflineBundleService;
 use App\Service\Kalender\RestrictionService;
 use App\Service\Kalender\VenueMatcher;
+use App\Service\Push\NotificationTrigger;
+use App\Service\Push\PushSender;
+use App\Service\RateLimiter;
+use App\Service\Saison\SaisonService;
+use App\Service\Stats\AlarmMailer;
 use App\Service\Projection\ImportSourceProjector;
 use App\Service\Projection\MatchProjector;
 use App\Service\Projection\PitchProjector;
@@ -113,7 +132,97 @@ final class Container
 
     public function eventStore(): EventStore
     {
-        return $this->cached('eventStore', fn(): EventStore => new EventStore($this->pdo(), $this->projectorRegistry()));
+        return $this->cached('eventStore', fn(): EventStore => new EventStore(
+            $this->pdo(),
+            $this->projectorRegistry(),
+            fn(\App\Domain\StoredEvent $event) => $this->notificationTrigger()->afterEventInsert($event),
+        ));
+    }
+
+    public function notificationTrigger(): NotificationTrigger
+    {
+        return $this->cached('notificationTrigger', fn(): NotificationTrigger => new NotificationTrigger(
+            $this->pdo(),
+            $this->notificationQueueRepository(),
+        ));
+    }
+
+    public function notificationQueueRepository(): NotificationQueueRepository
+    {
+        return $this->cached('notificationQueueRepository', fn(): NotificationQueueRepository => new NotificationQueueRepository($this->pdo()));
+    }
+
+    public function pushSubscriptionRepository(): PushSubscriptionRepository
+    {
+        return $this->cached('pushSubscriptionRepository', fn(): PushSubscriptionRepository => new PushSubscriptionRepository($this->pdo()));
+    }
+
+    public function pushSender(): PushSender
+    {
+        return $this->cached('pushSender', fn(): PushSender => new PushSender(
+            $this->pushSubscriptionRepository(),
+            $this->notificationQueueRepository(),
+            $this->teamRepository(),
+            $this->pitchRepository(),
+            $this->paths->sharedDir() . '/vapid.json',
+        ));
+    }
+
+    public function usageStatRepository(): UsageStatRepository
+    {
+        return $this->cached('usageStatRepository', fn(): UsageStatRepository => new UsageStatRepository($this->pdo()));
+    }
+
+    public function pageRepository(): PageRepository
+    {
+        return $this->cached('pageRepository', fn(): PageRepository => new PageRepository($this->pdo()));
+    }
+
+    public function eventHistoryRepository(): EventHistoryRepository
+    {
+        return $this->cached('eventHistoryRepository', fn(): EventHistoryRepository => new EventHistoryRepository($this->pdo()));
+    }
+
+    public function rateLimiter(): RateLimiter
+    {
+        return $this->cached('rateLimiter', fn(): RateLimiter => new RateLimiter($this->pdo()));
+    }
+
+    public function alarmMailer(): AlarmMailer
+    {
+        return $this->cached('alarmMailer', fn(): AlarmMailer => AlarmMailer::withPhpMail($this->settingRepository()));
+    }
+
+    public function icsExporter(): IcsExporter
+    {
+        return $this->cached('icsExporter', fn(): IcsExporter => new IcsExporter(
+            $this->teamRepository(),
+            $this->matchRepository(),
+            $this->trainingSlotRepository(),
+            $this->slotExceptionRepository(),
+            $this->pitchRepository(),
+        ));
+    }
+
+    public function offlineBundleService(): OfflineBundleService
+    {
+        return $this->cached('offlineBundleService', fn(): OfflineBundleService => new OfflineBundleService(
+            $this->eventFeedService(),
+            $this->availabilityService(),
+            $this->teamRepository(),
+            $this->venueRepository(),
+            $this->pitchRepository(),
+            $this->settingRepository(),
+        ));
+    }
+
+    public function saisonService(): SaisonService
+    {
+        return $this->cached('saisonService', fn(): SaisonService => new SaisonService(
+            $this->pdo(),
+            $this->trainingSlotRepository(),
+            $this->bookingService(),
+        ));
     }
 
     public function rebuildService(): RebuildService
@@ -191,6 +300,7 @@ final class Container
             new ReleaseDownloader(),
             new ReleaseSwitcher(dirname($this->paths->releaseRoot)),
             new Migrator($this->pdo(), $this->paths->migrationsDir()),
+            $this->alarmMailer(),
         ));
     }
 
@@ -235,6 +345,7 @@ final class Container
             $this->venueRepository(),
             $this->venueMatcher(),
             new HttpIcsFeedFetcher(),
+            $this->alarmMailer(),
         ));
     }
 
@@ -252,6 +363,71 @@ final class Container
         return $this->cached('cronController', fn(): CronController => new CronController(
             $this->config,
             $this->icsImportService(),
+            $this->pushSender(),
+            $this->eventHistoryRepository(),
+            $this->settingRepository(),
+            $this->rateLimiter(),
+        ));
+    }
+
+    public function exportController(): ExportController
+    {
+        return $this->cached('exportController', fn(): ExportController => new ExportController(
+            $this->icsExporter(),
+            $this->usageStatRepository(),
+        ));
+    }
+
+    public function pushApiController(): PushApiController
+    {
+        return $this->cached('pushApiController', fn(): PushApiController => new PushApiController(
+            $this->pushSubscriptionRepository(),
+            $this->pushSender(),
+            $this->usageStatRepository(),
+        ));
+    }
+
+    public function statController(): StatController
+    {
+        return $this->cached('statController', fn(): StatController => new StatController($this->usageStatRepository()));
+    }
+
+    public function eventHistoryController(): EventHistoryController
+    {
+        return $this->cached('eventHistoryController', fn(): EventHistoryController => new EventHistoryController(
+            $this->view(),
+            $this->session(),
+            $this->eventHistoryRepository(),
+            $this->eventStore(),
+        ));
+    }
+
+    public function saisonController(): SaisonController
+    {
+        return $this->cached('saisonController', fn(): SaisonController => new SaisonController(
+            $this->view(),
+            $this->session(),
+            $this->saisonService(),
+            $this->teamRepository(),
+            $this->importSourceRepository(),
+        ));
+    }
+
+    public function pageAdminController(): PageAdminController
+    {
+        return $this->cached('pageAdminController', fn(): PageAdminController => new PageAdminController(
+            $this->view(),
+            $this->session(),
+            $this->pageRepository(),
+        ));
+    }
+
+    public function settingsController(): SettingsController
+    {
+        return $this->cached('settingsController', fn(): SettingsController => new SettingsController(
+            $this->view(),
+            $this->session(),
+            $this->settingRepository(),
         ));
     }
 
@@ -329,6 +505,8 @@ final class Container
         return $this->cached('eventsApiController', fn(): EventsApiController => new EventsApiController(
             $this->eventFeedService(),
             $this->availabilityService(),
+            $this->offlineBundleService(),
+            $this->usageStatRepository(),
         ));
     }
 
@@ -350,6 +528,10 @@ final class Container
             $this->pitchRepository(),
             $this->venueRepository(),
             $this->settingRepository(),
+            $this->pageRepository(),
+            $this->usageStatRepository(),
+            $this->version->value,
+            $this->paths->publicDir(),
         ));
     }
 
@@ -400,6 +582,10 @@ final class Container
             $this->pitchRepository(),
             $this->venueRepository(),
             $this->eventStore(),
+            $this->usageStatRepository(),
+            $this->importSourceRepository(),
+            $this->pushSubscriptionRepository(),
+            $this->pdo(),
         ));
     }
 

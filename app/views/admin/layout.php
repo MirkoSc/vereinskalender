@@ -18,9 +18,13 @@
             <a href="/admin/plaetze">Plätze</a>
             <a href="/admin/spielstaetten">Spielstätten</a>
             <a href="/admin/import-quellen">Import</a>
+            <a href="/admin/events">Events</a>
+            <a href="/admin/saison">Saison</a>
             <a href="/admin/rebuild">Rebuild</a>
             <a href="/admin/backups">Backups</a>
             <a href="/admin/update">Update</a>
+            <a href="/admin/seiten/impressum">Seiten</a>
+            <a href="/admin/einstellungen">Einstellungen</a>
             <form method="post" action="/admin/logout" class="inline-form">
                 <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
                 <button type="submit" class="linklike">Abmelden (<?= e($adminUsername ?? '') ?>)</button>

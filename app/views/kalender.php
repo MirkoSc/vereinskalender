@@ -31,10 +31,14 @@
         <?php if ($ansicht === 'belegung'): ?>
             <button type="button" id="new-booking" class="button">Belegung eintragen</button>
         <?php endif; ?>
+
+        <button type="button" id="push-bell" class="linklike bell" title="Push-Benachrichtigungen">🔔</button>
     </div>
 
     <div id="kalender"></div>
 </section>
+
+<?php require __DIR__ . '/partials/push_dialog.php'; ?>
 
 <dialog id="detail-dialog" class="sheet">
     <div id="detail-content"></div>

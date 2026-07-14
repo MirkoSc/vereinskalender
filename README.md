@@ -1,8 +1,69 @@
 # Vereinskalender
 
 Webkalender für einen Fußballverein: Sportplatz-Belegung (Training) und
-Spielplan. Läuft auf all-inkl Shared Hosting (PHP 8.5 + MySQL/MariaDB).
-Architektur und Konventionen: siehe [CLAUDE.md](CLAUDE.md).
+Spielplan mit automatischem Import von fussball.de. Läuft auf all-inkl
+Shared Hosting (PHP 8.5 + MySQL/MariaDB) – ohne SSH, ohne Composer auf dem
+Server. Architektur und Konventionen: siehe [CLAUDE.md](CLAUDE.md).
+
+**Funktionen:** Platzbelegung als Wochenraster (wiederkehrende Trainingsslots
+mit Ausnahmen und Platzsperrungen), Spielplan mit ICS-Import, öffentliche
+Verfügbarkeitsansicht, Kalender-Abos (ICS-Feeds), Web-Push bei Sperrungen und
+Spielverlegungen, PWA mit Offline-Fenster, Event-Historie mit Rückroll-Funktion,
+Self-Update, Backups, Saison-Assistent.
+
+## Installation auf all-inkl (KAS)
+
+1. **Vorbereiten im KAS**
+   - Subdomain oder Domain anlegen; als Ziel ein Verzeichnis wählen und
+     darunter den DocumentRoot auf den Unterordner `/web` stellen
+     (z. B. `/kalender/web`). Der Ordner oberhalb von `web` muss dem
+     PHP-Prozess gehören (Standard bei all-inkl).
+   - PHP-Version der (Sub-)Domain auf **PHP 8.5** stellen.
+   - MySQL-Datenbank anlegen, Zugangsdaten notieren.
+2. **setup.php hochladen**
+   - Vom [neuesten Release](https://github.com/MirkoSc/vereinskalender/releases)
+     die Datei `setup.php` laden und per FTP in den `web`-Ordner legen
+     (der einzige FTP-Schritt).
+3. **setup.php im Browser aufrufen** (`https://deine-domain/setup.php`)
+   - Umgebungscheck → „Installation starten": lädt das neueste Release von
+     GitHub, prüft die SHA-256-Signatur, entpackt es und legt die
+     Verzeichnisstruktur an (`current/`, `releases/`, `shared/`).
+4. **/install ausfüllen**
+   - Datenbank-Zugangsdaten (Verbindungstest inklusive) und die
+     Bootstrap-Admin-Zugangsdaten festlegen.
+   - „Frische Installation" wählen – oder „Backup einspielen", um eine
+     bestehende Instanz umzuziehen.
+5. **Erster Login** unter `/admin/login` mit den Bootstrap-Zugangsdaten –
+   dabei wird das echte Admin-Konto angelegt; die Bootstrap-Daten sind
+   danach ungültig.
+6. **Cronjob im KAS anlegen**: alle 10 Minuten die URL
+   `https://deine-domain/cron/import?token=<cron_token>` aufrufen.
+   Der Token steht in `shared/config.php`. Der Cron erledigt ICS-Import,
+   Push-Versand, IP-Anonymisierung und Aufräumarbeiten.
+7. **Im Admin einrichten**: Spielstätten (mit Begriffen für die
+   Ortserkennung und Standard-Platz), Plätze, Teams, Import-Quellen
+   (ICS-URLs von fussball.de), Einstellungen (Nutzungszeiten, Alarm-E-Mail),
+   Impressum und Datenschutzerklärung.
+
+## Updates
+
+Admin → Update: Versionscheck gegen GitHub, dann läuft die Schrittkette
+(Backup → Download mit Prüfsummen-Check → Entpacken → atomares Umschalten →
+Migrationen → Selbsttest). Bei Fehlern: Schritt wiederholen oder Rollback auf
+das vorherige Release.
+
+**Release-Prozess**: Jedes Tag `vX.Y.Z` wird automatisch als **Pre-Release**
+gebaut. Die Testinstanz (Update-Kanal „beta") spielt es zuerst ein; nach
+erfolgreichem Test wird das Release auf GitHub als „latest" markiert, dann
+zieht es die Produktivinstanz (Kanal „stable").
+
+## Backup & Restore
+
+- Admin → Backups: manuell erstellen und herunterladen; vor jedem Update
+  entsteht automatisch eines. Die letzten 10 bleiben erhalten
+  (`shared/var/backups/`).
+- Wiederherstellen: auf einer frischen Instanz im Installer
+  „Backup einspielen" wählen.
 
 ## Entwicklung
 
@@ -21,19 +82,16 @@ docker compose run --rm app php vendor/bin/phpunit
 
 # Migrationen anwenden
 docker compose exec app php bin/migrate.php
+
+# setup.php neu generieren (nach Änderungen an ReleaseDownloader/Template)
+docker compose run --rm --no-deps app php bin/build_setup.php
 ```
 
 Die Docker-Umgebung spiegelt das all-inkl-Layout: `docker/web/` ist der
 DocumentRoot mit dem Produktions-Shim, das Repo ist als `current/` gemountet,
 `docker/shared/` entspricht dem persistenten `shared/`-Verzeichnis.
 
-## Release
-
-Tag `vX.Y.Z` pushen → GitHub Action baut das Release-ZIP (inkl. `vendor/`),
-erzeugt `checksums.txt` und veröffentlicht beides als **Pre-Release**.
-Nach erfolgreichem Test auf der Beta-Instanz wird das Release manuell auf
-„latest" umgestellt (Details: CLAUDE.md Abschnitt 11).
-
 ## Lizenz
 
-GPLv3 – siehe [LICENSE](LICENSE).
+GPLv3 – siehe [LICENSE](LICENSE). Der FullCalendar-Scheduler wird mit dem
+Open-Source-Lizenzschlüssel (`GPL-My-Project-Is-Open-Source`) eingesetzt.

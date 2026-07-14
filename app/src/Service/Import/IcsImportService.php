@@ -13,6 +13,7 @@ use App\Repository\MatchRepository;
 use App\Repository\VenueRepository;
 use App\Service\EventStore\EventStore;
 use App\Service\Kalender\VenueMatcher;
+use App\Service\Stats\AlarmMailer;
 
 /**
  * ICS sync (CLAUDE.md section 7). Per event in the feed, keyed by
@@ -34,6 +35,7 @@ final readonly class IcsImportService
         private VenueRepository $venues,
         private VenueMatcher $venueMatcher,
         private IcsFeedFetcher $fetcher,
+        private ?AlarmMailer $alarmMailer = null,
     ) {
     }
 
@@ -64,6 +66,17 @@ final readonly class IcsImportService
             return $result;
         } catch (\Throwable $e) {
             $this->sources->updateRunStatus($sourceId, 'fehler', $e->getMessage());
+
+            $this->alarmMailer?->alert(
+                'importfehler',
+                'ICS-Import fehlgeschlagen',
+                sprintf(
+                    "Import-Quelle #%d meldet einen Fehler:\n\n%s\n\nURL: %s\n",
+                    $sourceId,
+                    $e->getMessage(),
+                    (string) $source['ics_url'],
+                ),
+            );
 
             return new ImportSourceResult($sourceId, ok: false, fehlertext: $e->getMessage());
         }

@@ -5,9 +5,13 @@
     "type": "project",
     "require": {
         "php": "^8.5",
+        "ext-curl": "*",
+        "ext-mbstring": "*",
+        "ext-openssl": "*",
         "ext-pdo": "*",
         "ext-pdo_mysql": "*",
-        "ext-zip": "*"
+        "ext-zip": "*",
+        "minishlink/web-push": "^10.1"
     },
     "require-dev": {
         "phpunit/phpunit": "^12.4"
@@ -30,6 +34,9 @@
         "optimize-autoloader": true,
         "platform": {
             "php": "8.5.0",
+            "ext-curl": "8.5.0",
+            "ext-mbstring": "8.5.0",
+            "ext-openssl": "8.5.0",
             "ext-pdo": "8.5.0",
             "ext-pdo_mysql": "8.5.0",
             "ext-zip": "8.5.0"
