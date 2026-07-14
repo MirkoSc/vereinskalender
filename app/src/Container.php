@@ -451,6 +451,7 @@ final class Container
     public function bookingService(): BookingService
     {
         return $this->cached('bookingService', fn(): BookingService => new BookingService(
+            $this->pdo(),
             $this->eventStore(),
             $this->trainingSlotRepository(),
             $this->slotExceptionRepository(),

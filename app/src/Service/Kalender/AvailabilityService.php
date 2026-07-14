@@ -76,7 +76,10 @@ final readonly class AvailabilityService
             $belegtByPitch[$occurrence->pitchId][] = [
                 'von' => $occurrence->start,
                 'bis' => $occurrence->end,
-                'label' => 'Training ' . ($teamKuerzel[$occurrence->teamId] ?? ('Team #' . $occurrence->teamId)),
+                'label' => 'Training ' . implode('+', array_map(
+                    static fn(int $teamId): string => $teamKuerzel[$teamId] ?? ('Team #' . $teamId),
+                    $occurrence->teamIds,
+                )),
             ];
         }
         foreach ($this->matches->findInRange($von . ' 00:00:00', $bis . ' 23:59:59') as $match) {

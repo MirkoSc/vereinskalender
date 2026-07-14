@@ -214,6 +214,7 @@ abstract class DatabaseTestCase extends TestCase
         $pdo = $this->pdo();
 
         return new \App\Service\Kalender\BookingService(
+            $pdo,
             $this->eventStore(),
             new \App\Repository\TrainingSlotRepository($pdo),
             new \App\Repository\SlotExceptionRepository($pdo),

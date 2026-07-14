@@ -8,7 +8,8 @@ use App\Domain\Occurrence;
 
 /**
  * Expands recurring training slots into concrete occurrences for a date
- * range, honouring validity ranges and slot exceptions.
+ * range, honouring validity ranges, multiple weekdays per slot, and slot
+ * exceptions.
  *
  * Times are Europe/Berlin wall time: a 19:00 slot is 19:00 local on every
  * occurrence, across both DST transitions (mandatory tests, section 12).
@@ -17,7 +18,8 @@ use App\Domain\Occurrence;
 final class SlotExpander
 {
     /**
-     * @param list<array<string, mixed>> $slots training_slot rows
+     * @param list<array<string, mixed>> $slots training_slot rows or payloads;
+     *        team_ids/wochentage may be PHP lists or JSON-encoded strings
      * @param list<array<string, mixed>> $exceptions slot_exception rows
      * @return list<Occurrence> sorted by start, then slot id
      */
@@ -34,28 +36,31 @@ final class SlotExpander
         $occurrences = [];
         foreach ($slots as $slot) {
             $slotId = (int) $slot['id'];
-            $weekday = (int) $slot['wochentag'];
+            $teamIds = self::intList($slot['team_ids']);
+            $weekdays = self::intList($slot['wochentage']);
 
             $first = max($rangeStart, new \DateTimeImmutable((string) $slot['gueltig_ab']));
             $last = min($rangeEnd, new \DateTimeImmutable((string) $slot['gueltig_bis']));
 
-            // advance to the first matching ISO weekday
-            $offset = ($weekday - (int) $first->format('N') + 7) % 7;
-            $date = $first->modify(sprintf('+%d days', $offset));
+            foreach ($weekdays as $weekday) {
+                // advance to the first matching ISO weekday
+                $offset = ($weekday - (int) $first->format('N') + 7) % 7;
+                $date = $first->modify(sprintf('+%d days', $offset));
 
-            while ($date <= $last) {
-                $datum = $date->format('Y-m-d');
-                if (!isset($excluded[$slotId . '|' . $datum])) {
-                    $occurrences[] = new Occurrence(
-                        slotId: $slotId,
-                        teamId: (int) $slot['team_id'],
-                        pitchId: (int) $slot['pitch_id'],
-                        datum: $datum,
-                        start: new \DateTimeImmutable($datum . ' ' . (string) $slot['beginn']),
-                        end: new \DateTimeImmutable($datum . ' ' . (string) $slot['ende']),
-                    );
+                while ($date <= $last) {
+                    $datum = $date->format('Y-m-d');
+                    if (!isset($excluded[$slotId . '|' . $datum])) {
+                        $occurrences[] = new Occurrence(
+                            slotId: $slotId,
+                            teamIds: $teamIds,
+                            pitchId: (int) $slot['pitch_id'],
+                            datum: $datum,
+                            start: new \DateTimeImmutable($datum . ' ' . (string) $slot['beginn']),
+                            end: new \DateTimeImmutable($datum . ' ' . (string) $slot['ende']),
+                        );
+                    }
+                    $date = $date->modify('+7 days');
                 }
-                $date = $date->modify('+7 days');
             }
         }
 
@@ -65,5 +70,17 @@ final class SlotExpander
         );
 
         return $occurrences;
+    }
+
+    /**
+     * @return list<int>
+     */
+    private static function intList(mixed $value): array
+    {
+        if (is_string($value)) {
+            $value = json_decode($value, true) ?? [];
+        }
+
+        return array_values(array_map(intval(...), (array) $value));
     }
 }

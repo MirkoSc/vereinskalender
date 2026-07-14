@@ -63,9 +63,20 @@ schema_version, rate_limit, import_source-Laufstatus) sind KEINE Projektionen.
   Filtern und Neuanlagen; ihre Historie und Events bleiben erhalten.
 - **pitch** (Sportplatz): venue_id FK (Heimverein), name, typ, flutlicht,
   adresse NULL (nur falls abweichend vom Verein), sortierung
-- **training_slot**: team_id FK, pitch_id FK, wochentag (1–7), beginn, ende,
-  gueltig_ab, gueltig_bis. Wiederholungsregel, wird zur Laufzeit
-  für den angefragten Zeitraum zu konkreten Terminen expandiert.
+- **training_slot**: team_ids (Liste, 1..n Teams – gemeinsames Training
+  mehrerer Mannschaften ist EIN Slot), pitch_id FK, wochentage (Liste, 1..n
+  aus 1–7, z. B. Di+Do zur selben Zeit), beginn, ende, gueltig_ab,
+  gueltig_bis. Wiederholungsregel, wird zur Laufzeit für den angefragten
+  Zeitraum zu konkreten Terminen expandiert. Die Projektion behält die
+  Alt-Spalten team_id/wochentag (jeweils erstes Listenelement) eine Version
+  lang für Rollback-Kompatibilität; Alt-Events mit team_id/wochentag werden
+  beim Replay per Payload-Normalisierung auf das Listenformat gehoben.
+  **Bearbeiten ist öffentlich** (Zugriffsebene 2, wie Anlegen/Löschen) mit
+  Rückfrage nach dem Umfang: „alle Termine" (Updated-Event auf den Slot),
+  „dieser und alle folgenden" (Serie splitten: Updated-Event kürzt
+  gueltig_bis auf den Vortag + Created-Event für die Fortsetzung, atomar in
+  einer Transaktion), „nur dieser Termin" (slot_exception-Event + Created
+  eines Eintages-Slots, ebenfalls atomar).
 - **slot_exception**: slot_id FK, datum, grund. Einzelner Ausfall eines Slots.
 - **pitch_restriction**: pitch_id FK, von, bis, art ('gesperrt'|'eingeschraenkt'),
   grund (Pflichtfeld). Semantik: 'gesperrt' → Konfliktprüfung lehnt neue
@@ -225,7 +236,9 @@ CSRF-Schutz für alle Schreibrouten (Token). Passwörter nie loggen.
   nur, welches Farbfeld gerendert wird, kein neuer Request.
 - Filter: `team=<id>`, `bereich=<G|F|E|D|C|Herren>` (alle Mannschaften des
   Bereichs), `venue=<id>`, `venue=heim` (alle eigenen Vereine) oder
-  `venue=auswaerts` (alle ungematchten Orte).
+  `venue=auswaerts` (alle ungematchten Orte). Mehr-Team-Belegungen matchen,
+  wenn EINES ihrer Teams den Team-/Bereichsfilter erfüllt; sie liefern
+  `team_ids` zusätzlich zu `team_id` (= erstes Team, dessen Farbe gilt).
 - **Vereinssicht „Bei uns"**: Kombi-Ansicht je Heimverein (oder beide) mit
   Heimspielen + Belegungen + Restriktionen – umgesetzt als voreingestellte
   Filterkombination, keine eigene Datenlogik.

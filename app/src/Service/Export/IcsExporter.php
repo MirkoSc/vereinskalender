@@ -111,7 +111,10 @@ final readonly class IcsExporter
                 uid: sprintf('slot-%d-%s@%s', $occurrence->slotId, $occurrence->datum, self::UID_DOMAIN),
                 start: $occurrence->start,
                 end: $occurrence->end,
-                summary: 'Training ' . ($teamNames[$occurrence->teamId] ?? ('Team ' . $occurrence->teamId)),
+                summary: 'Training ' . implode('+', array_map(
+                    static fn(int $teamId): string => $teamNames[$teamId] ?? ('Team ' . $teamId),
+                    $occurrence->teamIds,
+                )),
                 location: $pitchName,
                 sequence: 0,
                 cancelled: false,

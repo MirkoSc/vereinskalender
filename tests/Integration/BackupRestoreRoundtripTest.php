@@ -49,9 +49,9 @@ final class BackupRestoreRoundtripTest extends DatabaseTestCase
         $pitchId = $this->createPitch($venueId, 'Platz „Öde"');
         $teamId = $this->createTeam('E1');
         $this->bookingService()->createSlot([
-            'team_id' => $teamId,
+            'team_ids' => [$teamId],
             'pitch_id' => $pitchId,
-            'wochentag' => 2,
+            'wochentage' => [2],
             'beginn' => '19:00',
             'ende' => '20:30',
             'gueltig_ab' => '2026-08-01',
@@ -74,7 +74,7 @@ final class BackupRestoreRoundtripTest extends DatabaseTestCase
 
         self::assertIsString($dump);
         self::assertSame('9.9.9-test', $manifest['app_version']);
-        self::assertSame(7, $manifest['schema_version']);
+        self::assertSame(8, $manifest['schema_version']);
 
         // wipe everything, then restore exactly like the installer does
         foreach ($this->pdo()->query('SHOW TABLES')->fetchAll(\PDO::FETCH_COLUMN) as $table) {

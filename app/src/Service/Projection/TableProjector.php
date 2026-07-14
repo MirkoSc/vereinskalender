@@ -20,6 +20,11 @@ abstract class TableProjector implements Projector
      */
     abstract protected function columns(): array;
 
+    public function normalizePayload(array $payload): array
+    {
+        return $payload;
+    }
+
     public function apply(EventType $eventType, int $aggregateId, array $payload, string $tableSuffix = ''): void
     {
         $table = $this->tableName() . $tableSuffix;
@@ -33,6 +38,7 @@ abstract class TableProjector implements Projector
 
         // created/updated: upsert the full picture (replay-safe; a correction
         // of a created event simply overwrites the existing row)
+        $payload = $this->normalizePayload($payload);
         $columns = $this->columns();
         $values = array_map(
             fn(string $column): mixed => $this->normalize($payload[$column] ?? null),
@@ -53,6 +59,13 @@ abstract class TableProjector implements Projector
 
     private function normalize(mixed $value): mixed
     {
-        return is_bool($value) ? (int) $value : $value;
+        if (is_bool($value)) {
+            return (int) $value;
+        }
+        if (is_array($value)) {
+            return json_encode($value, JSON_THROW_ON_ERROR);
+        }
+
+        return $value;
     }
 }

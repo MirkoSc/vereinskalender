@@ -16,9 +16,10 @@ final class SlotExpanderTest extends TestCase
     {
         return [
             'id' => 1,
-            'team_id' => 10,
+            // JSON strings like the projection rows deliver them
+            'team_ids' => '[10]',
             'pitch_id' => 20,
-            'wochentag' => 2, // Dienstag
+            'wochentage' => '[2]', // Dienstag
             'beginn' => '19:00:00',
             'ende' => '20:30:00',
             'gueltig_ab' => '2026-08-01',
@@ -37,6 +38,34 @@ final class SlotExpanderTest extends TestCase
         );
         self::assertSame('2026-08-04 19:00', $occurrences[0]->start->format('Y-m-d H:i'));
         self::assertSame('2026-08-04 20:30', $occurrences[0]->end->format('Y-m-d H:i'));
+        self::assertSame([10], $occurrences[0]->teamIds);
+    }
+
+    public function testExpandsMultipleWeekdays(): void
+    {
+        // Dienstag + Donnerstag at the same time is ONE slot
+        $slot = self::slot(['wochentage' => '[2,4]']);
+
+        $occurrences = SlotExpander::expand([$slot], [], '2026-08-01', '2026-08-14');
+
+        self::assertSame(
+            ['2026-08-04', '2026-08-06', '2026-08-11', '2026-08-13'],
+            array_map(static fn($o): string => $o->datum, $occurrences),
+        );
+    }
+
+    public function testAcceptsPhpListsFromValidatedPayloads(): void
+    {
+        // conflict checks expand candidate payloads before they are stored
+        $slot = self::slot(['team_ids' => [10, 11], 'wochentage' => [2, 4]]);
+
+        $occurrences = SlotExpander::expand([$slot], [], '2026-08-01', '2026-08-07');
+
+        self::assertSame(
+            ['2026-08-04', '2026-08-06'],
+            array_map(static fn($o): string => $o->datum, $occurrences),
+        );
+        self::assertSame([10, 11], $occurrences[0]->teamIds);
     }
 
     public function testRespectsValidityRange(): void
@@ -76,7 +105,7 @@ final class SlotExpanderTest extends TestCase
      */
     public function testSpringDstTransitionKeepsWallTime(): void
     {
-        $slot = self::slot(['wochentag' => 7]); // Sonntag
+        $slot = self::slot(['wochentage' => '[7]']); // Sonntag
 
         $occurrences = SlotExpander::expand([$slot], [], '2027-03-21', '2027-04-04');
 
@@ -98,7 +127,7 @@ final class SlotExpanderTest extends TestCase
      */
     public function testFallDstTransitionKeepsWallTime(): void
     {
-        $slot = self::slot(['wochentag' => 7]); // Sonntag
+        $slot = self::slot(['wochentage' => '[7]']); // Sonntag
 
         $occurrences = SlotExpander::expand([$slot], [], '2026-10-18', '2026-11-01');
 

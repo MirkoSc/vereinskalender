@@ -139,13 +139,20 @@
                 success(bundle.events
                     .filter(typFilter)
                     .filter((e) => e.start.slice(0, 10) <= bis && e.start.slice(0, 10) >= von)
-                    .filter((e) => filters.team === '' || String(e.team_id) === filters.team)
+                    .filter((e) => {
+                        if (filters.team === '') {
+                            return true;
+                        }
+                        // multi-team bookings match when ANY team matches
+                        return (e.team_ids ?? [e.team_id]).some((id) => String(id) === filters.team);
+                    })
                     .filter((e) => {
                         if (filters.bereich === '') {
                             return true;
                         }
-                        const team = appData.teams.find((t) => t.id === e.team_id);
-                        return team?.bereich === filters.bereich;
+                        return (e.team_ids ?? [e.team_id]).some(
+                            (id) => appData.teams.find((t) => t.id === id)?.bereich === filters.bereich,
+                        );
                     })
                     .filter((e) => {
                         if (filters.venue === '') {
@@ -181,6 +188,8 @@
         return p;
     };
 
+    const formatDatum = (iso) => new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
     const showDetail = (props) => {
         detailContent.replaceChildren();
         detailActions.replaceChildren();
@@ -195,8 +204,22 @@
         detailContent.append(zeile('Termin', `${datum}, ${start.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}–${ende.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr`));
 
         if (props.typ === 'belegung') {
-            detailContent.append(zeile('Team', props.team_name));
+            detailContent.append(zeile((props.team_ids ?? []).length > 1 ? 'Teams' : 'Team', props.team_name));
             detailContent.append(zeile('Platz', props.pitch_name ?? '–'));
+            const tage = ['', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+            const serie = (props.wochentage ?? []).map((w) => tage[w]).join('+');
+            detailContent.append(zeile('Serie', `${serie}, ${formatDatum(props.gueltig_ab)} bis ${formatDatum(props.gueltig_bis)}`));
+
+            // public edit path (CLAUDE.md section 6): every visitor with a
+            // name may edit; the scope dialog asks what to change
+            const editButton = document.createElement('button');
+            editButton.type = 'button';
+            editButton.className = 'button';
+            editButton.textContent = 'Bearbeiten';
+            editButton.addEventListener('click', () => {
+                detailDialog.close();
+                openEdit(props);
+            });
 
             const ausfallButton = document.createElement('button');
             ausfallButton.type = 'button';
@@ -224,7 +247,7 @@
                 }
             });
 
-            detailActions.append(ausfallButton, deleteButton);
+            detailActions.append(editButton, ausfallButton, deleteButton);
         } else if (props.typ === 'spiel') {
             detailContent.append(zeile('Gegner', props.gegner));
             detailContent.append(zeile('Heim/Auswärts', props.heimspiel ? 'Heimspiel' : 'Auswärtsspiel'));
@@ -299,30 +322,135 @@
     const bookingForm = document.querySelector('#booking-form');
     const bookingFeedback = document.querySelector('#booking-feedback');
     const bookingSubmit = bookingForm.querySelector('button[type="submit"]');
+    const bookingTitle = document.querySelector('#booking-title');
+    const wochentageFeld = document.querySelector('#booking-wochentage-feld');
+    const gueltigFeld = document.querySelector('#booking-gueltig-feld');
+    const datumFeld = document.querySelector('#booking-datum-feld');
     let warnungenBestaetigt = false;
+    let bookingScope = ''; // '' = neue Belegung, sonst edit_scope
 
-    const bookingTeamSelect = document.querySelector('#booking-team');
+    const bookingTeams = document.querySelector('#booking-teams');
     for (const team of activeTeams) {
-        bookingTeamSelect.add(new Option(`${team.name} (${team.bereich})`, String(team.id)));
+        const label = document.createElement('label');
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.name = 'team_ids[]';
+        box.value = String(team.id);
+        label.append(box, ` ${team.name} (${team.bereich})`);
+        bookingTeams.append(label);
     }
     const bookingPitchSelect = document.querySelector('#booking-pitch');
     for (const pitch of appData.pitches) {
         bookingPitchSelect.add(new Option(`${pitch.name} (${pitch.venue_name})`, String(pitch.id)));
     }
 
-    document.querySelector('#new-booking').addEventListener('click', () => {
+    const bookingTitles = {
+        '': 'Belegung eintragen',
+        alle: 'Alle Termine der Serie bearbeiten',
+        nachfolgende: 'Diesen und folgende Termine bearbeiten',
+        einzeln: 'Einzelnen Termin bearbeiten',
+    };
+
+    const openBookingDialog = (scope, slotId, datum, prefill) => {
         bookingForm.reset();
         bookingFeedback.textContent = '';
         bookingFeedback.className = '';
         bookingSubmit.textContent = 'Speichern';
         warnungenBestaetigt = false;
+        bookingScope = scope;
+        bookingTitle.textContent = bookingTitles[scope];
+
+        bookingForm.elements.edit_scope.value = scope;
+        bookingForm.elements.slot_id.value = slotId !== null ? String(slotId) : '';
+        bookingForm.elements.datum.value = datum ?? '';
+
+        for (const box of bookingForm.querySelectorAll('input[name="team_ids[]"]')) {
+            box.checked = (prefill.team_ids ?? []).includes(Number(box.value));
+        }
+        for (const box of bookingForm.querySelectorAll('input[name="wochentage[]"]')) {
+            box.checked = (prefill.wochentage ?? []).includes(Number(box.value));
+        }
+        if (prefill.pitch_id !== undefined && prefill.pitch_id !== null) {
+            bookingForm.elements.pitch_id.value = String(prefill.pitch_id);
+        }
+        for (const feld of ['beginn', 'ende', 'gueltig_ab', 'gueltig_bis', 'datum_neu']) {
+            if (prefill[feld]) {
+                bookingForm.elements[feld].value = prefill[feld];
+            }
+        }
+
+        // 'einzeln' edits one concrete date instead of weekdays + validity
+        const einzeln = scope === 'einzeln';
+        wochentageFeld.hidden = einzeln;
+        gueltigFeld.hidden = einzeln;
+        datumFeld.hidden = !einzeln;
+        bookingForm.elements.gueltig_ab.required = !einzeln;
+        bookingForm.elements.gueltig_bis.required = !einzeln;
+        bookingForm.elements.datum_neu.required = einzeln;
+        // 'nachfolgende' starts at the clicked occurrence, the server pins it
+        bookingForm.elements.gueltig_ab.readOnly = scope === 'nachfolgende';
+
         bookingDialog.showModal();
-    });
+    };
+
+    document.querySelector('#new-booking').addEventListener('click', () => openBookingDialog('', null, null, {}));
     document.querySelector('#booking-cancel').addEventListener('click', () => bookingDialog.close());
+
+    // ---- edit scope choice (alle / nachfolgende / einzeln) ----
+
+    const scopeDialog = document.querySelector('#scope-dialog');
+    let scopeProps = null;
+    document.querySelector('#scope-cancel').addEventListener('click', () => scopeDialog.close());
+    for (const button of scopeDialog.querySelectorAll('button[data-scope]')) {
+        button.addEventListener('click', () => {
+            scopeDialog.close();
+            if (scopeProps) {
+                startEdit(scopeProps, button.dataset.scope);
+            }
+        });
+    }
+
+    const startEdit = (props, scope) => {
+        const datum = props.start.slice(0, 10);
+        openBookingDialog(scope, props.slot_id, datum, {
+            team_ids: props.team_ids,
+            pitch_id: props.pitch_id,
+            wochentage: props.wochentage,
+            beginn: props.start.slice(11, 16),
+            ende: props.ende.slice(11, 16),
+            gueltig_ab: scope === 'nachfolgende' ? datum : props.gueltig_ab,
+            gueltig_bis: props.gueltig_bis,
+            datum_neu: datum,
+        });
+    };
+
+    const openEdit = (props) => {
+        if (props.gueltig_ab === props.gueltig_bis) {
+            // one-day booking: no series, nothing to ask
+            startEdit(props, 'alle');
+            return;
+        }
+        scopeProps = props;
+        scopeDialog.showModal();
+    };
+
+    // checkbox groups need arrays; Object.fromEntries would drop them
+    const collectBookingData = () => {
+        const data = {};
+        for (const [key, value] of new FormData(bookingForm)) {
+            if (key.endsWith('[]')) {
+                (data[key.slice(0, -2)] ??= []).push(value);
+            } else {
+                data[key] = value;
+            }
+        }
+        return data;
+    };
 
     bookingForm.addEventListener('submit', async (event) => {
         event.preventDefault();
-        const data = Object.fromEntries(new FormData(bookingForm));
+        const data = collectBookingData();
+        const url = bookingScope === '' ? '/api/slots' : `/api/slots/${data.slot_id}`;
 
         try {
             if (!warnungenBestaetigt) {
@@ -348,7 +476,7 @@
                 }
             }
 
-            const result = await VK.post('/api/slots', data);
+            const result = await VK.post(url, data);
             if (result.ok) {
                 bookingDialog.close();
                 calendar.refetchEvents();

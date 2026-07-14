@@ -81,16 +81,22 @@ final class Replayer
         }
 
         if ($eventType !== EventType::Deleted) {
+            // normalized payload so legacy payload shapes are checked too
+            $normalized = $projector->normalizePayload($payload);
             foreach ($projector->references() as $payloadKey => $referencedTable) {
-                $referencedId = $payload[$payloadKey] ?? null;
-                if ($referencedId !== null
-                    && !$this->rowExists($referencedTable . $tableSuffix, (int) $referencedId)) {
-                    return new SkippedEvent(
-                        $eventId,
-                        $aggregatTyp,
-                        $aggregateId,
-                        sprintf('Referenz %s → %s #%d fehlt', $payloadKey, $referencedTable, (int) $referencedId),
-                    );
+                $value = $normalized[$payloadKey] ?? null;
+                if ($value === null) {
+                    continue;
+                }
+                foreach (is_array($value) ? $value : [$value] as $referencedId) {
+                    if (!$this->rowExists($referencedTable . $tableSuffix, (int) $referencedId)) {
+                        return new SkippedEvent(
+                            $eventId,
+                            $aggregatTyp,
+                            $aggregateId,
+                            sprintf('Referenz %s → %s #%d fehlt', $payloadKey, $referencedTable, (int) $referencedId),
+                        );
+                    }
                 }
             }
         }

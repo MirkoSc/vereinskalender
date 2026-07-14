@@ -133,9 +133,9 @@ final class FeinschliffTest extends DatabaseTestCase
         $pitchId = $this->createPitch($venueId);
         $teamId = $this->createTeam();
         $this->bookingService()->createSlot([
-            'team_id' => $teamId,
+            'team_ids' => [$teamId],
             'pitch_id' => $pitchId,
-            'wochentag' => (int) new \DateTimeImmutable('today')->format('N'),
+            'wochentage' => [(int) new \DateTimeImmutable('today')->format('N')],
             'beginn' => '19:00',
             'ende' => '20:30',
             'gueltig_ab' => new \DateTimeImmutable('today')->format('Y-m-d'),

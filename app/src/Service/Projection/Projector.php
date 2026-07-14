@@ -21,10 +21,20 @@ interface Projector
     /**
      * Payload keys that reference other projection tables
      * (checked during replay: missing target => skip + report).
+     * A list value in the payload means every element is a referenced id.
      *
      * @return array<string, string> payload key => referenced table name
      */
     public function references(): array;
+
+    /**
+     * Upgrades older payload shapes to the current one so historic events
+     * stay replayable after a payload format change. Idempotent.
+     *
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    public function normalizePayload(array $payload): array;
 
     /**
      * @param array<string, mixed> $payload

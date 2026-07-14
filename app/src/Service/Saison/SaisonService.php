@@ -33,16 +33,35 @@ final readonly class SaisonService
     {
         // today boundary from PHP (Europe/Berlin), not CURDATE() (UTC session)
         $stmt = $this->pdo->prepare(
-            'SELECT s.*, t.name AS team_name, p.name AS pitch_name,
-                    (s.gueltig_bis < ?) AS abgelaufen
+            'SELECT s.*, p.name AS pitch_name, (s.gueltig_bis < ?) AS abgelaufen
              FROM training_slot s
-             LEFT JOIN team t ON t.id = s.team_id
-             LEFT JOIN pitch p ON p.id = s.pitch_id
-             ORDER BY abgelaufen DESC, t.sortierung, t.name, s.wochentag, s.beginn',
+             LEFT JOIN pitch p ON p.id = s.pitch_id',
         );
         $stmt->execute([new \DateTimeImmutable('today')->format('Y-m-d')]);
+        $rows = $stmt->fetchAll();
 
-        return $stmt->fetchAll();
+        $teamNames = [];
+        foreach ($this->pdo->query('SELECT id, name FROM team')->fetchAll() as $team) {
+            $teamNames[(int) $team['id']] = (string) $team['name'];
+        }
+
+        foreach ($rows as &$row) {
+            $row['team_ids_list'] = array_map(intval(...), (array) json_decode((string) $row['team_ids'], true));
+            $row['wochentage_list'] = array_map(intval(...), (array) json_decode((string) $row['wochentage'], true));
+            $row['team_names'] = implode(' + ', array_map(
+                static fn(int $teamId): string => $teamNames[$teamId] ?? ('Team #' . $teamId),
+                $row['team_ids_list'],
+            ));
+        }
+        unset($row);
+
+        usort($rows, static fn(array $a, array $b): int => [
+            -(int) $a['abgelaufen'], (string) $a['team_names'], $a['wochentage_list'][0] ?? 0, (string) $a['beginn'],
+        ] <=> [
+            -(int) $b['abgelaufen'], (string) $b['team_names'], $b['wochentage_list'][0] ?? 0, (string) $b['beginn'],
+        ]);
+
+        return $rows;
     }
 
     /**
@@ -66,9 +85,9 @@ final readonly class SaisonService
 
             try {
                 $this->booking->createSlot([
-                    'team_id' => (int) $slot['team_id'],
+                    'team_ids' => (array) json_decode((string) $slot['team_ids'], true),
                     'pitch_id' => (int) $slot['pitch_id'],
-                    'wochentag' => (int) $slot['wochentag'],
+                    'wochentage' => (array) json_decode((string) $slot['wochentage'], true),
                     'beginn' => substr((string) $slot['beginn'], 0, 5),
                     'ende' => substr((string) $slot['ende'], 0, 5),
                     'gueltig_ab' => $gueltigAb,
