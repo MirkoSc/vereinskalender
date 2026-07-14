@@ -8,6 +8,20 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-latest
+
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=12
+
     steps:
       - uses: actions/checkout@v4
 
@@ -26,3 +40,9 @@ jobs:
 
       - name: Run tests (deprecations fail the build)
         run: vendor/bin/phpunit
+        env:
+          TEST_DB_HOST: 127.0.0.1
+          TEST_DB_PORT: 3306
+          TEST_DB_USER: root
+          TEST_DB_PASSWORD: ci-root
+          TEST_DB_REQUIRED: '1'

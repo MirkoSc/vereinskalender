@@ -20,12 +20,12 @@ final readonly class View
     /**
      * @param array<string, mixed> $data
      */
-    public function render(string $template, array $data = []): string
+    public function render(string $template, array $data = [], string $layout = 'layout'): string
     {
         $content = $this->renderFile($this->viewsDir . '/' . $template . '.php', $data);
 
         return $this->renderFile(
-            $this->viewsDir . '/layout.php',
+            $this->viewsDir . '/' . $layout . '.php',
             [...$data, 'content' => $content, 'version' => $this->version],
         );
     }
