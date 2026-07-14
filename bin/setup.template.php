@@ -135,7 +135,12 @@ try {
         }
     }
 
-    $zipFile = $releasesDir . '/download.zip';
+    // leftover from a run of the buggy pre-v0.3.1 setup.php
+    @unlink($releasesDir . '/download.zip');
+
+    // the local name must stay the asset name - the checksum is matched
+    // by filename against checksums.txt
+    $zipFile = $releasesDir . '/' . ReleaseDownloader::zipFilename($release['zip_url']);
     $downloader->downloadTo($release['zip_url'], $zipFile);
     $downloader->verifyChecksum($zipFile, $downloader->fetchText($release['checksums_url']));
 
