@@ -28,18 +28,27 @@ final readonly class UsageStatRepository
     }
 
     /**
+     * Date boundaries come from PHP: the app convention is Europe/Berlin,
+     * while the DB session may run in UTC - CURDATE()/NOW() would drift
+     * around midnight (CLAUDE.md section 12).
+     *
      * @return array{heute: int, tage7: int, tage30: int}
      */
     public function summary(string $metrik): array
     {
         $stmt = $this->pdo->prepare(
             'SELECT
-                COALESCE(SUM(CASE WHEN datum = CURDATE() THEN anzahl END), 0) AS heute,
-                COALESCE(SUM(CASE WHEN datum > CURDATE() - INTERVAL 7 DAY THEN anzahl END), 0) AS tage7,
-                COALESCE(SUM(CASE WHEN datum > CURDATE() - INTERVAL 30 DAY THEN anzahl END), 0) AS tage30
+                COALESCE(SUM(CASE WHEN datum = ? THEN anzahl END), 0) AS heute,
+                COALESCE(SUM(CASE WHEN datum > ? THEN anzahl END), 0) AS tage7,
+                COALESCE(SUM(CASE WHEN datum > ? THEN anzahl END), 0) AS tage30
              FROM usage_stat WHERE metrik = ?',
         );
-        $stmt->execute([$metrik]);
+        $stmt->execute([
+            new \DateTimeImmutable('today')->format('Y-m-d'),
+            new \DateTimeImmutable('today -7 days')->format('Y-m-d'),
+            new \DateTimeImmutable('today -30 days')->format('Y-m-d'),
+            $metrik,
+        ]);
         $row = $stmt->fetch() ?: [];
 
         return [
@@ -56,12 +65,13 @@ final readonly class UsageStatRepository
     {
         $stmt = $this->pdo->prepare(
             'SELECT datum, SUM(anzahl) AS anzahl FROM usage_stat
-             WHERE metrik = ? AND datum > CURDATE() - INTERVAL ? DAY
+             WHERE metrik = ? AND datum > ?
              GROUP BY datum ORDER BY datum',
         );
-        $stmt->bindValue(1, $metrik);
-        $stmt->bindValue(2, $days, \PDO::PARAM_INT);
-        $stmt->execute();
+        $stmt->execute([
+            $metrik,
+            new \DateTimeImmutable('today -' . $days . ' days')->format('Y-m-d'),
+        ]);
 
         return array_map(
             static fn(array $row): array => ['datum' => (string) $row['datum'], 'anzahl' => (int) $row['anzahl']],
@@ -76,11 +86,11 @@ final readonly class UsageStatRepository
     {
         $stmt = $this->pdo->prepare(
             'SELECT dimension, SUM(anzahl) AS anzahl FROM usage_stat
-             WHERE metrik = ? AND dimension IS NOT NULL AND datum > CURDATE() - INTERVAL ? DAY
+             WHERE metrik = ? AND dimension IS NOT NULL AND datum > ?
              GROUP BY dimension ORDER BY anzahl DESC LIMIT ?',
         );
         $stmt->bindValue(1, $metrik);
-        $stmt->bindValue(2, $days, \PDO::PARAM_INT);
+        $stmt->bindValue(2, new \DateTimeImmutable('today -' . $days . ' days')->format('Y-m-d'));
         $stmt->bindValue(3, $limit, \PDO::PARAM_INT);
         $stmt->execute();
 
