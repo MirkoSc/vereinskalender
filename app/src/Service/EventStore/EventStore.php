@@ -18,9 +18,16 @@ use App\Service\Projection\ProjectorRegistry;
  */
 final class EventStore
 {
+    /**
+     * @param (\Closure(StoredEvent): void)|null $afterInsert write-path
+     *        consumer (e.g. the notification queue), called inside the
+     *        transaction after the event insert and BEFORE the projection
+     *        is applied (so the old projection state is still readable)
+     */
     public function __construct(
         private readonly \PDO $pdo,
         private readonly ProjectorRegistry $projectors,
+        private readonly ?\Closure $afterInsert = null,
     ) {
     }
 
@@ -45,6 +52,9 @@ final class EventStore
             $aggregateId ??= $this->nextAggregateId();
 
             $event = $this->insertEvent($type, $aggregateId, $eventType, $payload, $context, null);
+            if ($this->afterInsert !== null) {
+                ($this->afterInsert)($event);
+            }
             $this->projectors->for($type)->apply($eventType, $aggregateId, $payload);
 
             return $event;

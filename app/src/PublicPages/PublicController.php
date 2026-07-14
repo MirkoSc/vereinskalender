@@ -6,17 +6,19 @@ namespace App\PublicPages;
 
 use App\Http\Request;
 use App\Http\Response;
+use App\Repository\PageRepository;
 use App\Repository\PitchRepository;
 use App\Repository\SettingRepository;
 use App\Repository\TeamRepository;
+use App\Repository\UsageStatRepository;
 use App\Repository\VenueRepository;
+use App\Support\Markdown;
 use App\View\View;
 
 /**
  * Public calendar pages. Reading never starts a session (CLAUDE.md
  * section 6). Team/venue colors are rendered as CSS variables into the
- * page (:root { --team-<id>: ... }); the pages embed the master data as
- * JSON for the calendar JS.
+ * page; page views are counted as aggregated usage_stat entries.
  */
 final readonly class PublicController
 {
@@ -26,26 +28,37 @@ final readonly class PublicController
         private PitchRepository $pitches,
         private VenueRepository $venues,
         private SettingRepository $settings,
+        private PageRepository $pages,
+        private UsageStatRepository $stats,
+        private string $version,
+        private string $publicDir,
     ) {
     }
 
     public function home(Request $request): Response
     {
+        $this->stats->increment('seite', '/');
+
         return Response::html($this->view->render('home', ['title' => 'Vereinskalender']));
     }
 
     public function belegung(Request $request): Response
     {
+        $this->stats->increment('seite', '/belegung');
+
         return $this->calendarPage('belegung', 'Platzbelegung');
     }
 
     public function spielplan(Request $request): Response
     {
+        $this->stats->increment('seite', '/spielplan');
+
         return $this->calendarPage('spielplan', 'Spielplan');
     }
 
     public function verfuegbarkeit(Request $request): Response
     {
+        $this->stats->increment('seite', '/verfuegbarkeit');
         [$appData, $colorCss] = $this->stammdaten();
         $appData['ansicht'] = 'verfuegbarkeit';
 
@@ -53,8 +66,57 @@ final readonly class PublicController
             'title' => 'Platz-Verfügbarkeit',
             'appData' => $appData,
             'colorCss' => $colorCss,
-            'scripts' => ['/js/schreiben.js', '/js/verfuegbarkeit.js'],
+            'scripts' => ['/js/schreiben.js', '/js/offline.js', '/js/push.js', '/js/verfuegbarkeit.js'],
         ]));
+    }
+
+    public function abonnieren(Request $request): Response
+    {
+        $this->stats->increment('seite', '/abonnieren');
+
+        return Response::html($this->view->render('abonnieren', [
+            'title' => 'Kalender abonnieren',
+            'teams' => array_values(array_filter(
+                $this->teams->findAll(),
+                static fn(array $t): bool => (int) $t['aktiv'] === 1,
+            )),
+            'pitches' => $this->pitches->findAll(),
+        ]));
+    }
+
+    /**
+     * @param array<string, string> $params
+     */
+    public function seite(Request $request, array $params): Response
+    {
+        $page = $this->pages->find($params['key']);
+        if ($page === null) {
+            return Response::redirect('/');
+        }
+        $this->stats->increment('seite', '/' . $page['key']);
+
+        return Response::html($this->view->render('seite', [
+            'title' => $page['titel'],
+            'seitenTitel' => $page['titel'],
+            'inhaltHtml' => Markdown::toHtml($page['inhalt']),
+        ]));
+    }
+
+    /**
+     * The service worker is served through the front controller so the
+     * cache name carries the release version (CLAUDE.md section 9).
+     */
+    public function serviceWorker(Request $request): Response
+    {
+        $template = file_get_contents($this->publicDir . '/sw.template.js');
+        if ($template === false) {
+            return new Response(404, ['Content-Type' => 'text/plain; charset=utf-8'], 'sw fehlt');
+        }
+
+        return new Response(200, [
+            'Content-Type' => 'text/javascript; charset=utf-8',
+            'Cache-Control' => 'no-cache',
+        ], str_replace('__VERSION__', $this->version, $template));
     }
 
     private function calendarPage(string $ansicht, string $title): Response
@@ -71,6 +133,8 @@ final readonly class PublicController
                 '/js/vendor/fullcalendar-scheduler.global.min.js',
                 '/js/vendor/fullcalendar-locale-de.global.min.js',
                 '/js/schreiben.js',
+                '/js/offline.js',
+                '/js/push.js',
                 '/js/kalender.js',
             ],
         ]));

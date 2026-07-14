@@ -6,6 +6,7 @@
         <strong id="range-label"></strong>
         <button type="button" id="next-week" class="linklike">Nächste Woche ›</button>
         <button type="button" id="new-restriction" class="button">Sperrung eintragen</button>
+        <button type="button" id="push-bell" class="linklike bell" title="Push-Benachrichtigungen">🔔</button>
     </div>
 
     <p class="legend">
@@ -60,3 +61,5 @@
         </div>
     </form>
 </dialog>
+
+<?php require __DIR__ . '/partials/push_dialog.php'; ?>

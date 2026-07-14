@@ -54,8 +54,16 @@ window.VK = (() => {
     };
 
     // Resolves to { ok, status, data }; rejects only if the user cancels
-    // the name dialog.
+    // the name dialog. Writing is blocked offline (no offline write queue,
+    // CLAUDE.md section 9).
     const post = async (url, data = {}) => {
+        if (!navigator.onLine) {
+            return {
+                ok: false,
+                status: 0,
+                data: { fehler: { offline: 'Du bist offline – Änderungen sind erst wieder mit Internetverbindung möglich.' } },
+            };
+        }
         const name = await ensureName();
         const token = await csrf();
         const response = await fetch(url, {

@@ -162,6 +162,128 @@ dialog.sheet::backdrop {
     opacity: 0.6;
 }
 
+.site-footer {
+    padding: 1rem clamp(1rem, 4vw, 2rem);
+    border-top: 1px solid color-mix(in srgb, var(--color-text) 20%, transparent);
+    display: flex;
+    gap: 1rem;
+    font-size: 0.9rem;
+}
+
+.site-footer a {
+    color: inherit;
+}
+
+.offline-banner {
+    background: #bf8700;
+    color: #fff;
+    text-align: center;
+    padding: 0.5rem 1rem;
+    font-weight: 600;
+}
+
+.bell {
+    font-size: 1.2rem;
+    text-decoration: none;
+}
+
+.hint {
+    padding: 0.5rem 0.75rem;
+    border-left: 4px solid #bf8700;
+    background: color-mix(in srgb, #bf8700 12%, var(--color-bg));
+}
+
+.content-page h1 {
+    margin-top: 0;
+}
+
+textarea {
+    display: block;
+    width: 100%;
+    padding: 0.5rem;
+    margin-top: 0.25rem;
+    border: 1px solid var(--color-text);
+    border-radius: 4px;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font: inherit;
+}
+
+/* --- Dashboard --- */
+
+.monitor {
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    font-weight: 600;
+}
+
+.monitor-gruen { background: color-mix(in srgb, #1a7f37 20%, var(--color-bg)); }
+.monitor-gelb { background: color-mix(in srgb, #bf8700 25%, var(--color-bg)); }
+.monitor-rot { background: color-mix(in srgb, #cf222e 25%, var(--color-bg)); }
+.monitor-grau { background: color-mix(in srgb, var(--color-text) 12%, var(--color-bg)); }
+
+.bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    height: 8rem;
+    max-width: 30rem;
+}
+
+.bar {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: center;
+    height: 100%;
+}
+
+.bar-fill {
+    width: 100%;
+    background: var(--color-accent);
+    border-radius: 3px 3px 0 0;
+    min-height: 2px;
+}
+
+.bar-label {
+    font-size: 0.65rem;
+    opacity: 0.7;
+}
+
+.dashboard-columns {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+    gap: 1rem;
+}
+
+.filter-form,
+.mass-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 0.5rem 1rem;
+    margin-bottom: 1rem;
+}
+
+.filter-form label,
+.mass-form label {
+    margin: 0;
+    font-size: 0.85rem;
+}
+
+tr.ausgeschlossen {
+    opacity: 0.5;
+    text-decoration: line-through;
+}
+
+pre.payload {
+    background: color-mix(in srgb, var(--color-text) 8%, var(--color-bg));
+    padding: 0.75rem;
+    border-radius: 6px;
+    overflow-x: auto;
+}
+
 /* --- Availability view --- */
 
 .legend {

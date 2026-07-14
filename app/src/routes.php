@@ -16,11 +16,22 @@ return static function (Router $router, Container $c): void {
     $router->get('/belegung', static fn(Request $r, array $p): Response => $c->publicController()->belegung($r));
     $router->get('/spielplan', static fn(Request $r, array $p): Response => $c->publicController()->spielplan($r));
     $router->get('/verfuegbarkeit', static fn(Request $r, array $p): Response => $c->publicController()->verfuegbarkeit($r));
+    $router->get('/abonnieren', static fn(Request $r, array $p): Response => $c->publicController()->abonnieren($r));
+    $router->get('/{key:impressum|datenschutz}', static fn(Request $r, array $p): Response => $c->publicController()->seite($r, $p));
+    $router->get('/sw.js', static fn(Request $r, array $p): Response => $c->publicController()->serviceWorker($r));
+
+    // ---- calendar subscription feeds (stable URLs, CLAUDE.md section 9) ----
+
+    $router->get('/export/spiele.ics', static fn(Request $r, array $p): Response => $c->exportController()->alleSpiele($r));
+    $router->get('/export/team/{id:\d+}.ics', static fn(Request $r, array $p): Response => $c->exportController()->teamSpiele($r, $p));
+    $router->get('/export/platz/{id:\d+}.ics', static fn(Request $r, array $p): Response => $c->exportController()->platzBelegung($r, $p));
 
     // ---- public read API ----
 
     $router->get('/api/events', static fn(Request $r, array $p): Response => $c->eventsApiController()->events($r));
     $router->get('/api/verfuegbarkeit', static fn(Request $r, array $p): Response => $c->eventsApiController()->verfuegbarkeit($r));
+    $router->get('/api/offline-bundle', static fn(Request $r, array $p): Response => $c->eventsApiController()->offlineBundle($r));
+    $router->get('/api/push/vapid', static fn(Request $r, array $p): Response => $c->pushApiController()->vapidKey($r));
 
     // Also the self-test target of the updater step chain (milestone 5).
     $router->get('/api/health', static fn(Request $request, array $params): Response => Response::json([
@@ -38,14 +49,19 @@ return static function (Router $router, Container $c): void {
         return $c->bookingApiController()->csrf($r);
     });
 
-    $publicWrite = static function (\Closure $handler) use ($c): \Closure {
-        return static function (Request $request, array $params) use ($handler, $c): ResponseInterface {
+    // CSRF + rate limit (~30 writes/min per IP, CLAUDE.md section 6);
+    // $requireName = false for endpoints that are no content writes
+    $publicWrite = static function (\Closure $handler, bool $requireName = true) use ($c): \Closure {
+        return static function (Request $request, array $params) use ($handler, $requireName, $c): ResponseInterface {
             $session = $c->session();
             $session->start();
             if (!$session->checkCsrf($request)) {
                 return Response::json(['fehler' => ['csrf' => 'Ungültiges oder fehlendes CSRF-Token.']], 403);
             }
-            if (trim((string) ($request->post['editor_name'] ?? '')) === '') {
+            if (!$c->rateLimiter()->allow($request->ip)) {
+                return Response::json(['fehler' => ['rate' => 'Zu viele Änderungen – bitte kurz warten.']], 429);
+            }
+            if ($requireName && trim((string) ($request->post['editor_name'] ?? '')) === '') {
                 return Response::json(['fehler' => ['editor_name' => 'Bitte zuerst einen Namen angeben.']], 422);
             }
 
@@ -62,6 +78,18 @@ return static function (Router $router, Container $c): void {
     $router->post('/api/sperrungen', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->createRestriction($r)));
     $router->post('/api/sperrungen/{id:\d+}/loeschen', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->deleteRestriction($r, $p)));
     $router->post('/api/spiele/{id:\d+}/platz', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->assignPitch($r, $p)));
+    $router->post('/api/push/subscribe', $publicWrite(fn(Request $r, array $p) => $c->pushApiController()->subscribe($r), false));
+    $router->post('/api/push/unsubscribe', $publicWrite(fn(Request $r, array $p) => $c->pushApiController()->unsubscribe($r), false));
+
+    // navigator.sendBeacon cannot send headers: no CSRF here, but the
+    // endpoint only increments whitelisted counters and is rate-limited
+    $router->post('/api/stat', static function (Request $r, array $p) use ($c): ResponseInterface {
+        if (!$c->rateLimiter()->allow($r->ip)) {
+            return Response::json(['fehler' => ['rate' => 'Zu viele Anfragen.']], 429);
+        }
+
+        return $c->statController()->beacon($r);
+    });
 
     // ---- cron (secret token, no session; CLAUDE.md section 7) ----
 
@@ -138,4 +166,20 @@ return static function (Router $router, Container $c): void {
     $router->post('/admin/update/kanal', $guard(fn(Request $r, array $p) => $c->updateController()->setChannel($r)));
     $router->post('/admin/update/reset', $guard(fn(Request $r, array $p) => $c->updateController()->resetState($r)));
     $router->post('/admin/update/{schritt:[a-z]+}', $guard(fn(Request $r, array $p) => $c->updateController()->step($r, $p)));
+
+    $router->get('/admin/events', $guard(fn(Request $r, array $p) => $c->eventHistoryController()->index($r)));
+    $router->get('/admin/events/{id:\d+}', $guard(fn(Request $r, array $p) => $c->eventHistoryController()->detail($r, $p)));
+    $router->post('/admin/events/{id:\d+}/ausschliessen', $guard(fn(Request $r, array $p) => $c->eventHistoryController()->exclude($r, $p)));
+    $router->post('/admin/events/{id:\d+}/wiederherstellen', $guard(fn(Request $r, array $p) => $c->eventHistoryController()->undoExclude($r, $p)));
+    $router->post('/admin/events/{id:\d+}/korrigieren', $guard(fn(Request $r, array $p) => $c->eventHistoryController()->correct($r, $p)));
+    $router->post('/admin/events/massenausschluss', $guard(fn(Request $r, array $p) => $c->eventHistoryController()->excludeMass($r)));
+
+    $router->get('/admin/saison', $guard(fn(Request $r, array $p) => $c->saisonController()->page($r)));
+    $router->post('/admin/saison/slots-kopieren', $guard(fn(Request $r, array $p) => $c->saisonController()->copySlots($r)));
+
+    $router->get('/admin/seiten/{key:impressum|datenschutz}', $guard(fn(Request $r, array $p) => $c->pageAdminController()->form($r, $p)));
+    $router->post('/admin/seiten/{key:impressum|datenschutz}', $guard(fn(Request $r, array $p) => $c->pageAdminController()->save($r, $p)));
+
+    $router->get('/admin/einstellungen', $guard(fn(Request $r, array $p) => $c->settingsController()->form($r)));
+    $router->post('/admin/einstellungen', $guard(fn(Request $r, array $p) => $c->settingsController()->save($r)));
 };

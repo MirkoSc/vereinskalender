@@ -25,15 +25,25 @@
         venueSelect.add(new Option(venue.name, String(venue.id)));
     }
 
-    teamSelect.addEventListener('change', () => { filters.team = teamSelect.value; calendar.refetchEvents(); });
-    bereichSelect.addEventListener('change', () => { filters.bereich = bereichSelect.value; calendar.refetchEvents(); });
-    venueSelect.addEventListener('change', () => { filters.venue = venueSelect.value; calendar.refetchEvents(); });
+    const beacon = (metrik) => navigator.sendBeacon?.(
+        '/api/stat',
+        new Blob([JSON.stringify({ metrik })], { type: 'application/json' }),
+    );
+
+    const onFilterChange = () => {
+        beacon('filternutzung');
+        calendar.refetchEvents();
+    };
+    teamSelect.addEventListener('change', () => { filters.team = teamSelect.value; onFilterChange(); });
+    bereichSelect.addEventListener('change', () => { filters.bereich = bereichSelect.value; onFilterChange(); });
+    venueSelect.addEventListener('change', () => { filters.venue = venueSelect.value; onFilterChange(); });
 
     for (const button of document.querySelectorAll('.segmented button')) {
         button.addEventListener('click', () => {
             document.querySelector('.segmented .active')?.classList.remove('active');
             button.classList.add('active');
             modus = button.dataset.modus;
+            beacon('moduswechsel');
             recolor();
         });
     }
@@ -89,9 +99,11 @@
             ? appData.pitches.map((p) => ({ id: String(p.id), title: `${p.name} (${p.venue_name})` }))
             : [],
         events: async (info, success, failure) => {
+            const von = info.startStr.slice(0, 10);
+            const bis = info.endStr.slice(0, 10);
             const params = new URLSearchParams({
-                von: info.startStr.slice(0, 10),
-                bis: info.endStr.slice(0, 10),
+                von,
+                bis,
                 typ: ansicht === 'belegung' ? 'belegung' : 'spiel',
             });
             for (const [key, value] of Object.entries(filters)) {
@@ -106,7 +118,48 @@
                 }
                 success((await response.json()).events.map(toFcEvent));
             } catch (error) {
-                failure(error);
+                // offline: render from the IndexedDB bundle (today..+7);
+                // filters keep working, ranges outside the window get a hint
+                const bundle = await window.VKOffline?.load();
+                if (!bundle) {
+                    failure(error);
+                    return;
+                }
+                window.VKOffline.showBanner(bundle);
+                if (bis < bundle.von || von > bundle.bis) {
+                    window.VKOffline.showBanner({
+                        stand: `${bundle.stand} – dieser Zeitraum liegt außerhalb des Offline-Fensters (${bundle.von} bis ${bundle.bis})`,
+                    });
+                    success([]);
+                    return;
+                }
+                const typFilter = ansicht === 'belegung'
+                    ? (e) => e.typ === 'belegung' || e.typ === 'sperrung'
+                    : (e) => e.typ === 'spiel';
+                success(bundle.events
+                    .filter(typFilter)
+                    .filter((e) => e.start.slice(0, 10) <= bis && e.start.slice(0, 10) >= von)
+                    .filter((e) => filters.team === '' || String(e.team_id) === filters.team)
+                    .filter((e) => {
+                        if (filters.bereich === '') {
+                            return true;
+                        }
+                        const team = appData.teams.find((t) => t.id === e.team_id);
+                        return team?.bereich === filters.bereich;
+                    })
+                    .filter((e) => {
+                        if (filters.venue === '') {
+                            return true;
+                        }
+                        if (filters.venue === 'heim') {
+                            return e.venue_id !== null;
+                        }
+                        if (filters.venue === 'auswaerts') {
+                            return e.venue_id === null;
+                        }
+                        return String(e.venue_id) === filters.venue;
+                    })
+                    .map(toFcEvent));
             }
         },
         eventClick: (info) => showDetail(info.event.extendedProps),
