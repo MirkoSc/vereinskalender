@@ -1,0 +1,38 @@
+:root {
+    --color-bg: #ffffff;
+    --color-text: #1a1a1a;
+    --color-accent: #1a7f37;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --color-bg: #121212;
+        --color-text: #e6e6e6;
+    }
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: system-ui, sans-serif;
+    line-height: 1.5;
+    background: var(--color-bg);
+    color: var(--color-text);
+}
+
+.site-header {
+    padding: 1rem clamp(1rem, 4vw, 2rem);
+    border-bottom: 2px solid var(--color-accent);
+}
+
+.site-header h1 {
+    margin: 0;
+    font-size: 1.25rem;
+}
+
+main {
+    padding: clamp(1rem, 4vw, 2rem);
+}

@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: pdo_mysql, zip
+          coverage: none
+          ini-values: error_reporting=E_ALL, display_errors=On, zend.assertions=1
+
+      - name: Validate composer files
+        run: composer validate --no-check-publish
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress
+
+      - name: Run tests (deprecations fail the build)
+        run: vendor/bin/phpunit

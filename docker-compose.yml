@@ -1,0 +1,34 @@
+services:
+  app:
+    build: ./docker/php
+    ports:
+      - "8080:80"
+    working_dir: /var/www/html/current
+    volumes:
+      - ./:/var/www/html/current
+      - ./docker/web:/var/www/html/web
+      - ./docker/shared:/var/www/html/shared
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: mariadb:10.11
+    environment:
+      MARIADB_DATABASE: vereinskalender
+      MARIADB_USER: vereinskalender
+      MARIADB_PASSWORD: dev-password
+      MARIADB_ROOT_PASSWORD: dev-root
+    volumes:
+      # Named volume: bind-mounting /var/lib/mysql breaks on NTFS.
+      - dbdata:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    ports:
+      - "3306:3306"
+
+volumes:
+  dbdata:
