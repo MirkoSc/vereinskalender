@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: pdo_mysql, zip
+          coverage: none
+
+      - name: Install production dependencies
+        run: composer install --no-dev --optimize-autoloader --no-interaction --no-progress
+
+      - name: Write VERSION from tag
+        run: echo "${GITHUB_REF_NAME#v}" > VERSION
+
+      - name: Build release ZIP
+        run: |
+          mkdir -p dist
+          zip -r "dist/vereinskalender-${GITHUB_REF_NAME}.zip" \
+            app public vendor bin migrations VERSION
+
+      - name: Stage setup.php (exists from milestone 5 on)
+        run: if [ -f setup.php ]; then cp setup.php dist/; fi
+
+      - name: Generate checksums
+        run: cd dist && sha256sum * > checksums.txt
+
+      # Every tag starts as a pre-release for the beta test instance;
+      # promoting it to "latest" for the stable channel is a manual step
+      # in the GitHub UI (CLAUDE.md section 11).
+      - name: Publish pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          files: dist/*

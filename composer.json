@@ -1,0 +1,38 @@
+{
+    "name": "vereinskalender/vereinskalender",
+    "description": "Web calendar for a football club: pitch occupancy and match schedule",
+    "license": "GPL-3.0-or-later",
+    "type": "project",
+    "require": {
+        "php": "^8.5",
+        "ext-pdo": "*",
+        "ext-pdo_mysql": "*",
+        "ext-zip": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^12.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "app/src/"
+        },
+        "files": [
+            "app/src/View/helpers.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "App\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "optimize-autoloader": true,
+        "platform": {
+            "php": "8.5.0",
+            "ext-pdo": "8.5.0",
+            "ext-pdo_mysql": "8.5.0",
+            "ext-zip": "8.5.0"
+        }
+    }
+}
