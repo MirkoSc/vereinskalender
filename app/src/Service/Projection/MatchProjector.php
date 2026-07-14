@@ -20,8 +20,11 @@ final class MatchProjector extends TableProjector
 
     public function references(): array
     {
-        // import_source_id is added here once the table exists (milestone 4)
-        return ['team_id' => 'team', 'pitch_id' => 'pitch'];
+        return [
+            'team_id' => 'team',
+            'pitch_id' => 'pitch',
+            'import_source_id' => 'import_source',
+        ];
     }
 
     protected function columns(): array

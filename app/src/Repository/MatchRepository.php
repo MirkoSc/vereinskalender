@@ -11,6 +11,41 @@ final readonly class MatchRepository
     }
 
     /**
+     * @return array<string, mixed>|null
+     */
+    public function find(int $id): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM `match` WHERE id = ?');
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+
+        return $row === false ? null : $row;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function findBySourceAndUid(int $importSourceId, string $icsUid): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM `match` WHERE import_source_id = ? AND ics_uid = ?');
+        $stmt->execute([$importSourceId, $icsUid]);
+        $row = $stmt->fetch();
+
+        return $row === false ? null : $row;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function findBySource(int $importSourceId): array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM `match` WHERE import_source_id = ? ORDER BY anstoss');
+        $stmt->execute([$importSourceId]);
+
+        return $stmt->fetchAll();
+    }
+
+    /**
      * Matches with kickoff in the datetime range [von, bis].
      *
      * @return list<array<string, mixed>>

@@ -6,11 +6,13 @@ namespace App;
 
 use App\Admin\AuthController;
 use App\Admin\DashboardController;
+use App\Admin\ImportSourceController;
 use App\Admin\PitchController;
 use App\Admin\RebuildController;
 use App\Admin\TeamController;
 use App\Admin\VenueController;
 use App\Api\BookingApiController;
+use App\Api\CronController;
 use App\Api\EventsApiController;
 use App\Config\Config;
 use App\Config\Paths;
@@ -18,6 +20,7 @@ use App\Database\ConnectionFactory;
 use App\Http\Session;
 use App\PublicPages\PublicController;
 use App\Repository\AdminRepository;
+use App\Repository\ImportSourceRepository;
 use App\Repository\MatchRepository;
 use App\Repository\PitchRepository;
 use App\Repository\PitchRestrictionRepository;
@@ -30,11 +33,16 @@ use App\Service\Auth\AuthService;
 use App\Service\EventStore\EventStore;
 use App\Service\EventStore\RebuildService;
 use App\Service\EventStore\Replayer;
+use App\Service\Import\HttpIcsFeedFetcher;
+use App\Service\Import\IcsImportService;
+use App\Service\Import\ImportSourceService;
 use App\Service\Kalender\AvailabilityService;
 use App\Service\Kalender\BookingService;
 use App\Service\Kalender\EventFeedService;
+use App\Service\Kalender\MatchService;
 use App\Service\Kalender\RestrictionService;
 use App\Service\Kalender\VenueMatcher;
+use App\Service\Projection\ImportSourceProjector;
 use App\Service\Projection\MatchProjector;
 use App\Service\Projection\PitchProjector;
 use App\Service\Projection\PitchRestrictionProjector;
@@ -91,6 +99,7 @@ final class Container
             new TrainingSlotProjector($this->pdo()),
             new SlotExceptionProjector($this->pdo()),
             new PitchRestrictionProjector($this->pdo()),
+            new ImportSourceProjector($this->pdo()),
             new MatchProjector($this->pdo()),
         ]));
     }
@@ -153,6 +162,61 @@ final class Container
     public function matchRepository(): MatchRepository
     {
         return $this->cached('matchRepository', fn(): MatchRepository => new MatchRepository($this->pdo()));
+    }
+
+    public function importSourceRepository(): ImportSourceRepository
+    {
+        return $this->cached('importSourceRepository', fn(): ImportSourceRepository => new ImportSourceRepository($this->pdo()));
+    }
+
+    public function importSourceService(): ImportSourceService
+    {
+        return $this->cached('importSourceService', fn(): ImportSourceService => new ImportSourceService(
+            $this->eventStore(),
+            $this->importSourceRepository(),
+            $this->teamRepository(),
+        ));
+    }
+
+    public function icsImportService(): IcsImportService
+    {
+        return $this->cached('icsImportService', fn(): IcsImportService => new IcsImportService(
+            $this->eventStore(),
+            $this->importSourceRepository(),
+            $this->matchRepository(),
+            $this->venueRepository(),
+            $this->venueMatcher(),
+            new HttpIcsFeedFetcher(),
+        ));
+    }
+
+    public function matchService(): MatchService
+    {
+        return $this->cached('matchService', fn(): MatchService => new MatchService(
+            $this->eventStore(),
+            $this->matchRepository(),
+            $this->pitchRepository(),
+        ));
+    }
+
+    public function cronController(): CronController
+    {
+        return $this->cached('cronController', fn(): CronController => new CronController(
+            $this->config,
+            $this->icsImportService(),
+        ));
+    }
+
+    public function importSourceController(): ImportSourceController
+    {
+        return $this->cached('importSourceController', fn(): ImportSourceController => new ImportSourceController(
+            $this->view(),
+            $this->session(),
+            $this->importSourceRepository(),
+            $this->teamRepository(),
+            $this->importSourceService(),
+            $this->icsImportService(),
+        ));
     }
 
     public function venueMatcher(): VenueMatcher
@@ -226,6 +290,7 @@ final class Container
             $this->session(),
             $this->bookingService(),
             $this->restrictionService(),
+            $this->matchService(),
         ));
     }
 

@@ -179,6 +179,36 @@
             if (props.status === 'abgesagt') {
                 detailContent.append(zeile('Status', 'ABGESAGT'));
             }
+
+            // the pitch is not part of the ICS: manual assignment, saved as
+            // an event with the editor's name (CLAUDE.md section 7)
+            if (props.heimspiel) {
+                const label = document.createElement('label');
+                label.textContent = 'Platz-Zuordnung';
+                const select = document.createElement('select');
+                select.add(new Option('– kein Platz zugeordnet –', ''));
+                for (const pitch of appData.pitches) {
+                    select.add(new Option(`${pitch.name} (${pitch.venue_name})`, String(pitch.id)));
+                }
+                select.value = props.pitch_id !== null ? String(props.pitch_id) : '';
+                label.append(select);
+                detailContent.append(label);
+
+                const saveButton = document.createElement('button');
+                saveButton.type = 'button';
+                saveButton.className = 'button';
+                saveButton.textContent = 'Platz speichern';
+                saveButton.addEventListener('click', async () => {
+                    const result = await VK.post(`/api/spiele/${props.match_id}/platz`, { pitch_id: select.value }).catch(() => null);
+                    if (result?.ok) {
+                        detailDialog.close();
+                        calendar.refetchEvents();
+                    } else if (result) {
+                        alert(VK.fehlerText(result.data));
+                    }
+                });
+                detailActions.append(saveButton);
+            }
         } else if (props.typ === 'sperrung') {
             detailContent.append(zeile('Platz', props.pitch_name ?? '–'));
             detailContent.append(zeile('Art', props.art === 'gesperrt' ? 'Gesperrt' : 'Eingeschränkt'));

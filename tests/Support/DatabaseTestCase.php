@@ -10,6 +10,7 @@ use App\Service\EventStore\EventStore;
 use App\Service\EventStore\RebuildService;
 use App\Service\EventStore\Replayer;
 use App\Service\Migration\Migrator;
+use App\Service\Projection\ImportSourceProjector;
 use App\Service\Projection\MatchProjector;
 use App\Service\Projection\PitchProjector;
 use App\Service\Projection\PitchRestrictionProjector;
@@ -73,6 +74,7 @@ abstract class DatabaseTestCase extends TestCase
             new TrainingSlotProjector($this->pdo()),
             new SlotExceptionProjector($this->pdo()),
             new PitchRestrictionProjector($this->pdo()),
+            new ImportSourceProjector($this->pdo()),
             new MatchProjector($this->pdo()),
         ]);
     }
@@ -180,6 +182,31 @@ abstract class DatabaseTestCase extends TestCase
             ],
             $this->context(),
         )->aggregateId;
+    }
+
+    protected function createImportSource(int $teamId, string $icsUrl = 'https://example.test/feed.ics'): int
+    {
+        return $this->eventStore()->append(
+            \App\Domain\AggregateType::ImportSource,
+            null,
+            \App\Domain\EventType::Created,
+            ['team_id' => $teamId, 'ics_url' => $icsUrl, 'aktiv' => true],
+            $this->context(),
+        )->aggregateId;
+    }
+
+    protected function icsImportService(\App\Service\Import\IcsFeedFetcher $fetcher): \App\Service\Import\IcsImportService
+    {
+        $pdo = $this->pdo();
+
+        return new \App\Service\Import\IcsImportService(
+            $this->eventStore(),
+            new \App\Repository\ImportSourceRepository($pdo),
+            new \App\Repository\MatchRepository($pdo),
+            new \App\Repository\VenueRepository($pdo),
+            \App\Service\Kalender\VenueMatcher::fromDatabase($pdo),
+            $fetcher,
+        );
     }
 
     protected function bookingService(): \App\Service\Kalender\BookingService
