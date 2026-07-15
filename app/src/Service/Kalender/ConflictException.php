@@ -8,8 +8,9 @@ final class ConflictException extends \RuntimeException
 {
     /**
      * @param list<string> $conflicts German messages
+     * @param list<Conflict> $details structured entries backing $conflicts, for grouping/display
      */
-    public function __construct(private readonly array $conflicts)
+    public function __construct(private readonly array $conflicts, private readonly array $details = [])
     {
         parent::__construct('Booking conflicts: ' . implode('; ', $conflicts));
     }
@@ -20,5 +21,13 @@ final class ConflictException extends \RuntimeException
     public function getConflicts(): array
     {
         return $this->conflicts;
+    }
+
+    /**
+     * @return list<Conflict>
+     */
+    public function getDetails(): array
+    {
+        return $this->details;
     }
 }

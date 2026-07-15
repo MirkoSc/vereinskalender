@@ -5,17 +5,32 @@
         <button type="button" id="prev-week" class="linklike">‹ Vorherige Woche</button>
         <strong id="range-label"></strong>
         <button type="button" id="next-week" class="linklike">Nächste Woche ›</button>
+
+        <button type="button" id="filter-button" class="button filter-button filter-narrow">
+            Filter <span id="filter-badge" class="badge" hidden>0</span>
+        </button>
+
+        <button type="button" id="new-restriction" class="button">Sperrung eintragen</button>
+        <button type="button" id="push-bell" class="linklike bell" title="Push-Benachrichtigungen">🔔</button>
+    </div>
+
+    <ul id="filter-chips" class="chip-row filter-narrow" aria-label="Aktive Filter"></ul>
+
+    <dialog id="filter-dialog" class="sheet filter-sheet">
+        <h3>Filter</h3>
         <!-- Issue #7: unterhalb der Desktop-Sidebar-Schwelle (~1100px) ersetzt
              diese Auswahl die Untereinander-Darstellung aller Plätze. -->
-        <label class="filter filter-narrow">
+        <label class="filter">
             Platz
             <select id="filter-pitch">
                 <option value="">Alle Plätze</option>
             </select>
         </label>
-        <button type="button" id="new-restriction" class="button">Sperrung eintragen</button>
-        <button type="button" id="push-bell" class="linklike bell" title="Push-Benachrichtigungen">🔔</button>
-    </div>
+        <div class="dialog-actions">
+            <button type="button" class="button" id="filter-close">Fertig</button>
+            <button type="button" class="linklike" id="filter-reset">Zurücksetzen</button>
+        </div>
+    </dialog>
 
     <p class="legend">
         <span class="chip chip-frei">frei</span>
