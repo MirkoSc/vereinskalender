@@ -7,6 +7,7 @@ namespace App\Service\Stammdaten;
 use App\Domain\AggregateType;
 use App\Domain\EventContext;
 use App\Domain\EventType;
+use App\Domain\Palette;
 use App\Repository\PitchRepository;
 use App\Repository\VenueRepository;
 use App\Service\EventStore\EventStore;
@@ -68,6 +69,7 @@ final readonly class PitchService
         $payload = [
             'venue_id' => (int) $pitch['venue_id'],
             'name' => (string) $pitch['name'],
+            'farbe' => (string) $pitch['farbe'],
             'typ' => (string) $pitch['typ'],
             'flutlicht' => (bool) $pitch['flutlicht'],
             'adresse' => $pitch['adresse'] !== null ? (string) $pitch['adresse'] : null,
@@ -99,6 +101,11 @@ final readonly class PitchService
             $errors['typ'] = 'Typ darf max. 50 Zeichen lang sein.';
         }
 
+        $farbe = trim((string) ($input['farbe'] ?? ''));
+        if (!Palette::isValid($farbe)) {
+            $errors['farbe'] = 'Bitte eine Farbe aus der Palette wählen.';
+        }
+
         $adresse = trim((string) ($input['adresse'] ?? ''));
         if (mb_strlen($adresse) > 255) {
             $errors['adresse'] = 'Adresse darf max. 255 Zeichen lang sein.';
@@ -111,6 +118,7 @@ final readonly class PitchService
         return [
             'venue_id' => $venueId,
             'name' => $name,
+            'farbe' => $farbe,
             'typ' => $typ,
             'flutlicht' => ($input['flutlicht'] ?? '') !== '',
             // NULL = same address as the venue (CLAUDE.md section 4)

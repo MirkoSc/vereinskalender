@@ -165,6 +165,7 @@ final readonly class PublicController
             'id' => (int) $p['id'],
             'venue_id' => (int) $p['venue_id'],
             'name' => (string) $p['name'],
+            'farbe' => (string) $p['farbe'],
             'venue_name' => (string) ($p['venue_name'] ?? ''),
         ], $this->pitches->findAll());
 
