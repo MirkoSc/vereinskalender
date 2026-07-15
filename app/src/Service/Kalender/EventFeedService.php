@@ -147,6 +147,10 @@ final readonly class EventFeedService
                         : $auswaertsFarbe,
                     'pitch_id' => $occurrence->pitchId,
                     'pitch_name' => $pitch !== null ? (string) $pitch['name'] : null,
+                    // address fallback for the Maps link (CLAUDE.md section 4:
+                    // pitch.adresse only set when it differs from the venue's)
+                    'pitch_adresse' => $pitch !== null && $pitch['adresse'] !== null ? (string) $pitch['adresse'] : null,
+                    'venue_adresse' => $venueId !== null && isset($venues[$venueId]) ? (string) $venues[$venueId]['adresse'] : null,
                     // series data for the public edit dialog (scope choice)
                     'wochentage' => array_map(intval(...), (array) json_decode((string) $slotRow['wochentage'], true)),
                     'gueltig_ab' => (string) $slotRow['gueltig_ab'],
@@ -180,6 +184,8 @@ final readonly class EventFeedService
                         : $auswaertsFarbe,
                     'pitch_id' => (int) $restriction['pitch_id'],
                     'pitch_name' => $pitch !== null ? (string) $pitch['name'] : null,
+                    'pitch_adresse' => $pitch !== null && $pitch['adresse'] !== null ? (string) $pitch['adresse'] : null,
+                    'venue_adresse' => $venueId !== null && isset($venues[$venueId]) ? (string) $venues[$venueId]['adresse'] : null,
                 ];
             }
         }
@@ -200,6 +206,7 @@ final readonly class EventFeedService
 
                 $start = new \DateTimeImmutable((string) $match['anstoss']);
                 $pitchId = $match['pitch_id'] !== null ? (int) $match['pitch_id'] : null;
+                $pitch = $pitchId !== null ? ($pitches[$pitchId] ?? null) : null;
 
                 $events[] = [
                     'id' => 'match-' . (int) $match['id'],
@@ -219,6 +226,8 @@ final readonly class EventFeedService
                         : $auswaertsFarbe,
                     'pitch_id' => $pitchId,
                     'pitch_name' => $pitchId !== null ? (string) ($pitches[$pitchId]['name'] ?? '') : null,
+                    'pitch_adresse' => $pitch !== null && $pitch['adresse'] !== null ? (string) $pitch['adresse'] : null,
+                    'venue_adresse' => $venueId !== null && isset($venues[$venueId]) ? (string) $venues[$venueId]['adresse'] : null,
                     'gegner' => (string) $match['gegner'],
                     'heimspiel' => (int) $match['heimspiel'] === 1,
                     'ort_text' => (string) $match['ort_text'],
