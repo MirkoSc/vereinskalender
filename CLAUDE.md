@@ -258,9 +258,19 @@ CSRF-Schutz für alle Schreibrouten (Token). Passwörter nie loggen.
   (CSS Custom Properties, Grid, clamp(), `prefers-color-scheme` Dark Mode).
   Mobile-first; Breakpoints ~768px (Tablet) und ~1100px (Desktop-Sidebar).
 - **FullCalendar** für beide Kalender. Ansicht nach Breite: Desktop
-  `timeGridWeek`/`dayGridMonth`, Mobil `listWeek`. Platzbelegung mit Plätzen
-  als Spalten über FullCalendar Premium Resource-Views – Lizenzschlüssel
+  `timeGridWeek`/`dayGridMonth`, Mobil eine eigene Listen-View
+  (`listNachlade`, Basistyp `list`). Platzbelegung mit Plätzen als Spalten
+  über FullCalendar Premium Resource-Views – Lizenzschlüssel
   `GPL-My-Project-Is-Open-Source` (Projekt ist GPL-lizenziert auf GitHub).
+- **Terminliste mit Nachladen**: `listNachlade` zeigt initial mindestens den
+  kompletten nächsten Monat (nicht nur eine Woche) und lädt beim Scrollen
+  ans Listenende automatisch weitere Batches nach (`von`/`bis` wächst
+  schrittweise; die API selbst kennt keine Pagination). Client-seitiger
+  Cache pro Ansicht dedupliziert nach Event-`id` (spätester Stand gewinnt,
+  z. B. bei einer währenddessen verlegten Partie); aktive Filter setzen den
+  Cache und den Bereich beim Ändern zurück auf den initialen Monat.
+  Ladeindikator am Listenende. Reine Frontend-Logik (`public/js/nachlade.js`,
+  unit-getestet mit `node --test tests/js`), keine Server-Pagination nötig.
 - Mobile-Patterns: Termindetails als Bottom-Sheet, Filter als horizontal
   scrollbare Chips, Anzeigemodus als Segmented Control, Touch-Ziele ≥ 44 px.
 - **PWA mit Offline-Fenster**: manifest.json (Vereinslogo, Theme-Farbe) +

@@ -32,6 +32,10 @@
 
     const onFilterChange = () => {
         beacon('filternutzung');
+        if (calendar.view.type === 'listNachlade') {
+            listeFilterGeaendert();
+            return;
+        }
         calendar.refetchEvents();
     };
     teamSelect.addEventListener('change', () => { filters.team = teamSelect.value; onFilterChange(); });
@@ -126,6 +130,168 @@
         }
     };
 
+    // Ein Bereich [von, bis) laden - per Fetch oder, offline, aus dem
+    // IndexedDB-Bundle (heute..+7, CLAUDE.md Abschnitt 9). Wird sowohl vom
+    // normalen Grid-Fetch als auch batchweise von der Terminliste genutzt.
+    const fetchEventsRange = async (von, bis, params) => {
+        const p = new URLSearchParams(params);
+        p.set('von', von);
+        p.set('bis', bis);
+        try {
+            const response = await fetch(`/api/events?${p}`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            return (await response.json()).events;
+        } catch (error) {
+            const bundle = await window.VKOffline?.load();
+            if (!bundle) {
+                throw error;
+            }
+            window.VKOffline.showBanner(bundle);
+            if (bis < bundle.von || von > bundle.bis) {
+                window.VKOffline.showBanner({
+                    stand: `${bundle.stand} – dieser Zeitraum liegt außerhalb des Offline-Fensters (${bundle.von} bis ${bundle.bis})`,
+                });
+                return [];
+            }
+            const typFilter = ansicht === 'belegung'
+                ? (e) => e.typ === 'belegung' || e.typ === 'sperrung'
+                : (e) => e.typ === 'spiel';
+            const bundleEvents = bundle.events
+                .filter(typFilter)
+                .filter((e) => e.start.slice(0, 10) <= bis && e.start.slice(0, 10) >= von)
+                .filter((e) => {
+                    if (filters.team === '') {
+                        return true;
+                    }
+                    // multi-team bookings match when ANY team matches
+                    return (e.team_ids ?? [e.team_id]).some((id) => String(id) === filters.team);
+                })
+                .filter((e) => {
+                    if (filters.bereich === '') {
+                        return true;
+                    }
+                    return (e.team_ids ?? [e.team_id]).some(
+                        (id) => appData.teams.find((t) => t.id === id)?.bereich === filters.bereich,
+                    );
+                })
+                .filter((e) => {
+                    if (filters.venue === '') {
+                        return true;
+                    }
+                    if (filters.venue === 'heim') {
+                        return e.venue_id !== null;
+                    }
+                    if (filters.venue === 'auswaerts') {
+                        return e.venue_id === null;
+                    }
+                    return String(e.venue_id) === filters.venue;
+                });
+            return bundleEvents;
+        }
+    };
+
+    // ---- Terminliste-Nachladen (Issue #4) ----
+    // Die "Liste" (FullCalendar list view) zeigt initial mindestens den
+    // kompletten nächsten Monat statt nur einer Woche und lädt beim
+    // Scrollen ans Ende automatisch weitere Batches nach (von/bis-Fenster
+    // wächst schrittweise; die API selbst kennt keine Pagination).
+    const LIST_BATCH_TAGE = 31;
+    const LIST_MAX_HORIZONT_TAGE = 730;
+    const listeLadeIndikator = document.querySelector('#liste-lade-indikator');
+
+    let listeEvents = [];
+    let listeGeladenBis = null; // ISO-Datum, bis zu dem bereits vom Server geladen wurde
+    let listeLeereBatches = 0;
+    let listeErschoepft = false;
+    let listeAktiv = false; // true solange die Liste die aktuell aktive View ist
+    let listeLaedt = false;
+
+    const heuteStart = () => {
+        const heute = new Date();
+        heute.setHours(0, 0, 0, 0);
+        return heute;
+    };
+
+    const listeZuruecksetzen = () => {
+        listeEvents = [];
+        listeGeladenBis = null;
+        listeLeereBatches = 0;
+        listeErschoepft = false;
+    };
+
+    const listeIndikatorSetzen = (aktiv) => {
+        listeLaedt = aktiv;
+        if (listeLadeIndikator) {
+            listeLadeIndikator.hidden = !aktiv;
+        }
+    };
+
+    // Filterwechsel während die Liste aktiv ist: Cache verwerfen und auf
+    // den initialen Bereich (heute..nächster Monat) zurückspringen, statt
+    // den ggf. weit nachgeladenen Bereich mit neuen Filtern zu behalten.
+    const listeFilterGeaendert = () => {
+        listeZuruecksetzen();
+        const initialEnde = window.VKNachlade.naechsterMonatEnde(new Date());
+        const aktuellesEnde = calendar.view.activeEnd
+            ? window.VKNachlade.toIsoDate(calendar.view.activeEnd)
+            : null;
+        if (aktuellesEnde !== null && aktuellesEnde > initialEnde) {
+            calendar.changeView('listNachlade', { start: heuteStart(), end: `${initialEnde}T00:00:00` });
+        } else {
+            calendar.refetchEvents();
+        }
+    };
+
+    const ladeListenBatch = async (info, params, success, failure) => {
+        if (!listeAktiv) {
+            listeZuruecksetzen();
+            listeAktiv = true;
+        }
+        const von = listeGeladenBis ?? window.VKNachlade.toIsoDate(heuteStart());
+        const bis = info.endStr.slice(0, 10);
+        if (bis <= von) {
+            // nichts Neues zu laden (z. B. zweiter Scroll-Trigger während
+            // noch derselbe Bereich aktiv ist, oder ein reines Refetch bei
+            // Platzauswahl-Änderung) - aus dem Cache neu filtern und rendern
+            success(applyPitchFilter(listeEvents).map(toFcEvent));
+            return;
+        }
+        listeIndikatorSetzen(true);
+        try {
+            const batch = await fetchEventsRange(von, bis, params);
+            listeLeereBatches = batch.length === 0 ? listeLeereBatches + 1 : 0;
+            listeEvents = window.VKNachlade.mergeEvents(listeEvents, batch);
+            listeGeladenBis = bis;
+            if (listeLeereBatches >= 3 || window.VKNachlade.tageZwischen(von, bis) >= LIST_MAX_HORIZONT_TAGE) {
+                listeErschoepft = true;
+            }
+            success(applyPitchFilter(listeEvents).map(toFcEvent));
+        } catch (error) {
+            failure(error);
+        } finally {
+            listeIndikatorSetzen(false);
+        }
+    };
+
+    const listeNaheAmEnde = () => (window.innerHeight + window.scrollY)
+        >= (document.documentElement.scrollHeight - 300);
+
+    const listeWeiterLaden = () => {
+        if (!listeAktiv || calendar.view.type !== 'listNachlade' || listeErschoepft || listeLaedt) {
+            return;
+        }
+        if (!listeNaheAmEnde()) {
+            return;
+        }
+        const bisher = listeGeladenBis ?? window.VKNachlade.toIsoDate(heuteStart());
+        const neueGrenze = window.VKNachlade.naechsteBatchGrenze(bisher, LIST_BATCH_TAGE);
+        calendar.changeView('listNachlade', { start: heuteStart(), end: `${neueGrenze}T00:00:00` });
+    };
+
+    window.addEventListener('scroll', listeWeiterLaden, { passive: true });
+
     const isMobile = window.matchMedia('(max-width: 767px)').matches;
     const calendar = new FullCalendar.Calendar(document.querySelector('#kalender'), {
         schedulerLicenseKey: 'GPL-My-Project-Is-Open-Source',
@@ -140,93 +306,54 @@
         // Sidebar-Schwelle (~1100px); darunter ersetzt die Platz-Auswahl
         // (Dropdown) die Spalten durch eine gemeinsame Wochenansicht.
         initialView: ansicht === 'belegung'
-            ? (isWideBelegung ? 'resourceTimeGridWeek' : (isMobile ? 'listWeek' : 'timeGridWeek'))
-            : (isMobile ? 'listWeek' : 'dayGridMonth'),
+            ? (isWideBelegung ? 'resourceTimeGridWeek' : (isMobile ? 'listNachlade' : 'timeGridWeek'))
+            : (isMobile ? 'listNachlade' : 'dayGridMonth'),
         headerToolbar: {
             left: 'prev,next today',
             center: 'title',
             right: ansicht === 'belegung'
-                ? (isWideBelegung ? 'resourceTimeGridWeek,listWeek' : 'timeGridWeek,listWeek')
-                : 'dayGridMonth,timeGridWeek,listWeek',
+                ? (isWideBelegung ? 'resourceTimeGridWeek,listNachlade' : 'timeGridWeek,listNachlade')
+                : 'dayGridMonth,timeGridWeek,listNachlade',
         },
         // Issue #3: "Heute" als Icon/Kurzform ohne Schriftzug, aber weiterhin
         // mit vollem Text für Hover-Titel und Screenreader (buttonHints).
-        // "listWeek" ist in der de-Locale "Terminübersicht" (zu lang für
+        // "listNachlade" ist in der de-Locale "Terminübersicht" (zu lang für
         // 360-430px); "Liste" ist gleichwertig kurz zu "Woche"/"Monat".
-        buttonText: { today: '●', listWeek: 'Liste' },
+        buttonText: { today: '●', listNachlade: 'Liste' },
         buttonHints: { today: 'Heute' },
+        // Issue #4: eigene View statt "listWeek" - initial mindestens der
+        // komplette nächste Monat (nicht nur eine Woche); das Nachladen per
+        // Scroll wächst diesen Bereich anschließend selbst per changeView()
+        // weiter (siehe listeWeiterLaden), daher hier keine feste duration.
+        views: {
+            listNachlade: {
+                type: 'list',
+                visibleRange: { start: heuteStart(), end: `${window.VKNachlade.naechsterMonatEnde(new Date())}T00:00:00` },
+            },
+        },
         resources: ansicht === 'belegung' && isWideBelegung
             ? appData.pitches.map((p) => ({ id: String(p.id), title: `${p.name} (${p.venue_name})` }))
             : [],
         events: async (info, success, failure) => {
-            const von = info.startStr.slice(0, 10);
-            const bis = info.endStr.slice(0, 10);
-            const params = new URLSearchParams({
-                von,
-                bis,
-                typ: ansicht === 'belegung' ? 'belegung' : 'spiel',
-            });
+            const params = new URLSearchParams({ typ: ansicht === 'belegung' ? 'belegung' : 'spiel' });
             for (const [key, value] of Object.entries(filters)) {
                 if (value !== '') {
                     params.set(key, value);
                 }
             }
+
+            if (info.view.type === 'listNachlade') {
+                await ladeListenBatch(info, params, success, failure);
+                return;
+            }
+            listeAktiv = false;
+
             try {
-                const response = await fetch(`/api/events?${params}`);
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
-                success(applyPitchFilter((await response.json()).events).map(toFcEvent));
+                const von = info.startStr.slice(0, 10);
+                const bis = info.endStr.slice(0, 10);
+                success(applyPitchFilter(await fetchEventsRange(von, bis, params)).map(toFcEvent));
             } catch (error) {
-                // offline: render from the IndexedDB bundle (today..+7);
-                // filters keep working, ranges outside the window get a hint
-                const bundle = await window.VKOffline?.load();
-                if (!bundle) {
-                    failure(error);
-                    return;
-                }
-                window.VKOffline.showBanner(bundle);
-                if (bis < bundle.von || von > bundle.bis) {
-                    window.VKOffline.showBanner({
-                        stand: `${bundle.stand} – dieser Zeitraum liegt außerhalb des Offline-Fensters (${bundle.von} bis ${bundle.bis})`,
-                    });
-                    success([]);
-                    return;
-                }
-                const typFilter = ansicht === 'belegung'
-                    ? (e) => e.typ === 'belegung' || e.typ === 'sperrung'
-                    : (e) => e.typ === 'spiel';
-                const bundleEvents = bundle.events
-                    .filter(typFilter)
-                    .filter((e) => e.start.slice(0, 10) <= bis && e.start.slice(0, 10) >= von)
-                    .filter((e) => {
-                        if (filters.team === '') {
-                            return true;
-                        }
-                        // multi-team bookings match when ANY team matches
-                        return (e.team_ids ?? [e.team_id]).some((id) => String(id) === filters.team);
-                    })
-                    .filter((e) => {
-                        if (filters.bereich === '') {
-                            return true;
-                        }
-                        return (e.team_ids ?? [e.team_id]).some(
-                            (id) => appData.teams.find((t) => t.id === id)?.bereich === filters.bereich,
-                        );
-                    })
-                    .filter((e) => {
-                        if (filters.venue === '') {
-                            return true;
-                        }
-                        if (filters.venue === 'heim') {
-                            return e.venue_id !== null;
-                        }
-                        if (filters.venue === 'auswaerts') {
-                            return e.venue_id === null;
-                        }
-                        return String(e.venue_id) === filters.venue;
-                    });
-                success(applyPitchFilter(bundleEvents).map(toFcEvent));
+                failure(error);
             }
         },
         eventClick: (info) => showDetail(info.event.extendedProps),
