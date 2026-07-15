@@ -26,6 +26,36 @@
 
     const zustandLabel = { frei: 'frei', belegt: 'belegt', eingeschraenkt: 'eingeschränkt', gesperrt: 'gesperrt' };
 
+    // ---- pitch selector (Issue #7, narrow screens) ----
+    // Below the desktop-sidebar breakpoint the stacked "alle Plätze
+    // untereinander" view gives way to a dropdown: "Alle Plätze" (same
+    // stacked blocks, but belegt-Segmente in der jeweiligen Platzfarbe +
+    // Platzname als Text) or a single pitch. Restriktionen bleiben in jeder
+    // Variante unverändert sichtbar (nur die Platz-Auswahl filtert).
+    // Snapshot once (like kalender.js): the dropdown's visibility is driven
+    // from this same flag, not a live CSS media query, so it can never
+    // disagree with the filtering/coloring logic it drives.
+    const isWideVerf = window.matchMedia('(min-width: 1100px)').matches;
+    let lastData = null;
+    const pitchSelect = document.querySelector('#filter-pitch');
+    pitchSelect.closest('.filter-narrow')?.classList.toggle('filter-narrow-hidden', isWideVerf);
+    for (const pitch of appData.pitches) {
+        pitchSelect.add(new Option(`${pitch.name} (${pitch.venue_name})`, String(pitch.id)));
+    }
+    let storedPitch = localStorage.getItem('verfuegbarkeit_platz') ?? '';
+    // a pitch removed/deactivated since the choice was stored would otherwise
+    // filter every venue block down to zero pitches with no visible cause
+    if (!appData.pitches.some((p) => String(p.id) === storedPitch)) {
+        storedPitch = '';
+    }
+    pitchSelect.value = storedPitch;
+    pitchSelect.addEventListener('change', () => {
+        localStorage.setItem('verfuegbarkeit_platz', pitchSelect.value);
+        if (lastData) {
+            render(lastData);
+        }
+    });
+
     const load = async () => {
         const von = iso(wochenstart);
         const bis = iso(addDays(wochenstart, 6));
@@ -36,7 +66,8 @@
             container.textContent = 'Verfügbarkeit konnte nicht geladen werden.';
             return;
         }
-        render(await response.json());
+        lastData = await response.json();
+        render(lastData);
     };
 
     const render = (data) => {
@@ -45,7 +76,21 @@
         const windowEnd = minuten(data.nutzungszeiten.bis);
         const total = windowEnd - windowStart;
 
+        // large screens always show every pitch (CLAUDE.md/Issue #7: "wie
+        // bisher"); the dropdown only takes effect below the breakpoint
+        const pitchFilter = isWideVerf ? '' : pitchSelect.value;
+        // large screens keep the plain zustand-coloring "wie bisher"; the
+        // pitch-color distinction only kicks in for "Alle" below the breakpoint
+        const alleKombiniert = !isWideVerf && pitchFilter === '';
+
         for (const venue of data.venues) {
+            const plaetze = pitchFilter === ''
+                ? venue.plaetze
+                : venue.plaetze.filter((p) => String(p.id) === pitchFilter);
+            if (plaetze.length === 0) {
+                continue;
+            }
+
             const section = document.createElement('section');
             section.className = 'venue-block';
 
@@ -64,7 +109,7 @@
                 section.append(p);
             }
 
-            for (const pitch of venue.plaetze) {
+            for (const pitch of plaetze) {
                 const pitchBlock = document.createElement('div');
                 pitchBlock.className = 'pitch-block';
 
@@ -103,6 +148,12 @@
                         el.title = `${segment.von}–${segment.bis}: ${zustandLabel[segment.zustand]}`;
                         if (segment.zustand !== 'frei') {
                             el.textContent = segment.label ?? segment.grund ?? zustandLabel[segment.zustand];
+                        }
+                        // Issue #7 "Alle": Platzfarbe statt Zustandsfarbe bei
+                        // belegt, Platzname als Text (Farbe nie einziges Signal)
+                        if (alleKombiniert && segment.zustand === 'belegt') {
+                            el.style.background = pitch.farbe;
+                            el.textContent = `${pitch.name}: ${el.textContent}`;
                         }
                         el.addEventListener('click', () => showInterval(pitch, tag.datum, segment));
                         bar.append(el);
