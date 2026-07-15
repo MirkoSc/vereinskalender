@@ -135,6 +135,7 @@ final readonly class PublicController
                 '/js/schreiben.js',
                 '/js/offline.js',
                 '/js/push.js',
+                '/js/nachlade.js',
                 '/js/kalender.js',
             ],
         ]));

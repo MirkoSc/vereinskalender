@@ -44,6 +44,7 @@
     </div>
 
     <div id="kalender"></div>
+    <p id="liste-lade-indikator" class="liste-lade-indikator" hidden aria-live="polite">Lädt weitere Termine…</p>
 </section>
 
 <?php require __DIR__ . '/partials/push_dialog.php'; ?>

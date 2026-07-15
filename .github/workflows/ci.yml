@@ -52,3 +52,6 @@ jobs:
           TEST_DB_USER: root
           TEST_DB_PASSWORD: ci-root
           TEST_DB_REQUIRED: '1'
+
+      - name: Run JS tests (Terminliste-Nachladen, Issue #4)
+        run: node --test tests/js/*.test.js

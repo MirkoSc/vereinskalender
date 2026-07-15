@@ -209,6 +209,15 @@ main {
     display: none;
 }
 
+/* Terminliste-Nachladen (Issue #4): Ladeindikator am Listenende während
+   ein weiterer Batch nachgeladen wird. */
+.liste-lade-indikator {
+    text-align: center;
+    padding: 0.75rem;
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+}
+
 .segmented {
     display: inline-flex;
     border: 1px solid var(--color-accent);
