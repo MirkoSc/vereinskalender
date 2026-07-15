@@ -52,6 +52,13 @@ final class AvailabilityServiceTest extends DatabaseTestCase
         );
     }
 
+    public function testPitchCarriesItsColor(): void
+    {
+        $result = $this->availabilityService()->compute('2026-08-04', '2026-08-04');
+
+        self::assertSame('#0969da', $result['venues'][0]['plaetze'][0]['farbe']);
+    }
+
     public function testBookingSplitsTheFreeWindow(): void
     {
         $this->bookingService()->createSlot([

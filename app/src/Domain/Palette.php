@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Domain;
 
 /**
- * Predefined color palette for teams and venues (CLAUDE.md section 4).
+ * Predefined color palette for teams, venues and pitches (CLAUDE.md section 4).
  * Color is never the only signal in the UI, so the palette favours
  * distinguishable hues over sheer quantity.
  */
@@ -26,6 +26,13 @@ final class Palette
         '#775c3c' => 'Braun',
         '#57606a' => 'Grau',
     ];
+
+    /**
+     * Upcast target for pitch events written before migration 009, which
+     * carried no color (CLAUDE.md section 4/5). Must match the DEFAULT in
+     * that migration.
+     */
+    public const string PITCH_DEFAULT = '#1a7f37';
 
     public static function isValid(string $hex): bool
     {
