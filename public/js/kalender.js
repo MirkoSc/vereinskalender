@@ -96,6 +96,12 @@
                 ? 'resourceTimeGridWeek,listWeek'
                 : 'dayGridMonth,timeGridWeek,listWeek',
         },
+        // Issue #3: "Heute" als Icon/Kurzform ohne Schriftzug, aber weiterhin
+        // mit vollem Text für Hover-Titel und Screenreader (buttonHints).
+        // "listWeek" ist in der de-Locale "Terminübersicht" (zu lang für
+        // 360-430px); "Liste" ist gleichwertig kurz zu "Woche"/"Monat".
+        buttonText: { today: '●', listWeek: 'Liste' },
+        buttonHints: { today: 'Heute' },
         resources: ansicht === 'belegung'
             ? appData.pitches.map((p) => ({ id: String(p.id), title: `${p.name} (${p.venue_name})` }))
             : [],
@@ -171,6 +177,11 @@
             }
         },
         eventClick: (info) => showDetail(info.event.extendedProps),
+        // FullCalendar's buttonHints only sets the hover title, not
+        // aria-label; the icon-only "Heute" button (Issue #3) needs an
+        // explicit one. datesSet fires on every toolbar re-render (nav,
+        // view switch), so re-apply it there too.
+        datesSet: () => document.querySelector('.fc-today-button')?.setAttribute('aria-label', 'Heute'),
     });
     calendar.render();
 
@@ -191,6 +202,26 @@
 
     const formatDatum = (iso) => new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
+    // Maps-Link (Issue #5): Platz-Adresse falls zugeordnet, sonst ort_text;
+    // reines Link-Ziel, kein Embed/API-Key, öffnet in neuem Tab
+    const mapsAdresse = (props) => props.pitch_adresse ?? props.venue_adresse ?? props.ort_text ?? null;
+
+    const mapsLink = (props) => {
+        const adresse = mapsAdresse(props);
+        if (adresse === null || adresse === '') {
+            return null;
+        }
+        const a = document.createElement('a');
+        a.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(adresse)}`;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.className = 'maps-link';
+        a.textContent = `📍 In Google Maps öffnen`;
+        const p = document.createElement('p');
+        p.append(a);
+        return p;
+    };
+
     const showDetail = (props) => {
         detailContent.replaceChildren();
         detailActions.replaceChildren();
@@ -207,6 +238,10 @@
         if (props.typ === 'belegung') {
             detailContent.append(zeile((props.team_ids ?? []).length > 1 ? 'Teams' : 'Team', props.team_name));
             detailContent.append(zeile('Platz', props.pitch_name ?? '–'));
+            const belegungMapsLink = mapsLink(props);
+            if (belegungMapsLink !== null) {
+                detailContent.append(belegungMapsLink);
+            }
             const tage = ['', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
             const serie = (props.wochentage ?? []).map((w) => tage[w]).join('+');
             detailContent.append(zeile('Serie', `${serie}, ${formatDatum(props.gueltig_ab)} bis ${formatDatum(props.gueltig_bis)}`));
@@ -253,6 +288,10 @@
             detailContent.append(zeile('Gegner', props.gegner));
             detailContent.append(zeile('Heim/Auswärts', props.heimspiel ? 'Heimspiel' : 'Auswärtsspiel'));
             detailContent.append(zeile('Ort', props.venue_name ?? props.ort_text ?? '–'));
+            const spielMapsLink = mapsLink(props);
+            if (spielMapsLink !== null) {
+                detailContent.append(spielMapsLink);
+            }
             if (props.status === 'abgesagt') {
                 detailContent.append(zeile('Status', 'ABGESAGT'));
             }
@@ -288,6 +327,10 @@
             }
         } else if (props.typ === 'sperrung') {
             detailContent.append(zeile('Platz', props.pitch_name ?? '–'));
+            const sperrungMapsLink = mapsLink(props);
+            if (sperrungMapsLink !== null) {
+                detailContent.append(sperrungMapsLink);
+            }
             detailContent.append(zeile('Art', props.art === 'gesperrt' ? 'Gesperrt' : 'Eingeschränkt'));
             detailContent.append(zeile('Grund', props.grund));
 
