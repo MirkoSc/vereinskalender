@@ -130,6 +130,61 @@ main {
     border-color: var(--color-accent);
 }
 
+/*
+ * FullCalendar's own header toolbar (prev/next/today/title/view switcher) -
+ * not the custom filter .toolbar below. Issue #3: compact, single line,
+ * no wrap 360-430px, touch targets stay >= 44px via min-height/min-width.
+ */
+.fc .fc-header-toolbar {
+    flex-wrap: nowrap;
+    gap: 0.35rem;
+    margin-bottom: 0.75rem;
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+
+.fc .fc-toolbar-chunk {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+}
+
+.fc .fc-toolbar-title {
+    margin: 0;
+    font-size: clamp(0.8rem, 3.5vw, 1.15rem);
+    white-space: nowrap;
+    max-width: 40vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.fc .fc-button-group {
+    gap: 2px;
+}
+
+.fc .fc-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0.3rem 0.55rem;
+    font-size: 0.85rem;
+    line-height: 1;
+}
+
+.fc .fc-today-button {
+    padding: 0.3rem 0.5rem;
+    font-size: 1rem;
+}
+
+@media (max-width: 430px) {
+    .fc .fc-button {
+        padding: 0.25rem 0.4rem;
+        font-size: 0.75rem;
+    }
+}
+
 .toolbar {
     display: flex;
     flex-wrap: wrap;
@@ -210,6 +265,13 @@ dialog.sheet::backdrop {
 .ev-abgesagt {
     text-decoration: line-through;
     opacity: 0.6;
+}
+
+/* Maps-Link im Termindetail (Issue #5): Icon + Text, nie Farbe allein */
+.maps-link {
+    color: var(--color-accent);
+    text-decoration: underline;
+    font-weight: 600;
 }
 
 .site-footer {
