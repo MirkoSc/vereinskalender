@@ -106,10 +106,18 @@ function setup_page(string $title, string $body): never
     echo '<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">'
         . '<meta name="viewport" content="width=device-width, initial-scale=1">'
         . '<title>' . htmlspecialchars($title, ENT_QUOTES) . '</title>'
-        . '<style>body{font-family:system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem;line-height:1.5}'
-        . 'li.ok::marker{content:"✔ ";color:#1a7f37}li.fehler::marker{content:"✘ ";color:#cf222e}'
-        . 'button{padding:.6rem 1.2rem;font:inherit;background:#1a7f37;color:#fff;border:none;border-radius:6px;cursor:pointer}'
-        . '.fehlertext{color:#cf222e}</style></head><body><h1>Vereinskalender einrichten</h1>'
+        // same Vereinsfarben-Palette as public/css/app.css (Issue #1); setup.php
+        // ships as its own release asset and cannot link that stylesheet, so
+        // its custom properties are kept in this single inline <style> block.
+        . '<style>:root{--color-bg:#f4f6f4;--color-text:#131b15;--color-accent:#27683f;'
+        . '--color-accent-bg:#328551;--color-on-accent:#ffffff;--color-danger:#a82d24}'
+        . '@media (prefers-color-scheme: dark){:root{--color-bg:#131b15;--color-text:#e6eae7;'
+        . '--color-accent:#95d0ab;--color-danger:#e0736c}}'
+        . 'body{font-family:system-ui,sans-serif;max-width:40rem;margin:2rem auto;padding:0 1rem;'
+        . 'line-height:1.5;background:var(--color-bg);color:var(--color-text)}'
+        . 'li.ok::marker{content:"✔ ";color:var(--color-accent)}li.fehler::marker{content:"✘ ";color:var(--color-danger)}'
+        . 'button{padding:.6rem 1.2rem;font:inherit;background:var(--color-accent-bg);color:var(--color-on-accent);border:none;border-radius:6px;cursor:pointer}'
+        . '.fehlertext{color:var(--color-danger)}</style></head><body><h1>Vereinskalender einrichten</h1>'
         . $body . '</body></html>';
     exit;
 }
