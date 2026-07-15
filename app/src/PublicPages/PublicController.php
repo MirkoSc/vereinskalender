@@ -138,6 +138,7 @@ final readonly class PublicController
                 '/js/offline.js',
                 '/js/push.js',
                 '/js/nachlade.js',
+                '/js/kalender-events.js',
                 '/js/kalender.js',
             ],
         ]));
