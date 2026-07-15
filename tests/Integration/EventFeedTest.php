@@ -59,6 +59,39 @@ final class EventFeedTest extends DatabaseTestCase
         self::assertSame($this->pitchId, $events[0]['pitch_id']);
         self::assertSame('#0969da', $events[0]['team_farbe']);
         self::assertSame('#1a7f37', $events[0]['venue_farbe'], 'venue color of the pitch');
+        self::assertNull($events[0]['pitch_adresse'], 'no pitch-specific override in fixtures');
+        self::assertSame('Sportweg 1', $events[0]['venue_adresse'], 'Maps-Link-Fallback: Vereinsadresse');
+    }
+
+    public function testMapsAddressPrefersPitchOverrideOverVenueAddress(): void
+    {
+        $pitchWithOwnAddress = $this->eventStore()->append(
+            \App\Domain\AggregateType::Pitch,
+            null,
+            \App\Domain\EventType::Created,
+            ['venue_id' => $this->venueId, 'name' => 'Nebenplatz', 'typ' => 'Rasen', 'flutlicht' => false, 'adresse' => 'Waldweg 3', 'sortierung' => 1],
+            $this->context(),
+        )->aggregateId;
+        $this->bookingService()->createSlot([
+            'team_ids' => [$this->teamId],
+            'pitch_id' => $pitchWithOwnAddress,
+            'wochentage' => [3],
+            'beginn' => '18:00',
+            'ende' => '19:00',
+            'gueltig_ab' => '2026-08-01',
+            'gueltig_bis' => '2026-08-31',
+        ], $this->context());
+
+        $events = $this->eventFeedService()->events([
+            'von' => '2026-08-03',
+            'bis' => '2026-08-09',
+            'typ' => 'belegung',
+        ]);
+
+        $nebenplatz = array_values(array_filter($events, static fn(array $e): bool => $e['pitch_id'] === $pitchWithOwnAddress));
+        self::assertCount(1, $nebenplatz);
+        self::assertSame('Waldweg 3', $nebenplatz[0]['pitch_adresse']);
+        self::assertSame('Sportweg 1', $nebenplatz[0]['venue_adresse'], 'venue address still carried alongside the override');
     }
 
     public function testHomeMatchResolvesVenueAndAwayMatchGetsAwayColor(): void
@@ -82,8 +115,11 @@ final class EventFeedTest extends DatabaseTestCase
         self::assertCount(2, $events);
         self::assertSame($this->venueId, $events[0]['venue_id'], 'display-time venue resolution');
         self::assertSame('#1a7f37', $events[0]['venue_farbe']);
+        self::assertSame('Sportweg 1', $events[0]['venue_adresse'], 'Maps-Link-Fallback: Vereinsadresse ohne Platz-Zuordnung');
         self::assertNull($events[1]['venue_id'], 'no keyword match means away');
         self::assertSame('#57606a', $events[1]['venue_farbe'], 'global away color from setting');
+        self::assertNull($events[1]['venue_adresse'], 'Auswärtsspiel: kein Verein aufgelöst, Maps-Link nutzt ort_text');
+        self::assertNull($events[1]['pitch_adresse']);
     }
 
     public function testFiltersTeamBereichVenue(): void
