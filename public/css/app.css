@@ -1,13 +1,63 @@
+/*
+ * Vereinsfarben: alle Farben der Anwendung sind hier als CSS Custom
+ * Properties definiert (Issue #1). Palette abgeleitet aus Grau (neutrale
+ * Flächen/Text), leichtem Grün (Primär/Aktionen) und leichtem Gelb
+ * (Akzent/Hervorhebung). --color-accent-bg/--color-warning-bg und
+ * --color-on-accent sind bewusst modus-unabhängig, da sie ausschließlich
+ * mit fester weißer Schrift kombiniert werden (Buttons, Icon, Banner);
+ * alle übrigen Farben sind je Modus auf WCAG-AA-Kontrast (>= 4.5:1 Text,
+ * >= 3:1 Rahmen/große Schrift) gegen --color-bg abgestimmt, siehe PR-
+ * Beschreibung für die gemessenen Werte.
+ */
 :root {
-    --color-bg: #ffffff;
-    --color-text: #1a1a1a;
-    --color-accent: #1a7f37;
+    --color-accent-bg: #328551;
+    --color-warning-bg: #8d651b;
+    --color-on-accent: #ffffff;
+
+    --color-bg: #f4f6f4;
+    --color-text: #131b15;
+    --color-text-muted: #495a4b;
+    --color-accent: #27683f;
+    --color-warning: #8d651b;
+    --color-danger: #a82d24;
+    --color-info: #276591;
+
+    /* FullCalendar theming (vendor bundle injects its own :root defaults
+       at an unpredictable time relative to this stylesheet, so !important
+       is needed to make our palette win deterministically). */
+    --fc-page-bg-color: var(--color-bg) !important;
+    --fc-neutral-bg-color: color-mix(in srgb, var(--color-text) 8%, var(--color-bg)) !important;
+    --fc-neutral-text-color: var(--color-text-muted) !important;
+    --fc-border-color: color-mix(in srgb, var(--color-text) 20%, transparent) !important;
+    --fc-button-text-color: var(--color-on-accent) !important;
+    --fc-button-bg-color: var(--color-accent-bg) !important;
+    --fc-button-border-color: var(--color-accent-bg) !important;
+    --fc-button-hover-bg-color: var(--color-accent) !important;
+    --fc-button-hover-border-color: var(--color-accent) !important;
+    --fc-button-active-bg-color: var(--color-accent) !important;
+    --fc-button-active-border-color: var(--color-accent) !important;
+    --fc-event-bg-color: var(--color-accent-bg) !important;
+    --fc-event-border-color: var(--color-accent-bg) !important;
+    --fc-event-text-color: var(--color-on-accent) !important;
+    --fc-event-selected-overlay-color: color-mix(in srgb, var(--color-text) 25%, transparent) !important;
+    --fc-more-link-bg-color: color-mix(in srgb, var(--color-text) 15%, var(--color-bg)) !important;
+    --fc-non-business-color: color-mix(in srgb, var(--color-text) 8%, transparent) !important;
+    --fc-bg-event-color: var(--color-accent) !important;
+    --fc-highlight-color: color-mix(in srgb, var(--color-accent) 30%, transparent) !important;
+    --fc-today-bg-color: color-mix(in srgb, var(--color-warning) 15%, transparent) !important;
+    --fc-now-indicator-color: var(--color-danger) !important;
+    --fc-list-event-hover-bg-color: color-mix(in srgb, var(--color-text) 6%, var(--color-bg)) !important;
 }
 
 @media (prefers-color-scheme: dark) {
     :root {
-        --color-bg: #121212;
-        --color-text: #e6e6e6;
+        --color-bg: #131b15;
+        --color-text: #e6eae7;
+        --color-text-muted: #819283;
+        --color-accent: #95d0ab;
+        --color-warning: #e7ca74;
+        --color-danger: #e0736c;
+        --color-info: #88badd;
     }
 }
 
@@ -109,8 +159,8 @@ main {
 }
 
 .segmented button.active {
-    background: var(--color-accent);
-    color: #fff;
+    background: var(--color-accent-bg);
+    color: var(--color-on-accent);
 }
 
 dialog.sheet {
@@ -154,7 +204,7 @@ dialog.sheet::backdrop {
 }
 
 .warning-message {
-    color: #bc4c00;
+    color: var(--color-warning);
 }
 
 .ev-abgesagt {
@@ -175,8 +225,8 @@ dialog.sheet::backdrop {
 }
 
 .offline-banner {
-    background: #bf8700;
-    color: #fff;
+    background: var(--color-warning-bg);
+    color: var(--color-on-accent);
     text-align: center;
     padding: 0.5rem 1rem;
     font-weight: 600;
@@ -189,8 +239,8 @@ dialog.sheet::backdrop {
 
 .hint {
     padding: 0.5rem 0.75rem;
-    border-left: 4px solid #bf8700;
-    background: color-mix(in srgb, #bf8700 12%, var(--color-bg));
+    border-left: 4px solid var(--color-warning);
+    background: color-mix(in srgb, var(--color-warning) 12%, var(--color-bg));
 }
 
 .content-page h1 {
@@ -217,9 +267,9 @@ textarea {
     font-weight: 600;
 }
 
-.monitor-gruen { background: color-mix(in srgb, #1a7f37 20%, var(--color-bg)); }
-.monitor-gelb { background: color-mix(in srgb, #bf8700 25%, var(--color-bg)); }
-.monitor-rot { background: color-mix(in srgb, #cf222e 25%, var(--color-bg)); }
+.monitor-gruen { background: color-mix(in srgb, var(--color-accent) 20%, var(--color-bg)); }
+.monitor-gelb { background: color-mix(in srgb, var(--color-warning) 25%, var(--color-bg)); }
+.monitor-rot { background: color-mix(in srgb, var(--color-danger) 25%, var(--color-bg)); }
 .monitor-grau { background: color-mix(in srgb, var(--color-text) 12%, var(--color-bg)); }
 
 .bars {
@@ -241,7 +291,7 @@ textarea {
 
 .bar-fill {
     width: 100%;
-    background: var(--color-accent);
+    background: var(--color-accent-bg);
     border-radius: 3px 3px 0 0;
     min-height: 2px;
 }
@@ -299,10 +349,10 @@ pre.payload {
     border: 1px solid color-mix(in srgb, var(--color-text) 30%, transparent);
 }
 
-.chip-frei { background: color-mix(in srgb, #1a7f37 15%, var(--color-bg)); }
-.chip-belegt { background: color-mix(in srgb, #0969da 25%, var(--color-bg)); }
-.chip-eingeschraenkt { background: color-mix(in srgb, #bf8700 30%, var(--color-bg)); }
-.chip-gesperrt { background: color-mix(in srgb, #cf222e 30%, var(--color-bg)); }
+.chip-frei { background: color-mix(in srgb, var(--color-accent) 15%, var(--color-bg)); }
+.chip-belegt { background: color-mix(in srgb, var(--color-info) 25%, var(--color-bg)); }
+.chip-eingeschraenkt { background: color-mix(in srgb, var(--color-warning) 30%, var(--color-bg)); }
+.chip-gesperrt { background: color-mix(in srgb, var(--color-danger) 30%, var(--color-bg)); }
 
 .venue-block {
     margin-bottom: 2rem;
@@ -316,8 +366,8 @@ pre.payload {
 
 .hint {
     padding: 0.5rem 0.75rem;
-    border-left: 4px solid #bf8700;
-    background: color-mix(in srgb, #bf8700 12%, var(--color-bg));
+    border-left: 4px solid var(--color-warning);
+    background: color-mix(in srgb, var(--color-warning) 12%, var(--color-bg));
 }
 
 .pitch-block {
@@ -344,7 +394,7 @@ pre.payload {
     position: relative;
     flex: 1;
     height: 2rem;
-    background: color-mix(in srgb, #1a7f37 10%, var(--color-bg));
+    background: color-mix(in srgb, var(--color-accent) 10%, var(--color-bg));
     border: 1px solid color-mix(in srgb, var(--color-text) 20%, transparent);
     border-radius: 4px;
     overflow: hidden;
@@ -374,22 +424,22 @@ pre.payload {
 }
 
 .segment-belegt {
-    background: color-mix(in srgb, #0969da 35%, var(--color-bg));
+    background: color-mix(in srgb, var(--color-info) 35%, var(--color-bg));
 }
 
 .segment-eingeschraenkt {
-    background: color-mix(in srgb, #bf8700 40%, var(--color-bg));
+    background: color-mix(in srgb, var(--color-warning) 40%, var(--color-bg));
 }
 
 .segment-gesperrt {
-    background: color-mix(in srgb, #cf222e 40%, var(--color-bg));
+    background: color-mix(in srgb, var(--color-danger) 40%, var(--color-bg));
 }
 
 .eingeschraenkt-layer {
     background: repeating-linear-gradient(
         45deg,
-        color-mix(in srgb, #bf8700 35%, transparent),
-        color-mix(in srgb, #bf8700 35%, transparent) 6px,
+        color-mix(in srgb, var(--color-warning) 35%, transparent),
+        color-mix(in srgb, var(--color-warning) 35%, transparent) 6px,
         transparent 6px,
         transparent 12px
     );
@@ -485,8 +535,8 @@ button,
     padding: 0.5rem 1rem;
     border: none;
     border-radius: 4px;
-    background: var(--color-accent);
-    color: #fff;
+    background: var(--color-accent-bg);
+    color: var(--color-on-accent);
     font: inherit;
     font-weight: 600;
     text-decoration: none;
@@ -502,7 +552,7 @@ button.linklike {
 }
 
 button.linklike.danger {
-    color: #cf222e;
+    color: var(--color-danger);
 }
 
 .inline-form {
@@ -557,7 +607,7 @@ th, td {
 
 .error-message,
 .field-error {
-    color: #cf222e;
+    color: var(--color-danger);
 }
 
 .field-error {
