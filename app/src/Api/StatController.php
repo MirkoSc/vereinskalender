@@ -14,7 +14,7 @@ use App\Repository\UsageStatRepository;
  */
 final readonly class StatController
 {
-    private const array METRIKEN = ['moduswechsel', 'filternutzung', 'push_abo_dialog', 'pwa_installation'];
+    private const array METRIKEN = ['moduswechsel', 'filternutzung', 'push_abo_dialog', 'pwa_installation', 'platzauswahl'];
 
     public function __construct(private UsageStatRepository $stats)
     {
