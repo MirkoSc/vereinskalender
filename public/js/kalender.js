@@ -52,7 +52,8 @@
 
     const eventColor = (props) => {
         if (props.typ === 'sperrung') {
-            return props.art === 'gesperrt' ? '#cf222e' : '#bf8700';
+            // same CSS custom properties as app.css, not a second literal (Issue #1)
+            return props.art === 'gesperrt' ? 'var(--color-danger)' : 'var(--color-warning)';
         }
         return modus === 'team' ? props.team_farbe : props.venue_farbe;
     };
