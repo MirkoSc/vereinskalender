@@ -26,6 +26,64 @@
 
     const zustandLabel = { frei: 'frei', belegt: 'belegt', eingeschraenkt: 'eingeschränkt', gesperrt: 'gesperrt' };
 
+    // ---- filter (Issue #8: Filter-Button + Panel/Bottom-Sheet, Chips nur
+    // für Abweichungen vom Default, URL teilbar) ----
+
+    const filterDefinitionen = [
+        { key: 'pitch', default: '', label: (wert) => `Platz: ${appData.pitches.find((p) => String(p.id) === wert)?.name ?? `#${wert}`}` },
+    ];
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const filters = window.VKFilter.leseFilterAusUrl(urlParams, filterDefinitionen);
+    if (!urlParams.has('pitch')) {
+        filters.pitch = localStorage.getItem('verfuegbarkeit_platz') ?? '';
+    }
+
+    const filterDialog = document.querySelector('#filter-dialog');
+    const filterChips = document.querySelector('#filter-chips');
+    const filterBadge = document.querySelector('#filter-badge');
+
+    const aktualisiereUrl = () => {
+        const query = window.VKFilter.schreibeUrlParams(filters, filterDefinitionen).toString();
+        history.replaceState(null, '', window.location.pathname + (query ? `?${query}` : ''));
+    };
+
+    const renderFilterUi = () => {
+        const abweichungen = window.VKFilter.aktiveAbweichungen(filters, filterDefinitionen);
+        filterChips.replaceChildren();
+        for (const chip of abweichungen) {
+            const li = document.createElement('li');
+            li.className = 'chip';
+            const text = document.createElement('span');
+            text.textContent = chip.text;
+            const entfernen = document.createElement('button');
+            entfernen.type = 'button';
+            entfernen.className = 'chip-remove';
+            entfernen.setAttribute('aria-label', `Filter „${chip.text}" entfernen`);
+            entfernen.textContent = '×';
+            entfernen.addEventListener('click', () => setzeFilter('pitch', ''));
+            li.append(text, entfernen);
+            filterChips.append(li);
+        }
+        filterBadge.textContent = String(abweichungen.length);
+        filterBadge.hidden = abweichungen.length === 0;
+        aktualisiereUrl();
+    };
+
+    const setzeFilter = (key, wert) => {
+        filters[key] = wert;
+        localStorage.setItem('verfuegbarkeit_platz', filters.pitch);
+        pitchSelect.value = filters.pitch;
+        renderFilterUi();
+        if (lastData) {
+            render(lastData);
+        }
+    };
+
+    document.querySelector('#filter-button').addEventListener('click', () => filterDialog.showModal());
+    document.querySelector('#filter-close').addEventListener('click', () => filterDialog.close());
+    document.querySelector('#filter-reset').addEventListener('click', () => setzeFilter('pitch', ''));
+
     // ---- pitch selector (Issue #7, narrow screens) ----
     // Below the desktop-sidebar breakpoint the stacked "alle Plätze
     // untereinander" view gives way to a dropdown: "Alle Plätze" (same
@@ -38,23 +96,21 @@
     const isWideVerf = window.matchMedia('(min-width: 1100px)').matches;
     let lastData = null;
     const pitchSelect = document.querySelector('#filter-pitch');
-    pitchSelect.closest('.filter-narrow')?.classList.toggle('filter-narrow-hidden', isWideVerf);
+    for (const button of document.querySelectorAll('.filter-narrow')) {
+        button.classList.toggle('filter-narrow-hidden', isWideVerf);
+    }
     for (const pitch of appData.pitches) {
         pitchSelect.add(new Option(`${pitch.name} (${pitch.venue_name})`, String(pitch.id)));
     }
-    let storedPitch = localStorage.getItem('verfuegbarkeit_platz') ?? '';
     // a pitch removed/deactivated since the choice was stored would otherwise
     // filter every venue block down to zero pitches with no visible cause
-    if (!appData.pitches.some((p) => String(p.id) === storedPitch)) {
-        storedPitch = '';
+    if (!appData.pitches.some((p) => String(p.id) === filters.pitch)) {
+        filters.pitch = '';
     }
-    pitchSelect.value = storedPitch;
-    pitchSelect.addEventListener('change', () => {
-        localStorage.setItem('verfuegbarkeit_platz', pitchSelect.value);
-        if (lastData) {
-            render(lastData);
-        }
-    });
+    pitchSelect.value = filters.pitch;
+    pitchSelect.addEventListener('change', () => setzeFilter('pitch', pitchSelect.value));
+
+    renderFilterUi();
 
     const load = async () => {
         const von = iso(wochenstart);

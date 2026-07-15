@@ -75,7 +75,7 @@ final readonly class BookingService
 
         $result = $this->checkPayload($payload, null, []);
         if ($result->hasConflicts()) {
-            throw new ConflictException($result->conflicts);
+            throw new ConflictException($result->conflicts, $result->details);
         }
 
         $id = $this->eventStore
@@ -101,7 +101,7 @@ final readonly class BookingService
 
         $result = $this->checkPayload($plan['payload'], $plan['ignore_slot_id'], $plan['extra_exceptions']);
         if ($result->hasConflicts()) {
-            throw new ConflictException($result->conflicts);
+            throw new ConflictException($result->conflicts, $result->details);
         }
 
         $resultId = match ($plan['scope']) {
@@ -378,17 +378,38 @@ final readonly class BookingService
 
         $conflicts = [];
         $warnings = [];
+        $details = [];
+        $seenDetails = [];
+        $addDetail = static function (Conflict $detail) use (&$details, &$seenDetails): void {
+            $key = implode('|', [$detail->typ, $detail->verursacherId, $detail->datum, $detail->von, $detail->bis]);
+            if (isset($seenDetails[$key])) {
+                return;
+            }
+            $seenDetails[$key] = true;
+            $details[] = $detail;
+        };
 
         foreach ($candidateOccurrences as $occurrence) {
             foreach ($occurrencesByDate[$occurrence->datum] ?? [] as $other) {
                 if (self::overlaps($occurrence->start, $occurrence->end, $other->start, $other->end)) {
-                    $conflicts[] = sprintf(
+                    $message = sprintf(
                         'Kollidiert am %s mit der Belegung von %s (%s–%s Uhr).',
                         self::germanDate($occurrence->datum),
                         $namesOf($other->teamIds),
                         $other->start->format('H:i'),
                         $other->end->format('H:i'),
                     );
+                    $conflicts[] = $message;
+                    $addDetail(new Conflict(
+                        'slot',
+                        $other->slotId,
+                        $namesOf($other->teamIds),
+                        $occurrence->datum,
+                        $other->start->format('H:i'),
+                        $other->end->format('H:i'),
+                        false,
+                        $message,
+                    ));
                 }
             }
 
@@ -399,12 +420,23 @@ final readonly class BookingService
                 $matchStart = new \DateTimeImmutable((string) $match['anstoss']);
                 $matchEnd = $matchStart->modify(self::MATCH_DURATION);
                 if (self::overlaps($occurrence->start, $occurrence->end, $matchStart, $matchEnd)) {
-                    $conflicts[] = sprintf(
+                    $message = sprintf(
                         'Kollidiert am %s mit dem Spiel gegen %s (Anstoß %s Uhr).',
                         self::germanDate($occurrence->datum),
                         (string) $match['gegner'],
                         $matchStart->format('H:i'),
                     );
+                    $conflicts[] = $message;
+                    $addDetail(new Conflict(
+                        'match',
+                        (int) $match['id'],
+                        'Spiel gegen ' . (string) $match['gegner'],
+                        $occurrence->datum,
+                        $matchStart->format('H:i'),
+                        $matchEnd->format('H:i'),
+                        false,
+                        $message,
+                    ));
                 }
             }
 
@@ -414,25 +446,39 @@ final readonly class BookingService
                 if (!self::overlaps($occurrence->start, $occurrence->end, $restrictionStart, $restrictionEnd)) {
                     continue;
                 }
-                if ((string) $restriction['art'] === RestrictionArt::Gesperrt->value) {
-                    $conflicts[] = sprintf(
-                        'Platz ist am %s gesperrt: %s',
-                        self::germanDate($occurrence->datum),
-                        (string) $restriction['grund'],
-                    );
-                } else {
-                    $warnings[] = sprintf(
+                $istWarnung = (string) $restriction['art'] !== RestrictionArt::Gesperrt->value;
+                if ($istWarnung) {
+                    $message = sprintf(
                         'Platz ist am %s eingeschränkt nutzbar: %s',
                         self::germanDate($occurrence->datum),
                         (string) $restriction['grund'],
                     );
+                    $warnings[] = $message;
+                } else {
+                    $message = sprintf(
+                        'Platz ist am %s gesperrt: %s',
+                        self::germanDate($occurrence->datum),
+                        (string) $restriction['grund'],
+                    );
+                    $conflicts[] = $message;
                 }
+                $addDetail(new Conflict(
+                    'restriktion',
+                    (int) $restriction['id'],
+                    (string) $restriction['grund'],
+                    $occurrence->datum,
+                    $occurrence->start->format('H:i'),
+                    $occurrence->end->format('H:i'),
+                    $istWarnung,
+                    $message,
+                ));
             }
         }
 
         return new ConflictCheckResult(
             array_values(array_unique($conflicts)),
             array_values(array_unique($warnings)),
+            $details,
         );
     }
 

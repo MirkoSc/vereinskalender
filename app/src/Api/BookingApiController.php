@@ -10,7 +10,9 @@ use App\Http\Request;
 use App\Http\Response;
 use App\Http\Session;
 use App\Service\Kalender\BookingService;
+use App\Service\Kalender\Conflict;
 use App\Service\Kalender\ConflictException;
+use App\Service\Kalender\ConflictGrouper;
 use App\Service\Kalender\MatchService;
 use App\Service\Kalender\RestrictionService;
 use App\Service\ValidationException;
@@ -44,7 +46,10 @@ final readonly class BookingApiController
                 ($request->post['slot_id'] ?? '') !== '' ? (int) $request->post['slot_id'] : null,
             );
 
-            return Response::json(['konflikte' => $result->conflicts, 'warnungen' => $result->warnings]);
+            return Response::json([
+                'konflikte' => ConflictGrouper::group(self::onlyConflicts($result->details)),
+                'warnungen' => ConflictGrouper::group(self::onlyWarnings($result->details)),
+            ]);
         } catch (ValidationException $e) {
             return Response::json(['fehler' => $e->getErrors()], 422);
         }
@@ -59,7 +64,7 @@ final readonly class BookingApiController
         } catch (ValidationException $e) {
             return Response::json(['fehler' => $e->getErrors()], 422);
         } catch (ConflictException $e) {
-            return Response::json(['konflikte' => $e->getConflicts()], 409);
+            return Response::json(['konflikte' => ConflictGrouper::group(self::onlyConflicts($e->getDetails()))], 409);
         }
     }
 
@@ -75,8 +80,26 @@ final readonly class BookingApiController
         } catch (ValidationException $e) {
             return Response::json(['fehler' => $e->getErrors()], 422);
         } catch (ConflictException $e) {
-            return Response::json(['konflikte' => $e->getConflicts()], 409);
+            return Response::json(['konflikte' => ConflictGrouper::group(self::onlyConflicts($e->getDetails()))], 409);
         }
+    }
+
+    /**
+     * @param list<Conflict> $details
+     * @return list<Conflict>
+     */
+    private static function onlyConflicts(array $details): array
+    {
+        return array_values(array_filter($details, static fn(Conflict $d): bool => !$d->istWarnung));
+    }
+
+    /**
+     * @param list<Conflict> $details
+     * @return list<Conflict>
+     */
+    private static function onlyWarnings(array $details): array
+    {
+        return array_values(array_filter($details, static fn(Conflict $d): bool => $d->istWarnung));
     }
 
     /**
