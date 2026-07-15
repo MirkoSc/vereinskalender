@@ -378,6 +378,16 @@
     window.addEventListener('scroll', listeWeiterLaden, { passive: true });
 
     const isMobile = window.matchMedia('(max-width: 767px)').matches;
+    const initialViewTyp = ansicht === 'belegung'
+        ? (isWideBelegung ? 'resourceTimeGridWeek' : (isMobile ? 'listNachlade' : 'timeGridWeek'))
+        : (isMobile ? 'listNachlade' : 'dayGridMonth');
+    // FullCalendar ruft die 'events'-Callback für den ersten Fetch synchron
+    // WÄHREND des Constructor-Aufrufs auf, bevor `calendar` unten zugewiesen
+    // ist - `calendar.view.type` wäre dort ein TDZ-Fehler, `info.view.type`
+    // existiert nicht (fetchInfo hat kein .view, Issue #19). Der aktive
+    // View-Typ wird deshalb separat mitgeführt: hier mit dem initialView
+    // vorbelegt, danach von datesSet aktuell gehalten.
+    let aktuellerViewTyp = initialViewTyp;
     const calendar = new FullCalendar.Calendar(document.querySelector('#kalender'), {
         schedulerLicenseKey: 'GPL-My-Project-Is-Open-Source',
         locale: 'de',
@@ -390,9 +400,7 @@
         // Issue #6: Platz-Spalten (resourceTimeGridWeek) nur ab der Desktop-
         // Sidebar-Schwelle (~1100px); darunter ersetzt die Platz-Auswahl
         // (Dropdown) die Spalten durch eine gemeinsame Wochenansicht.
-        initialView: ansicht === 'belegung'
-            ? (isWideBelegung ? 'resourceTimeGridWeek' : (isMobile ? 'listNachlade' : 'timeGridWeek'))
-            : (isMobile ? 'listNachlade' : 'dayGridMonth'),
+        initialView: initialViewTyp,
         headerToolbar: {
             left: 'prev,next today',
             center: 'title',
@@ -420,15 +428,9 @@
             ? appData.pitches.map((p) => ({ id: String(p.id), title: `${p.name} (${p.venue_name})` }))
             : [],
         events: async (info, success, failure) => {
-            const params = new URLSearchParams({ typ: ansicht === 'belegung' ? 'belegung' : 'spiel' });
-            for (const [key, value] of Object.entries(filters)) {
-                // 'pitch' filtert nur clientseitig (applyPitchFilter), /api/events kennt es nicht
-                if (value !== '' && key !== 'pitch') {
-                    params.set(key, value);
-                }
-            }
+            const params = window.VKKalenderEvents.baueEventsParams(ansicht, filters);
 
-            if (info.view.type === 'listNachlade') {
+            if (window.VKKalenderEvents.istListenAnsicht(aktuellerViewTyp)) {
                 await ladeListenBatch(info, params, success, failure);
                 return;
             }
@@ -446,8 +448,13 @@
         // FullCalendar's buttonHints only sets the hover title, not
         // aria-label; the icon-only "Heute" button (Issue #3) needs an
         // explicit one. datesSet fires on every toolbar re-render (nav,
-        // view switch), so re-apply it there too.
-        datesSet: () => document.querySelector('.fc-today-button')?.setAttribute('aria-label', 'Heute'),
+        // view switch), so re-apply it there too. Also keeps aktuellerViewTyp
+        // in sync (Issue #19: the events-Callback cannot read the view type
+        // off `calendar` or `info` itself, see above).
+        datesSet: (info) => {
+            aktuellerViewTyp = info.view.type;
+            document.querySelector('.fc-today-button')?.setAttribute('aria-label', 'Heute');
+        },
     });
     calendar.render();
 
