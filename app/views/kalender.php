@@ -29,6 +29,14 @@
         </label>
 
         <?php if ($ansicht === 'belegung'): ?>
+            <!-- Issue #6: unterhalb der Desktop-Sidebar-Schwelle (~1100px) ersetzt
+                 diese Auswahl die Platz-Spalten; "Alle" faerbt nach Platzfarbe. -->
+            <label class="filter filter-narrow">
+                Platz
+                <select id="filter-pitch">
+                    <option value="">Alle Plätze</option>
+                </select>
+            </label>
             <button type="button" id="new-booking" class="button">Belegung eintragen</button>
         <?php endif; ?>
 

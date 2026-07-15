@@ -5,6 +5,14 @@
         <button type="button" id="prev-week" class="linklike">‹ Vorherige Woche</button>
         <strong id="range-label"></strong>
         <button type="button" id="next-week" class="linklike">Nächste Woche ›</button>
+        <!-- Issue #7: unterhalb der Desktop-Sidebar-Schwelle (~1100px) ersetzt
+             diese Auswahl die Untereinander-Darstellung aller Plätze. -->
+        <label class="filter filter-narrow">
+            Platz
+            <select id="filter-pitch">
+                <option value="">Alle Plätze</option>
+            </select>
+        </label>
         <button type="button" id="new-restriction" class="button">Sperrung eintragen</button>
         <button type="button" id="push-bell" class="linklike bell" title="Push-Benachrichtigungen">🔔</button>
     </div>

@@ -198,6 +198,17 @@ main {
     font-size: 0.85rem;
 }
 
+/* Platz-Auswahl (Issues #6/#7): Dropdown nur unterhalb der Desktop-Sidebar-
+   Schwelle (CLAUDE.md Abschnitt 9, ~1100px) - darüber bleibt die bisherige
+   Spalten- bzw. Untereinander-Darstellung ohne Auswahl bestehen. Sichtbarkeit
+   wird per JS anhand derselben einmalig ausgewerteten matchMedia-Schwelle
+   gesteuert wie die Filter-/Farblogik selbst (keine eigene @media-Regel),
+   damit Auswahl und Darstellung bei einer Fenster-Größenänderung nie
+   auseinanderlaufen können - ein Reload wendet die neue Breite an. */
+.filter-narrow-hidden {
+    display: none;
+}
+
 .segmented {
     display: inline-flex;
     border: 1px solid var(--color-accent);

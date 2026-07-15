@@ -38,6 +38,40 @@
     bereichSelect.addEventListener('change', () => { filters.bereich = bereichSelect.value; onFilterChange(); });
     venueSelect.addEventListener('change', () => { filters.venue = venueSelect.value; onFilterChange(); });
 
+    // ---- pitch selector (Issue #6, Platzbelegung only, narrow screens) ----
+    // Below the desktop-sidebar breakpoint the pitch columns give way to a
+    // dropdown: "Alle Plätze" (one shared week colored by Platzfarbe, pitch
+    // name as text) or a single pitch (normal week, just that pitch).
+    // Client-side only: /api/events has no pitch filter, every event already
+    // carries pitch_id/pitch_farbe/pitch_name from the events feed.
+    // Snapshot once, like the existing isMobile check below: the dropdown's
+    // visibility is driven from this same flag (not a live CSS media query),
+    // so it can never disagree with the filtering/coloring logic it drives.
+    const isWideBelegung = window.matchMedia('(min-width: 1100px)').matches;
+    let pitchFilter = localStorage.getItem('belegung_platz') ?? '';
+    const pitchSelect = document.querySelector('#filter-pitch');
+    if (pitchSelect) {
+        pitchSelect.closest('.filter-narrow')?.classList.toggle('filter-narrow-hidden', isWideBelegung);
+        for (const pitch of appData.pitches) {
+            pitchSelect.add(new Option(`${pitch.name} (${pitch.venue_name})`, String(pitch.id)));
+        }
+        // a pitch removed/deactivated since the choice was stored would leave
+        // the select showing "Alle Plätze" while pitchFilter still held the
+        // stale id, silently filtering every event away - fall back to ''
+        if (!appData.pitches.some((p) => String(p.id) === pitchFilter)) {
+            pitchFilter = '';
+        }
+        pitchSelect.value = pitchFilter;
+        pitchSelect.addEventListener('change', () => {
+            pitchFilter = pitchSelect.value;
+            localStorage.setItem('belegung_platz', pitchFilter);
+            beacon('platzauswahl');
+            calendar.refetchEvents();
+        });
+    }
+    // "Alle" chosen below the breakpoint: color by pitch instead of team/venue
+    const pitchAlleAktiv = () => ansicht === 'belegung' && !isWideBelegung && pitchFilter === '';
+
     for (const button of document.querySelectorAll('.segmented button')) {
         button.addEventListener('click', () => {
             document.querySelector('.segmented .active')?.classList.remove('active');
@@ -55,12 +89,19 @@
             // same CSS custom properties as app.css, not a second literal (Issue #1)
             return props.art === 'gesperrt' ? 'var(--color-danger)' : 'var(--color-warning)';
         }
+        if (pitchAlleAktiv()) {
+            return props.pitch_farbe ?? 'var(--color-text-muted)';
+        }
         return modus === 'team' ? props.team_farbe : props.venue_farbe;
     };
 
+    // "Alle Plätze" (Issue #6): Platzfarbe allein reicht nicht (Farbe nie
+    // einziges Signal) - Platzname als Text vor den Titel setzen.
+    const eventTitle = (props) => (pitchAlleAktiv() && props.pitch_name ? `${props.pitch_name}: ${props.titel}` : props.titel);
+
     const toFcEvent = (e) => ({
         id: e.id,
-        title: e.titel,
+        title: eventTitle(e),
         start: e.start,
         end: e.ende,
         resourceId: e.pitch_id !== null ? String(e.pitch_id) : undefined,
@@ -69,6 +110,15 @@
         classNames: [`ev-${e.typ}`, e.status === 'abgesagt' ? 'ev-abgesagt' : ''].filter(Boolean),
         extendedProps: e,
     });
+
+    // Einzelplatz (Issue #6): auf schmalen Bildschirmen filtert die Auswahl
+    // sowohl Belegungen als auch Sperrungen auf genau diesen Platz. Ab der
+    // Breiten-Schwelle bleibt der Filter wirkungslos, auch wenn ein alter
+    // Wert aus localStorage noch gesetzt ist - dort zeigen die Spalten immer
+    // alle Plätze (das Dropdown ist dort ja auch ausgeblendet).
+    const applyPitchFilter = (events) => (ansicht === 'belegung' && !isWideBelegung && pitchFilter !== ''
+        ? events.filter((e) => String(e.pitch_id) === pitchFilter)
+        : events);
 
     const recolor = () => {
         for (const event of calendar.getEvents()) {
@@ -86,14 +136,17 @@
         slotMinTime: '07:00:00',
         slotMaxTime: '23:00:00',
         nowIndicator: true,
+        // Issue #6: Platz-Spalten (resourceTimeGridWeek) nur ab der Desktop-
+        // Sidebar-Schwelle (~1100px); darunter ersetzt die Platz-Auswahl
+        // (Dropdown) die Spalten durch eine gemeinsame Wochenansicht.
         initialView: ansicht === 'belegung'
-            ? (isMobile ? 'listWeek' : 'resourceTimeGridWeek')
+            ? (isWideBelegung ? 'resourceTimeGridWeek' : (isMobile ? 'listWeek' : 'timeGridWeek'))
             : (isMobile ? 'listWeek' : 'dayGridMonth'),
         headerToolbar: {
             left: 'prev,next today',
             center: 'title',
             right: ansicht === 'belegung'
-                ? 'resourceTimeGridWeek,listWeek'
+                ? (isWideBelegung ? 'resourceTimeGridWeek,listWeek' : 'timeGridWeek,listWeek')
                 : 'dayGridMonth,timeGridWeek,listWeek',
         },
         // Issue #3: "Heute" als Icon/Kurzform ohne Schriftzug, aber weiterhin
@@ -102,7 +155,7 @@
         // 360-430px); "Liste" ist gleichwertig kurz zu "Woche"/"Monat".
         buttonText: { today: '●', listWeek: 'Liste' },
         buttonHints: { today: 'Heute' },
-        resources: ansicht === 'belegung'
+        resources: ansicht === 'belegung' && isWideBelegung
             ? appData.pitches.map((p) => ({ id: String(p.id), title: `${p.name} (${p.venue_name})` }))
             : [],
         events: async (info, success, failure) => {
@@ -123,7 +176,7 @@
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
                 }
-                success((await response.json()).events.map(toFcEvent));
+                success(applyPitchFilter((await response.json()).events).map(toFcEvent));
             } catch (error) {
                 // offline: render from the IndexedDB bundle (today..+7);
                 // filters keep working, ranges outside the window get a hint
@@ -143,7 +196,7 @@
                 const typFilter = ansicht === 'belegung'
                     ? (e) => e.typ === 'belegung' || e.typ === 'sperrung'
                     : (e) => e.typ === 'spiel';
-                success(bundle.events
+                const bundleEvents = bundle.events
                     .filter(typFilter)
                     .filter((e) => e.start.slice(0, 10) <= bis && e.start.slice(0, 10) >= von)
                     .filter((e) => {
@@ -172,8 +225,8 @@
                             return e.venue_id === null;
                         }
                         return String(e.venue_id) === filters.venue;
-                    })
-                    .map(toFcEvent));
+                    });
+                success(applyPitchFilter(bundleEvents).map(toFcEvent));
             }
         },
         eventClick: (info) => showDetail(info.event.extendedProps),
