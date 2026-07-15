@@ -42,6 +42,7 @@ final class EventFeedTest extends DatabaseTestCase
             self::assertArrayHasKey('team_farbe', $event, $event['id']);
             self::assertArrayHasKey('venue_farbe', $event, $event['id']);
             self::assertArrayHasKey('venue_id', $event, $event['id']);
+            self::assertArrayHasKey('pitch_farbe', $event, $event['id']);
         }
     }
 
@@ -59,6 +60,7 @@ final class EventFeedTest extends DatabaseTestCase
         self::assertSame($this->pitchId, $events[0]['pitch_id']);
         self::assertSame('#0969da', $events[0]['team_farbe']);
         self::assertSame('#1a7f37', $events[0]['venue_farbe'], 'venue color of the pitch');
+        self::assertSame('#0969da', $events[0]['pitch_farbe']);
         self::assertNull($events[0]['pitch_adresse'], 'no pitch-specific override in fixtures');
         self::assertSame('Sportweg 1', $events[0]['venue_adresse'], 'Maps-Link-Fallback: Vereinsadresse');
     }
@@ -69,7 +71,7 @@ final class EventFeedTest extends DatabaseTestCase
             \App\Domain\AggregateType::Pitch,
             null,
             \App\Domain\EventType::Created,
-            ['venue_id' => $this->venueId, 'name' => 'Nebenplatz', 'typ' => 'Rasen', 'flutlicht' => false, 'adresse' => 'Waldweg 3', 'sortierung' => 1],
+            ['venue_id' => $this->venueId, 'name' => 'Nebenplatz', 'farbe' => '#bc4c00', 'typ' => 'Rasen', 'flutlicht' => false, 'adresse' => 'Waldweg 3', 'sortierung' => 1],
             $this->context(),
         )->aggregateId;
         $this->bookingService()->createSlot([
@@ -90,6 +92,7 @@ final class EventFeedTest extends DatabaseTestCase
 
         $nebenplatz = array_values(array_filter($events, static fn(array $e): bool => $e['pitch_id'] === $pitchWithOwnAddress));
         self::assertCount(1, $nebenplatz);
+        self::assertSame('#bc4c00', $nebenplatz[0]['pitch_farbe']);
         self::assertSame('Waldweg 3', $nebenplatz[0]['pitch_adresse']);
         self::assertSame('Sportweg 1', $nebenplatz[0]['venue_adresse'], 'venue address still carried alongside the override');
     }
@@ -120,6 +123,8 @@ final class EventFeedTest extends DatabaseTestCase
         self::assertSame('#57606a', $events[1]['venue_farbe'], 'global away color from setting');
         self::assertNull($events[1]['venue_adresse'], 'Auswärtsspiel: kein Verein aufgelöst, Maps-Link nutzt ort_text');
         self::assertNull($events[1]['pitch_adresse']);
+        self::assertNull($events[0]['pitch_farbe'], 'Heimspiel ohne Platz-Zuordnung');
+        self::assertNull($events[1]['pitch_farbe'], 'Auswärtsspiel hat keinen Platz');
     }
 
     public function testFiltersTeamBereichVenue(): void

@@ -61,8 +61,12 @@ schema_version, rate_limit, import_source-Laufstatus) sind KEINE Projektionen.
   Ein Bereich (Jugend/Herren) kann mehrere Mannschaften haben; jede
   Mannschaft hat ihre eigene import_source. Inaktive Teams verschwinden aus
   Filtern und Neuanlagen; ihre Historie und Events bleiben erhalten.
-- **pitch** (Sportplatz): venue_id FK (Heimverein), name, typ, flutlicht,
-  adresse NULL (nur falls abweichend vom Verein), sortierung
+- **pitch** (Sportplatz): venue_id FK (Heimverein), name,
+  farbe (Hex aus vordefinierter Palette), typ, flutlicht,
+  adresse NULL (nur falls abweichend vom Verein), sortierung.
+  Alt-Events ohne Farbe (vor Einführung der Spalte) werden beim Replay
+  deterministisch auf eine feste Default-Farbe gehoben (Upcasting, analog
+  training_slot).
 - **training_slot**: team_ids (Liste, 1..n Teams – gemeinsames Training
   mehrerer Mannschaften ist EIN Slot), pitch_id FK, wochentage (Liste, 1..n
   aus 1–7, z. B. Di+Do zur selben Zeit), beginn, ende, gueltig_ab,
@@ -225,7 +229,10 @@ CSRF-Schutz für alle Schreibrouten (Token). Passwörter nie loggen.
 ## 8. Anzeigemodi, Farben, Filter
 
 - API `GET /api/events?von=&bis=&typ=&team=&venue=` liefert pro Event IMMER
-  beide Farbfelder: `team_farbe` und `venue_farbe` + `venue_id`.
+  beide Farbfelder: `team_farbe` und `venue_farbe` + `venue_id`, zusätzlich
+  `pitch_farbe` (NULL ohne zugeordneten Platz, z. B. Auswärtsspiel). Auch
+  `/api/verfuegbarkeit` (Farbe je Platz) und das Offline-Bundle liefern die
+  Platzfarbe mit.
 - Spielstätten-Auflösung zur **Anzeigezeit** (nicht beim Import), damit neue
   Begriffe rückwirkend wirken: erster `venue_begriff` (nach `sortierung`),
   der case-insensitive im `ort_text` vorkommt → dessen venue + Farbe.
