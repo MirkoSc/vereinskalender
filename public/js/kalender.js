@@ -6,11 +6,16 @@
     const appData = JSON.parse(document.querySelector('#app-data').textContent);
     const ansicht = appData.ansicht; // 'belegung' | 'spielplan'
     let modus = 'team';
-    const filters = { team: '', bereich: '', venue: '' };
 
     const activeTeams = appData.teams.filter((t) => t.aktiv);
 
-    // ---- filter controls ----
+    const beacon = (metrik) => navigator.sendBeacon?.(
+        '/api/stat',
+        new Blob([JSON.stringify({ metrik })], { type: 'application/json' }),
+    );
+
+    // ---- filter controls (Issue #8: Filter-Button + Panel/Bottom-Sheet,
+    // Chips nur für Abweichungen vom Default, URL teilbar) ----
 
     const teamSelect = document.querySelector('#filter-team');
     for (const team of activeTeams) {
@@ -25,22 +30,105 @@
         venueSelect.add(new Option(venue.name, String(venue.id)));
     }
 
-    const beacon = (metrik) => navigator.sendBeacon?.(
-        '/api/stat',
-        new Blob([JSON.stringify({ metrik })], { type: 'application/json' }),
-    );
+    const bereichLabel = (bereich) => (bereich === 'Herren' ? 'Herren' : `${bereich}-Jugend`);
+    const venueLabel = (wert) => {
+        if (wert === 'heim') return 'Nur Heim';
+        if (wert === 'auswaerts') return 'Nur Auswärts';
+        return appData.venues.find((v) => String(v.id) === wert)?.name ?? `Ort #${wert}`;
+    };
+    const pitchLabel = (id) => appData.pitches.find((p) => String(p.id) === id)?.name ?? `Platz #${id}`;
+
+    const filterDefinitionen = [
+        { key: 'team', default: '', label: (wert) => `Team: ${activeTeams.find((t) => String(t.id) === wert)?.name ?? wert}` },
+        { key: 'bereich', default: '', label: (wert) => `Bereich: ${bereichLabel(wert)}` },
+        { key: 'venue', default: '', label: (wert) => `Ort: ${venueLabel(wert)}` },
+    ];
+    if (ansicht === 'belegung') {
+        filterDefinitionen.push({ key: 'pitch', default: '', label: (wert) => `Platz: ${pitchLabel(wert)}` });
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const filters = window.VKFilter.leseFilterAusUrl(urlParams, filterDefinitionen);
+    if (ansicht === 'belegung' && !urlParams.has('pitch')) {
+        // vor Issue #8 wurde der Platzfilter nur in localStorage gehalten;
+        // ohne URL-Wert bleibt das bisherige Verhalten erhalten
+        filters.pitch = localStorage.getItem('belegung_platz') ?? '';
+    }
+
+    const filterDialog = document.querySelector('#filter-dialog');
+    const filterChips = document.querySelector('#filter-chips');
+    const filterBadge = document.querySelector('#filter-badge');
+
+    const aktualisiereUrl = () => {
+        const query = window.VKFilter.schreibeUrlParams(filters, filterDefinitionen).toString();
+        history.replaceState(null, '', window.location.pathname + (query ? `?${query}` : ''));
+    };
+
+    const renderFilterUi = () => {
+        const abweichungen = window.VKFilter.aktiveAbweichungen(filters, filterDefinitionen);
+        filterChips.replaceChildren();
+        for (const chip of abweichungen) {
+            const li = document.createElement('li');
+            li.className = 'chip';
+            const text = document.createElement('span');
+            text.textContent = chip.text;
+            const entfernen = document.createElement('button');
+            entfernen.type = 'button';
+            entfernen.className = 'chip-remove';
+            entfernen.setAttribute('aria-label', `Filter „${chip.text}" entfernen`);
+            entfernen.textContent = '×';
+            entfernen.addEventListener('click', () => setzeFilter(chip.key, ''));
+            li.append(text, entfernen);
+            filterChips.append(li);
+        }
+        filterBadge.textContent = String(abweichungen.length);
+        filterBadge.hidden = abweichungen.length === 0;
+        aktualisiereUrl();
+    };
 
     const onFilterChange = () => {
         beacon('filternutzung');
+        if (ansicht === 'belegung') {
+            localStorage.setItem('belegung_platz', filters.pitch);
+        }
+        renderFilterUi();
         if (calendar.view.type === 'listNachlade') {
             listeFilterGeaendert();
             return;
         }
         calendar.refetchEvents();
     };
-    teamSelect.addEventListener('change', () => { filters.team = teamSelect.value; onFilterChange(); });
-    bereichSelect.addEventListener('change', () => { filters.bereich = bereichSelect.value; onFilterChange(); });
-    venueSelect.addEventListener('change', () => { filters.venue = venueSelect.value; onFilterChange(); });
+
+    const setzeFilter = (key, wert) => {
+        filters[key] = wert;
+        const select = document.querySelector(`#filter-${key}`);
+        if (select) {
+            select.value = wert;
+        }
+        onFilterChange();
+    };
+
+    teamSelect.value = filters.team;
+    bereichSelect.value = filters.bereich;
+    venueSelect.value = filters.venue;
+    teamSelect.addEventListener('change', () => setzeFilter('team', teamSelect.value));
+    bereichSelect.addEventListener('change', () => setzeFilter('bereich', bereichSelect.value));
+    venueSelect.addEventListener('change', () => setzeFilter('venue', venueSelect.value));
+
+    document.querySelector('#filter-button').addEventListener('click', () => filterDialog.showModal());
+    document.querySelector('#filter-close').addEventListener('click', () => filterDialog.close());
+    document.querySelector('#filter-reset').addEventListener('click', () => {
+        for (const def of filterDefinitionen) {
+            filters[def.key] = def.default;
+            const select = document.querySelector(`#filter-${def.key}`);
+            if (select) {
+                select.value = def.default;
+            }
+        }
+        onFilterChange();
+    });
+
+    renderFilterUi();
 
     // ---- pitch selector (Issue #6, Platzbelegung only, narrow screens) ----
     // Below the desktop-sidebar breakpoint the pitch columns give way to a
@@ -52,7 +140,6 @@
     // visibility is driven from this same flag (not a live CSS media query),
     // so it can never disagree with the filtering/coloring logic it drives.
     const isWideBelegung = window.matchMedia('(min-width: 1100px)').matches;
-    let pitchFilter = localStorage.getItem('belegung_platz') ?? '';
     const pitchSelect = document.querySelector('#filter-pitch');
     if (pitchSelect) {
         pitchSelect.closest('.filter-narrow')?.classList.toggle('filter-narrow-hidden', isWideBelegung);
@@ -60,21 +147,19 @@
             pitchSelect.add(new Option(`${pitch.name} (${pitch.venue_name})`, String(pitch.id)));
         }
         // a pitch removed/deactivated since the choice was stored would leave
-        // the select showing "Alle Plätze" while pitchFilter still held the
+        // the select showing "Alle Plätze" while filters.pitch still held the
         // stale id, silently filtering every event away - fall back to ''
-        if (!appData.pitches.some((p) => String(p.id) === pitchFilter)) {
-            pitchFilter = '';
+        if (!appData.pitches.some((p) => String(p.id) === filters.pitch)) {
+            filters.pitch = '';
         }
-        pitchSelect.value = pitchFilter;
+        pitchSelect.value = filters.pitch;
         pitchSelect.addEventListener('change', () => {
-            pitchFilter = pitchSelect.value;
-            localStorage.setItem('belegung_platz', pitchFilter);
             beacon('platzauswahl');
-            calendar.refetchEvents();
+            setzeFilter('pitch', pitchSelect.value);
         });
     }
     // "Alle" chosen below the breakpoint: color by pitch instead of team/venue
-    const pitchAlleAktiv = () => ansicht === 'belegung' && !isWideBelegung && pitchFilter === '';
+    const pitchAlleAktiv = () => ansicht === 'belegung' && !isWideBelegung && (filters.pitch ?? '') === '';
 
     for (const button of document.querySelectorAll('.segmented button')) {
         button.addEventListener('click', () => {
@@ -120,8 +205,8 @@
     // Breiten-Schwelle bleibt der Filter wirkungslos, auch wenn ein alter
     // Wert aus localStorage noch gesetzt ist - dort zeigen die Spalten immer
     // alle Plätze (das Dropdown ist dort ja auch ausgeblendet).
-    const applyPitchFilter = (events) => (ansicht === 'belegung' && !isWideBelegung && pitchFilter !== ''
-        ? events.filter((e) => String(e.pitch_id) === pitchFilter)
+    const applyPitchFilter = (events) => (ansicht === 'belegung' && !isWideBelegung && filters.pitch !== ''
+        ? events.filter((e) => String(e.pitch_id) === filters.pitch)
         : events);
 
     const recolor = () => {
@@ -337,7 +422,8 @@
         events: async (info, success, failure) => {
             const params = new URLSearchParams({ typ: ansicht === 'belegung' ? 'belegung' : 'spiel' });
             for (const [key, value] of Object.entries(filters)) {
-                if (value !== '') {
+                // 'pitch' filtert nur clientseitig (applyPitchFilter), /api/events kennt es nicht
+                if (value !== '' && key !== 'pitch') {
                     params.set(key, value);
                 }
             }
@@ -546,6 +632,78 @@
     const bookingForm = document.querySelector('#booking-form');
     const bookingFeedback = document.querySelector('#booking-feedback');
     const bookingSubmit = bookingForm.querySelector('button[type="submit"]');
+
+    // Issue #9: eine Serie (oder ein anderer wiederholter Verursacher) wird
+    // als eine Zeile mit Anzahl + nächstem Termin dargestellt, aufklappbar
+    // für die Einzeltermine; initial max. 5 Gruppen, Rest per "weitere
+    // anzeigen". Der Server liefert die Gruppen bereits fertig aggregiert
+    // (ConflictGrouper::group()).
+    const INITIAL_KONFLIKT_GRUPPEN = 5;
+
+    const konfliktZeile = (gruppe) => {
+        const li = document.createElement('li');
+        const text = document.createElement('span');
+        text.textContent = window.VKKonflikte.gruppenBeschriftung(gruppe);
+        li.append(text);
+
+        if (gruppe.anzahl > 1) {
+            const toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'linklike konflikt-toggle';
+            toggle.textContent = 'Termine anzeigen';
+            const termine = document.createElement('ul');
+            termine.className = 'konflikt-termine';
+            termine.hidden = true;
+            for (const termin of gruppe.termine) {
+                const eintrag = document.createElement('li');
+                eintrag.textContent = `${window.VKKonflikte.formatDatum(termin.datum)}, ${termin.von}–${termin.bis} Uhr`;
+                termine.append(eintrag);
+            }
+            toggle.addEventListener('click', () => {
+                termine.hidden = !termine.hidden;
+                toggle.textContent = termine.hidden ? 'Termine anzeigen' : 'Termine verbergen';
+            });
+            li.append(' ', toggle, termine);
+        }
+
+        return li;
+    };
+
+    const renderKonfliktGruppen = (gruppen, { warnung = false } = {}) => {
+        bookingFeedback.innerHTML = '';
+        bookingFeedback.className = warnung ? 'warning-message' : 'error-message';
+        if (gruppen.length === 0) {
+            return;
+        }
+
+        const { sichtbar, rest } = window.VKKonflikte.sichtbareGruppen(gruppen, INITIAL_KONFLIKT_GRUPPEN);
+        const liste = document.createElement('ul');
+        liste.className = 'konflikt-liste';
+        for (const gruppe of sichtbar) {
+            liste.append(konfliktZeile(gruppe));
+        }
+        bookingFeedback.append(liste);
+
+        if (rest.length > 0) {
+            const weitereButton = document.createElement('button');
+            weitereButton.type = 'button';
+            weitereButton.className = 'linklike';
+            weitereButton.textContent = `${rest.length} weitere anzeigen`;
+            weitereButton.addEventListener('click', () => {
+                for (const gruppe of rest) {
+                    liste.append(konfliktZeile(gruppe));
+                }
+                weitereButton.remove();
+            });
+            bookingFeedback.append(weitereButton);
+        }
+
+        if (warnung) {
+            const hinweis = document.createElement('p');
+            hinweis.textContent = 'Trotzdem speichern?';
+            bookingFeedback.append(hinweis);
+        }
+    };
     const bookingTitle = document.querySelector('#booking-title');
     const wochentageFeld = document.querySelector('#booking-wochentage-feld');
     const gueltigFeld = document.querySelector('#booking-gueltig-feld');
@@ -685,15 +843,13 @@
                     return;
                 }
                 if (check.data.konflikte.length > 0) {
-                    bookingFeedback.className = 'error-message';
-                    bookingFeedback.textContent = check.data.konflikte.join(' ');
+                    renderKonfliktGruppen(check.data.konflikte);
                     return;
                 }
                 if (check.data.warnungen.length > 0) {
                     // 'eingeschraenkt': booking allowed, but the dialog must
                     // show the warning first (CLAUDE.md section 4)
-                    bookingFeedback.className = 'warning-message';
-                    bookingFeedback.textContent = `${check.data.warnungen.join(' ')} Trotzdem speichern?`;
+                    renderKonfliktGruppen(check.data.warnungen, { warnung: true });
                     bookingSubmit.textContent = 'Trotzdem speichern';
                     warnungenBestaetigt = true;
                     return;

@@ -7,45 +7,62 @@
             <button type="button" data-modus="venue">Nach Spielstätte</button>
         </div>
 
-        <label class="filter">
-            Team
-            <select id="filter-team">
-                <option value="">Alle Teams</option>
-            </select>
-        </label>
-        <label class="filter">
-            Bereich
-            <select id="filter-bereich">
-                <option value="">Alle Bereiche</option>
-            </select>
-        </label>
-        <label class="filter">
-            Spielstätte
-            <select id="filter-venue">
-                <option value="">Alle Orte</option>
-                <option value="heim">Nur Heim</option>
-                <option value="auswaerts">Nur Auswärts</option>
-            </select>
-        </label>
+        <button type="button" id="filter-button" class="button filter-button">
+            Filter <span id="filter-badge" class="badge" hidden>0</span>
+        </button>
 
         <?php if ($ansicht === 'belegung'): ?>
-            <!-- Issue #6: unterhalb der Desktop-Sidebar-Schwelle (~1100px) ersetzt
-                 diese Auswahl die Platz-Spalten; "Alle" faerbt nach Platzfarbe. -->
-            <label class="filter filter-narrow">
-                Platz
-                <select id="filter-pitch">
-                    <option value="">Alle Plätze</option>
-                </select>
-            </label>
             <button type="button" id="new-booking" class="button">Belegung eintragen</button>
         <?php endif; ?>
 
         <button type="button" id="push-bell" class="linklike bell" title="Push-Benachrichtigungen">🔔</button>
     </div>
 
+    <ul id="filter-chips" class="chip-row" aria-label="Aktive Filter"></ul>
+
     <div id="kalender"></div>
     <p id="liste-lade-indikator" class="liste-lade-indikator" hidden aria-live="polite">Lädt weitere Termine…</p>
 </section>
+
+<dialog id="filter-dialog" class="sheet filter-sheet">
+    <h3>Filter</h3>
+    <label class="filter">
+        Team
+        <select id="filter-team">
+            <option value="">Alle Teams</option>
+        </select>
+    </label>
+    <label class="filter">
+        Bereich
+        <select id="filter-bereich">
+            <option value="">Alle Bereiche</option>
+        </select>
+    </label>
+    <label class="filter">
+        Spielstätte
+        <select id="filter-venue">
+            <option value="">Alle Orte</option>
+            <option value="heim">Nur Heim</option>
+            <option value="auswaerts">Nur Auswärts</option>
+        </select>
+    </label>
+
+    <?php if ($ansicht === 'belegung'): ?>
+        <!-- Issue #6: unterhalb der Desktop-Sidebar-Schwelle (~1100px) ersetzt
+             diese Auswahl die Platz-Spalten; "Alle" faerbt nach Platzfarbe. -->
+        <label class="filter filter-narrow">
+            Platz
+            <select id="filter-pitch">
+                <option value="">Alle Plätze</option>
+            </select>
+        </label>
+    <?php endif; ?>
+
+    <div class="dialog-actions">
+        <button type="button" class="button" id="filter-close">Fertig</button>
+        <button type="button" class="linklike" id="filter-reset">Zurücksetzen</button>
+    </div>
+</dialog>
 
 <?php require __DIR__ . '/partials/push_dialog.php'; ?>
 
@@ -90,7 +107,7 @@
                 <label>Gültig bis <input type="date" name="gueltig_bis"></label>
             </div>
             <label id="booking-datum-feld" hidden>Datum <input type="date" name="datum_neu"></label>
-            <p id="booking-feedback" aria-live="polite"></p>
+            <div id="booking-feedback" aria-live="polite"></div>
             <div class="dialog-actions">
                 <button type="submit" class="button">Speichern</button>
                 <button type="button" class="linklike" id="booking-cancel">Abbrechen</button>
