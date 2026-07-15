@@ -26,6 +26,92 @@
 
     const zustandLabel = { frei: 'frei', belegt: 'belegt', eingeschraenkt: 'eingeschränkt', gesperrt: 'gesperrt' };
 
+    // ---- filter (Issue #8: Filter-Button + Panel/Bottom-Sheet, Chips nur
+    // für Abweichungen vom Default, URL teilbar) ----
+
+    const filterDefinitionen = [
+        { key: 'pitch', default: '', label: (wert) => `Platz: ${appData.pitches.find((p) => String(p.id) === wert)?.name ?? `#${wert}`}` },
+    ];
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const filters = window.VKFilter.leseFilterAusUrl(urlParams, filterDefinitionen);
+    if (!urlParams.has('pitch')) {
+        filters.pitch = localStorage.getItem('verfuegbarkeit_platz') ?? '';
+    }
+
+    const filterDialog = document.querySelector('#filter-dialog');
+    const filterChips = document.querySelector('#filter-chips');
+    const filterBadge = document.querySelector('#filter-badge');
+
+    const aktualisiereUrl = () => {
+        const query = window.VKFilter.schreibeUrlParams(filters, filterDefinitionen).toString();
+        history.replaceState(null, '', window.location.pathname + (query ? `?${query}` : ''));
+    };
+
+    const renderFilterUi = () => {
+        const abweichungen = window.VKFilter.aktiveAbweichungen(filters, filterDefinitionen);
+        filterChips.replaceChildren();
+        for (const chip of abweichungen) {
+            const li = document.createElement('li');
+            li.className = 'chip';
+            const text = document.createElement('span');
+            text.textContent = chip.text;
+            const entfernen = document.createElement('button');
+            entfernen.type = 'button';
+            entfernen.className = 'chip-remove';
+            entfernen.setAttribute('aria-label', `Filter „${chip.text}" entfernen`);
+            entfernen.textContent = '×';
+            entfernen.addEventListener('click', () => setzeFilter('pitch', ''));
+            li.append(text, entfernen);
+            filterChips.append(li);
+        }
+        filterBadge.textContent = String(abweichungen.length);
+        filterBadge.hidden = abweichungen.length === 0;
+        aktualisiereUrl();
+    };
+
+    const setzeFilter = (key, wert) => {
+        filters[key] = wert;
+        localStorage.setItem('verfuegbarkeit_platz', filters.pitch);
+        pitchSelect.value = filters.pitch;
+        renderFilterUi();
+        if (lastData) {
+            render(lastData);
+        }
+    };
+
+    document.querySelector('#filter-button').addEventListener('click', () => filterDialog.showModal());
+    document.querySelector('#filter-close').addEventListener('click', () => filterDialog.close());
+    document.querySelector('#filter-reset').addEventListener('click', () => setzeFilter('pitch', ''));
+
+    // ---- pitch selector (Issue #7, narrow screens) ----
+    // Below the desktop-sidebar breakpoint the stacked "alle Plätze
+    // untereinander" view gives way to a dropdown: "Alle Plätze" (same
+    // stacked blocks, but belegt-Segmente in der jeweiligen Platzfarbe +
+    // Platzname als Text) or a single pitch. Restriktionen bleiben in jeder
+    // Variante unverändert sichtbar (nur die Platz-Auswahl filtert).
+    // Snapshot once (like kalender.js): the dropdown's visibility is driven
+    // from this same flag, not a live CSS media query, so it can never
+    // disagree with the filtering/coloring logic it drives.
+    const isWideVerf = window.matchMedia('(min-width: 1100px)').matches;
+    let lastData = null;
+    const pitchSelect = document.querySelector('#filter-pitch');
+    for (const button of document.querySelectorAll('.filter-narrow')) {
+        button.classList.toggle('filter-narrow-hidden', isWideVerf);
+    }
+    for (const pitch of appData.pitches) {
+        pitchSelect.add(new Option(`${pitch.name} (${pitch.venue_name})`, String(pitch.id)));
+    }
+    // a pitch removed/deactivated since the choice was stored would otherwise
+    // filter every venue block down to zero pitches with no visible cause
+    if (!appData.pitches.some((p) => String(p.id) === filters.pitch)) {
+        filters.pitch = '';
+    }
+    pitchSelect.value = filters.pitch;
+    pitchSelect.addEventListener('change', () => setzeFilter('pitch', pitchSelect.value));
+
+    renderFilterUi();
+
     const load = async () => {
         const von = iso(wochenstart);
         const bis = iso(addDays(wochenstart, 6));
@@ -36,7 +122,8 @@
             container.textContent = 'Verfügbarkeit konnte nicht geladen werden.';
             return;
         }
-        render(await response.json());
+        lastData = await response.json();
+        render(lastData);
     };
 
     const render = (data) => {
@@ -45,7 +132,21 @@
         const windowEnd = minuten(data.nutzungszeiten.bis);
         const total = windowEnd - windowStart;
 
+        // large screens always show every pitch (CLAUDE.md/Issue #7: "wie
+        // bisher"); the dropdown only takes effect below the breakpoint
+        const pitchFilter = isWideVerf ? '' : pitchSelect.value;
+        // large screens keep the plain zustand-coloring "wie bisher"; the
+        // pitch-color distinction only kicks in for "Alle" below the breakpoint
+        const alleKombiniert = !isWideVerf && pitchFilter === '';
+
         for (const venue of data.venues) {
+            const plaetze = pitchFilter === ''
+                ? venue.plaetze
+                : venue.plaetze.filter((p) => String(p.id) === pitchFilter);
+            if (plaetze.length === 0) {
+                continue;
+            }
+
             const section = document.createElement('section');
             section.className = 'venue-block';
 
@@ -64,7 +165,7 @@
                 section.append(p);
             }
 
-            for (const pitch of venue.plaetze) {
+            for (const pitch of plaetze) {
                 const pitchBlock = document.createElement('div');
                 pitchBlock.className = 'pitch-block';
 
@@ -103,6 +204,12 @@
                         el.title = `${segment.von}–${segment.bis}: ${zustandLabel[segment.zustand]}`;
                         if (segment.zustand !== 'frei') {
                             el.textContent = segment.label ?? segment.grund ?? zustandLabel[segment.zustand];
+                        }
+                        // Issue #7 "Alle": Platzfarbe statt Zustandsfarbe bei
+                        // belegt, Platzname als Text (Farbe nie einziges Signal)
+                        if (alleKombiniert && segment.zustand === 'belegt') {
+                            el.style.background = pitch.farbe;
+                            el.textContent = `${pitch.name}: ${el.textContent}`;
                         }
                         el.addEventListener('click', () => showInterval(pitch, tag.datum, segment));
                         bar.append(el);

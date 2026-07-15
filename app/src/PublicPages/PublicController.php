@@ -66,7 +66,7 @@ final readonly class PublicController
             'title' => 'Platz-Verfügbarkeit',
             'appData' => $appData,
             'colorCss' => $colorCss,
-            'scripts' => ['/js/schreiben.js', '/js/offline.js', '/js/push.js', '/js/verfuegbarkeit.js'],
+            'scripts' => ['/js/konflikte.js', '/js/filter.js', '/js/schreiben.js', '/js/offline.js', '/js/push.js', '/js/verfuegbarkeit.js'],
         ]));
     }
 
@@ -132,9 +132,12 @@ final readonly class PublicController
             'scripts' => [
                 '/js/vendor/fullcalendar-scheduler.global.min.js',
                 '/js/vendor/fullcalendar-locale-de.global.min.js',
+                '/js/konflikte.js',
+                '/js/filter.js',
                 '/js/schreiben.js',
                 '/js/offline.js',
                 '/js/push.js',
+                '/js/nachlade.js',
                 '/js/kalender.js',
             ],
         ]));
@@ -165,6 +168,7 @@ final readonly class PublicController
             'id' => (int) $p['id'],
             'venue_id' => (int) $p['venue_id'],
             'name' => (string) $p['name'],
+            'farbe' => (string) $p['farbe'],
             'venue_name' => (string) ($p['venue_name'] ?? ''),
         ], $this->pitches->findAll());
 
