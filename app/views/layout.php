@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#1a7f37">
+    <meta name="theme-color" content="#328551">
     <title><?= e($title ?? 'Vereinskalender') ?></title>
     <link rel="stylesheet" href="/css/app.css?v=<?= e($version) ?>">
     <link rel="manifest" href="/manifest.webmanifest">
