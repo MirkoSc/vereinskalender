@@ -57,6 +57,7 @@ final class DashboardController extends AdminController
             'featureZaehler' => [
                 'Moduswechsel' => $this->stats->summary('feature_moduswechsel')['tage30'],
                 'Filternutzung' => $this->stats->summary('feature_filternutzung')['tage30'],
+                'Platzauswahl' => $this->stats->summary('feature_platzauswahl')['tage30'],
                 'Push-Abo-Dialog' => $this->stats->summary('feature_push_abo_dialog')['tage30'],
                 'PWA-Installation' => $this->stats->summary('feature_pwa_installation')['tage30'],
                 'Offline-Bundle' => $this->stats->summary('offline_bundle')['tage30'],

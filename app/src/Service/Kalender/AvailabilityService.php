@@ -140,6 +140,7 @@ final readonly class AvailabilityService
                 $venueData['plaetze'][] = [
                     'id' => $pitchId,
                     'name' => (string) $pitch['name'],
+                    'farbe' => (string) $pitch['farbe'],
                     'adresse' => $pitch['adresse'] !== null ? (string) $pitch['adresse'] : null,
                     'tage' => $this->pitchDays(
                         $rangeStart,

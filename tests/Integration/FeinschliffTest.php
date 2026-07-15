@@ -156,8 +156,11 @@ final class FeinschliffTest extends DatabaseTestCase
         self::assertNotSame([], $bundle['events'], 'the slot occurrence is inside the 7-day window');
         self::assertArrayHasKey('team_farbe', $bundle['events'][0], 'both color modes work offline');
         self::assertArrayHasKey('venue_farbe', $bundle['events'][0]);
+        self::assertArrayHasKey('pitch_farbe', $bundle['events'][0]);
         self::assertNotSame([], $bundle['teams']);
+        self::assertSame('#0969da', $bundle['pitches'][0]['farbe']);
         self::assertNotSame([], $bundle['verfuegbarkeit']['venues']);
+        self::assertSame('#0969da', $bundle['verfuegbarkeit']['venues'][0]['plaetze'][0]['farbe']);
         self::assertSame('#57606a', $bundle['settings']['auswaerts_farbe']);
     }
 }

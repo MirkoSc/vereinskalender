@@ -1,3 +1,4 @@
+<?php use App\Domain\Palette; ?>
 <section class="narrow">
     <h2><?= e($title) ?></h2>
     <?php if ($venues === []): ?>
@@ -29,6 +30,19 @@
             <input type="text" name="typ" value="<?= e($values['typ'] ?? '') ?>" maxlength="50">
             <?php if (isset($errors['typ'])): ?><span class="field-error"><?= e($errors['typ']) ?></span><?php endif; ?>
         </label>
+        <fieldset>
+            <legend>Farbe</legend>
+            <div class="palette">
+                <?php foreach (Palette::COLORS as $hex => $label): ?>
+                    <label class="palette-option" title="<?= e($label) ?>">
+                        <input type="radio" name="farbe" value="<?= e($hex) ?>" <?= ($values['farbe'] ?? '') === $hex ? 'checked' : '' ?>>
+                        <span class="swatch" style="background: <?= e($hex) ?>"></span>
+                        <span class="palette-label"><?= e($label) ?></span>
+                    </label>
+                <?php endforeach; ?>
+            </div>
+            <?php if (isset($errors['farbe'])): ?><span class="field-error"><?= e($errors['farbe']) ?></span><?php endif; ?>
+        </fieldset>
         <label class="checkbox">
             <input type="checkbox" name="flutlicht" value="1" <?= ($values['flutlicht'] ?? '') !== '' ? 'checked' : '' ?>>
             Flutlicht vorhanden

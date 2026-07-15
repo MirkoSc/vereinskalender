@@ -27,6 +27,7 @@ final class ReplayDeterminismTest extends DatabaseTestCase
         $pitchId = $store->append(AggregateType::Pitch, null, EventType::Created, [
             'venue_id' => $venueId,
             'name' => 'Rasenplatz 1',
+            'farbe' => '#0969da',
             'typ' => 'Rasen',
             'flutlicht' => true,
             'adresse' => null,
@@ -110,6 +111,42 @@ final class ReplayDeterminismTest extends DatabaseTestCase
                        AND (table_name LIKE '%\\_rebuild' OR table_name LIKE '%\\_old')")
             ->fetchAll(\PDO::FETCH_COLUMN);
         self::assertSame([], $remaining);
+    }
+
+    /**
+     * Issue #2: pitch events written before migration 009 carry no color.
+     * The upcast to Palette::PITCH_DEFAULT (CLAUDE.md section 5) must be
+     * deterministic, both on the initial write and on replay.
+     */
+    public function testLegacyPitchEventWithoutColorUpcastsToDefaultOnReplay(): void
+    {
+        $store = $this->eventStore();
+        $context = $this->context();
+
+        $venueId = $store->append(AggregateType::Venue, null, EventType::Created, [
+            'name' => 'SV Musterstadt',
+            'farbe' => '#1a7f37',
+            'adresse' => 'Sportweg 1, 12345 Musterstadt',
+            'default_pitch_id' => null,
+            'sortierung' => 0,
+        ], $context)->aggregateId;
+
+        // events written before migration 009 carry no farbe key at all
+        $store->append(AggregateType::Pitch, null, EventType::Created, [
+            'venue_id' => $venueId,
+            'name' => 'Rasenplatz 1',
+            'typ' => 'Rasen',
+            'flutlicht' => true,
+            'adresse' => null,
+            'sortierung' => 0,
+        ], $context);
+
+        $pitch = $this->dumpTable('pitch')[0];
+        self::assertSame(\App\Domain\Palette::PITCH_DEFAULT, $pitch['farbe']);
+
+        $state = $this->runRebuildToCompletion($this->rebuildService());
+        self::assertSame([], $state->skipped);
+        self::assertSame($pitch, $this->dumpTable('pitch')[0]);
     }
 
     public function testRebuildRunsInSmallBatches(): void

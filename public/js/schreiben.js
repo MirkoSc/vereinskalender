@@ -77,7 +77,7 @@ window.VK = (() => {
 
     const fehlerText = (data) => {
         if (data.konflikte) {
-            return data.konflikte.join(' ');
+            return data.konflikte.map((gruppe) => window.VKKonflikte.gruppenBeschriftung(gruppe)).join(' ');
         }
         if (data.fehler) {
             return Object.values(data.fehler).join(' ');

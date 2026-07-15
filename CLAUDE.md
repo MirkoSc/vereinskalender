@@ -48,8 +48,11 @@ sind KEINE Projektionen.
   kuerzel, farbe (aus vordefinierter Palette), aktiv, sortierung. Mehrere
   Mannschaften je Bereich; je Mannschaft eine import_source. Inaktive Teams
   verschwinden aus Filtern/Neuanlagen, Historie bleibt.
-- **pitch**: venue_id FK (Heimverein), name, typ, flutlicht,
-  adresse NULL (nur falls abweichend), sortierung
+- **pitch**: venue_id FK (Heimverein), name, farbe (aus vordefinierter
+  Palette), typ, flutlicht, adresse NULL (nur falls abweichend), sortierung.
+  Alt-Events ohne Farbe (vor Einführung der Spalte) werden beim Replay
+  deterministisch auf eine feste Default-Farbe gehoben (Upcasting, analog
+  training_slot).
 - **training_slot**: team_ids (Liste 1..n – gemeinsames Training ist EIN
   Slot), pitch_id FK, wochentage (Liste 1..n aus 1–7), beginn, ende,
   gueltig_ab, gueltig_bis. Wiederholungsregel, zur Laufzeit expandiert.
@@ -166,8 +169,10 @@ vergibt pro Saison neue –, Slots der Vorsaison als Kopiervorlage).
 ## 7. Anzeigemodi, Farben, Filter
 
 - `GET /api/events?von=&bis=&typ=&team=&bereich=&venue=` liefert IMMER beide
-  Farbfelder (`team_farbe`, `venue_farbe`) + `venue_id`; Moduswechsel ist
-  reines Frontend ohne neuen Request.
+  Farbfelder (`team_farbe`, `venue_farbe`) + `venue_id`, zusätzlich
+  `pitch_farbe` (NULL ohne zugeordneten Platz, z. B. Auswärtsspiel). Auch
+  `/api/verfuegbarkeit` und das Offline-Bundle liefern die Platzfarbe mit.
+  Moduswechsel ist reines Frontend ohne neuen Request.
 - Spielstätten-Auflösung zur **Anzeigezeit** im einen `VenueMatcher`-Service
   (Anzeige UND Import): erster `venue_begriff` nach sortierung,
   case-insensitive in `ort_text` → venue + Farbe; kein Treffer → auswärts
@@ -184,9 +189,17 @@ vergibt pro Saison neue –, Slots der Vorsaison als Kopiervorlage).
 
 - Handgeschriebenes Stylesheet (Custom Properties, Grid, clamp(),
   `prefers-color-scheme`); mobile-first, Breakpoints ~768/~1100 px.
-- **FullCalendar**: Desktop timeGridWeek/dayGridMonth, mobil listWeek;
-  Platzbelegung über Premium Resource-Views, Lizenzkey
-  `GPL-My-Project-Is-Open-Source` (Projekt ist GPLv3).
+- **FullCalendar**: Desktop timeGridWeek/dayGridMonth, mobil eine eigene
+  Listen-View (`listNachlade`, Basistyp `list`); Platzbelegung über Premium
+  Resource-Views, Lizenzkey `GPL-My-Project-Is-Open-Source` (Projekt ist
+  GPLv3).
+- **Terminliste mit Nachladen**: `listNachlade` zeigt initial mindestens den
+  kompletten nächsten Monat und lädt beim Scrollen ans Listenende weitere
+  Batches nach (`von`/`bis` wächst schrittweise, die API kennt keine
+  Pagination). Client-seitiger Cache dedupliziert nach Event-`id` (spätester
+  Stand gewinnt, z. B. bei einer verlegten Partie); aktive Filter setzen
+  Cache und Bereich auf den initialen Monat zurück. Reine Frontend-Logik
+  (`public/js/nachlade.js`, unit-getestet mit `node --test tests/js`).
 - Mobile-Patterns: Bottom-Sheets, Chip-Filter, Segmented Control,
   Touch-Ziele ≥ 44 px.
 - **PWA/Offline**: Service Worker cached App-Shell; Daten über
