@@ -17,9 +17,11 @@ use App\Service\ValidationException;
 /**
  * Builds the /api/events payload (CLAUDE.md section 8): occupancy from
  * expanded slots, matches, and restrictions. Every event ALWAYS carries
- * both color fields (team_farbe + venue_farbe) plus venue_id; the display
- * mode switch is pure frontend. Venue resolution happens at display time
- * through the VenueMatcher, away matches get the global away color.
+ * both color fields (team_farbe + venue_farbe) plus venue_id, and a
+ * pitch_farbe (null when there is no assigned pitch, e.g. away matches);
+ * the display mode switch is pure frontend. Venue resolution happens at
+ * display time through the VenueMatcher, away matches get the global away
+ * color.
  */
 final readonly class EventFeedService
 {
@@ -147,6 +149,7 @@ final readonly class EventFeedService
                         : $auswaertsFarbe,
                     'pitch_id' => $occurrence->pitchId,
                     'pitch_name' => $pitch !== null ? (string) $pitch['name'] : null,
+                    'pitch_farbe' => $pitch !== null ? (string) $pitch['farbe'] : null,
                     // address fallback for the Maps link (CLAUDE.md section 4:
                     // pitch.adresse only set when it differs from the venue's)
                     'pitch_adresse' => $pitch !== null && $pitch['adresse'] !== null ? (string) $pitch['adresse'] : null,
@@ -184,6 +187,7 @@ final readonly class EventFeedService
                         : $auswaertsFarbe,
                     'pitch_id' => (int) $restriction['pitch_id'],
                     'pitch_name' => $pitch !== null ? (string) $pitch['name'] : null,
+                    'pitch_farbe' => $pitch !== null ? (string) $pitch['farbe'] : null,
                     'pitch_adresse' => $pitch !== null && $pitch['adresse'] !== null ? (string) $pitch['adresse'] : null,
                     'venue_adresse' => $venueId !== null && isset($venues[$venueId]) ? (string) $venues[$venueId]['adresse'] : null,
                 ];
@@ -226,6 +230,7 @@ final readonly class EventFeedService
                         : $auswaertsFarbe,
                     'pitch_id' => $pitchId,
                     'pitch_name' => $pitchId !== null ? (string) ($pitches[$pitchId]['name'] ?? '') : null,
+                    'pitch_farbe' => $pitch !== null ? (string) $pitch['farbe'] : null,
                     'pitch_adresse' => $pitch !== null && $pitch['adresse'] !== null ? (string) $pitch['adresse'] : null,
                     'venue_adresse' => $venueId !== null && isset($venues[$venueId]) ? (string) $venues[$venueId]['adresse'] : null,
                     'gegner' => (string) $match['gegner'],
