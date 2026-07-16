@@ -85,7 +85,44 @@ final class ReplayDeterminismTest extends DatabaseTestCase
             'sortierung' => 2,
         ], $context);
 
-        $tables = ['venue', 'venue_begriff', 'pitch', 'team'];
+        $matchId = $store->append(AggregateType::Match, null, EventType::Created, [
+            'team_id' => $teamId,
+            'anstoss' => '2099-08-08 15:00:00',
+            'gegner' => 'FC Gegner',
+            'heimspiel' => true,
+            'ort_text' => 'Sportweg 1',
+            'pitch_id' => $pitchId,
+            'pitch_manuell' => true,
+            'status' => 'geplant',
+            'import_source_id' => null,
+            'ics_uid' => 'u1',
+            'ics_sequence' => 0,
+            'sync_hash' => 'abc',
+        ], $context)->aggregateId;
+        self::assertGreaterThan(0, $matchId);
+
+        $ruleId = $store->append(AggregateType::TeamHomePitch, null, EventType::Created, [
+            'team_id' => $teamId,
+            'pitch_id' => $pitchId,
+            'gueltig_ab' => '2026-08-01',
+            'gueltig_bis' => '2026-11-30',
+        ], $context)->aggregateId;
+
+        $deletedRuleId = $store->append(AggregateType::TeamHomePitch, null, EventType::Created, [
+            'team_id' => $teamId,
+            'pitch_id' => $pitchId,
+            'gueltig_ab' => '2026-12-01',
+            'gueltig_bis' => '2027-06-01',
+        ], $context)->aggregateId;
+        $store->append(AggregateType::TeamHomePitch, $deletedRuleId, EventType::Deleted, [
+            'team_id' => $teamId,
+            'pitch_id' => $pitchId,
+            'gueltig_ab' => '2026-12-01',
+            'gueltig_bis' => '2027-06-01',
+        ], $context);
+        self::assertGreaterThan(0, $ruleId);
+
+        $tables = ['venue', 'venue_begriff', 'pitch', 'team', 'match', 'team_home_pitch'];
         $before = [];
         foreach ($tables as $table) {
             $before[$table] = $this->dumpTable($table);
@@ -147,6 +184,38 @@ final class ReplayDeterminismTest extends DatabaseTestCase
         $state = $this->runRebuildToCompletion($this->rebuildService());
         self::assertSame([], $state->skipped);
         self::assertSame($pitch, $this->dumpTable('pitch')[0]);
+    }
+
+    /**
+     * Issue #10: match events written before pitch_manuell existed carry no
+     * flag. The upcast to false (CLAUDE.md section 5) must be deterministic,
+     * both on the initial write and on replay.
+     */
+    public function testLegacyMatchEventWithoutPitchManuellUpcastsToFalseOnReplay(): void
+    {
+        $teamId = $this->createTeam();
+
+        // events written before pitch_manuell existed carry no such key at all
+        $this->eventStore()->append(\App\Domain\AggregateType::Match, null, EventType::Created, [
+            'team_id' => $teamId,
+            'anstoss' => '2099-08-08 15:00:00',
+            'gegner' => 'FC Gegner',
+            'heimspiel' => false,
+            'ort_text' => 'Stadion Gegnerhausen',
+            'pitch_id' => null,
+            'status' => 'geplant',
+            'import_source_id' => null,
+            'ics_uid' => 'legacy-1',
+            'ics_sequence' => 0,
+            'sync_hash' => 'legacy',
+        ], $this->context());
+
+        $match = $this->dumpTable('match')[0];
+        self::assertSame(0, (int) $match['pitch_manuell']);
+
+        $state = $this->runRebuildToCompletion($this->rebuildService());
+        self::assertSame([], $state->skipped);
+        self::assertSame($match, $this->dumpTable('match')[0]);
     }
 
     public function testRebuildRunsInSmallBatches(): void

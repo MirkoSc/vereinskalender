@@ -10,6 +10,7 @@ use App\Domain\EventSource;
 use App\Domain\EventType;
 use App\Repository\ImportSourceRepository;
 use App\Repository\MatchRepository;
+use App\Repository\TeamHomePitchRepository;
 use App\Repository\VenueRepository;
 use App\Service\EventStore\EventStore;
 use App\Service\Kalender\VenueMatcher;
@@ -23,6 +24,15 @@ use App\Service\Stats\AlarmMailer;
  * status 'abgesagt' - NEVER hard-deleted (also protects against empty
  * feeds). Errors are isolated per source. All writes go through the event
  * store (quelle 'import').
+ *
+ * Pitch assignment for home matches follows a fixed priority (CLAUDE.md
+ * section 6): (1) a manual assignment (pitch_manuell) is never touched -
+ * an empty selection resets to automatic; (2) the team_home_pitch rule
+ * valid at kickoff (both boundary dates inclusive); (3) the venue's
+ * default_pitch_id. Rule changes reach existing FUTURE non-manual matches
+ * on the next run even if nothing else changed (a pitch-only Updated event
+ * that reuses the same sync_hash, so the run after that is idempotent);
+ * past matches are never reflowed.
  */
 final readonly class IcsImportService
 {
@@ -33,6 +43,7 @@ final readonly class IcsImportService
         private ImportSourceRepository $sources,
         private MatchRepository $matches,
         private VenueRepository $venues,
+        private TeamHomePitchRepository $homePitchRules,
         private VenueMatcher $venueMatcher,
         private IcsFeedFetcher $fetcher,
         private ?AlarmMailer $alarmMailer = null,
@@ -100,6 +111,9 @@ final readonly class IcsImportService
                 : null;
         }
 
+        $rules = $this->homePitchRules->findByTeam($teamId);
+        $today = new \DateTimeImmutable('today')->format('Y-m-d H:i:s');
+
         $inserted = $updated = $skipped = 0;
         $feedUids = [];
 
@@ -113,29 +127,47 @@ final readonly class IcsImportService
             $syncHash = self::syncHash($anstoss, $gegner, $ortText, $status);
 
             $existing = $this->matches->findBySourceAndUid($sourceId, $icsEvent->uid);
-            if ($existing !== null && (string) $existing['sync_hash'] === $syncHash) {
-                $skipped++;
-                continue;
-            }
 
             // home detection at import time; the pitch itself is NOT in the
-            // ICS: pre-fill with the venue's default pitch. A manual pitch
-            // assignment survives updates as long as the location text is
-            // unchanged.
+            // ICS. Assignment priority: (1) manual assignment is never
+            // touched; (2) the team_home_pitch rule valid at kickoff;
+            // (3) the venue's default pitch. Past, non-manual updates keep
+            // the legacy location-text heuristic and are never reflowed by
+            // rule changes.
             $venueId = $this->venueMatcher->match($ortText);
-            if ($existing !== null && (string) $existing['ort_text'] === $ortText) {
-                $pitchId = $existing['pitch_id'] !== null ? (int) $existing['pitch_id'] : null;
+            $isHome = $venueId !== null;
+            $isFuture = $anstoss >= $today;
+            $manuell = $existing !== null && (int) $existing['pitch_manuell'] === 1;
+            $stored = $existing !== null && $existing['pitch_id'] !== null ? (int) $existing['pitch_id'] : null;
+
+            if ($manuell) {
+                $pitchId = $stored;
+            } elseif ($existing === null || $isFuture) {
+                $pitchId = $isHome
+                    ? (self::rulePitchForKickoff($rules, $anstoss) ?? $defaultPitchByVenue[$venueId] ?? null)
+                    : null;
             } else {
-                $pitchId = $venueId !== null ? ($defaultPitchByVenue[$venueId] ?? null) : null;
+                $pitchId = (string) $existing['ort_text'] === $ortText
+                    ? $stored
+                    : ($isHome ? ($defaultPitchByVenue[$venueId] ?? null) : null);
+            }
+
+            // skip only when nothing relevant changed: same hash AND the
+            // desired pitch already matches what's stored (a rule change
+            // must still reach the row even though the hash stays equal).
+            if ($existing !== null && (string) $existing['sync_hash'] === $syncHash && $pitchId === $stored) {
+                $skipped++;
+                continue;
             }
 
             $payload = [
                 'team_id' => $teamId,
                 'anstoss' => $anstoss,
                 'gegner' => $gegner,
-                'heimspiel' => $venueId !== null,
+                'heimspiel' => $isHome,
                 'ort_text' => $ortText,
                 'pitch_id' => $pitchId,
+                'pitch_manuell' => $manuell,
                 'status' => $status,
                 'import_source_id' => $sourceId,
                 'ics_uid' => $icsEvent->uid,
@@ -156,7 +188,6 @@ final readonly class IcsImportService
         // cancelled (never deleted); past matches are left untouched, some
         // feeds drop past events
         $cancelled = 0;
-        $today = new \DateTimeImmutable('today')->format('Y-m-d H:i:s');
         foreach ($this->matches->findBySource($sourceId) as $match) {
             if (isset($feedUids[(string) $match['ics_uid']])
                 || (string) $match['status'] === 'abgesagt'
@@ -171,6 +202,7 @@ final readonly class IcsImportService
                 'heimspiel' => (int) $match['heimspiel'] === 1,
                 'ort_text' => (string) $match['ort_text'],
                 'pitch_id' => $match['pitch_id'] !== null ? (int) $match['pitch_id'] : null,
+                'pitch_manuell' => (int) $match['pitch_manuell'] === 1,
                 'status' => 'abgesagt',
                 'import_source_id' => $sourceId,
                 'ics_uid' => (string) $match['ics_uid'],
@@ -194,6 +226,25 @@ final readonly class IcsImportService
             cancelled: $cancelled,
             skipped: $skipped,
         );
+    }
+
+    /**
+     * First team_home_pitch rule whose validity range contains the kickoff
+     * date, both gueltig_ab and gueltig_bis inclusive. The per-team overlap
+     * validation in TeamHomePitchService guarantees at most one match.
+     *
+     * @param list<array<string, mixed>> $rules
+     */
+    private static function rulePitchForKickoff(array $rules, string $anstoss): ?int
+    {
+        $datum = substr($anstoss, 0, 10);
+        foreach ($rules as $rule) {
+            if ((string) $rule['gueltig_ab'] <= $datum && $datum <= (string) $rule['gueltig_bis']) {
+                return (int) $rule['pitch_id'];
+            }
+        }
+
+        return null;
     }
 
     /**

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Integration;
 
 use App\Tests\Support\DatabaseTestCase;
+use App\Tests\Support\FakeFeedFetcher;
 
 /**
  * Mandatory availability tests (CLAUDE.md section 12): free gaps are
@@ -179,5 +180,33 @@ final class AvailabilityServiceTest extends DatabaseTestCase
         self::assertCount(1, $hinweise);
         self::assertSame('Heimspiel, Platz offen', $hinweise[0]['text']);
         self::assertSame('FC Gegner', $hinweise[0]['gegner']);
+    }
+
+    public function testImportedHomeMatchOnRulePitchBlocksAvailability(): void
+    {
+        $this->createBegriff($this->venueId, 'Musterstadt');
+        $rulePitch = $this->createPitch($this->venueId, 'Kunstrasen');
+        $this->createHomePitchRule($this->teamId, $rulePitch, '2026-01-01', '2026-12-31');
+        $sourceId = $this->createImportSource($this->teamId, 'https://example.test/feed.ics');
+
+        $fetcher = new FakeFeedFetcher(['https://example.test/feed.ics' => "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"
+            . "BEGIN:VEVENT\r\nUID:u1\r\nDTSTART;TZID=Europe/Berlin:20260804T150000\r\n"
+            . "SUMMARY:SV Musterstadt - FC Gegner\r\nLOCATION:Sportanlage Musterstadt\r\nSEQUENCE:0\r\nEND:VEVENT\r\n"
+            . "END:VCALENDAR\r\n"]);
+        $this->icsImportService($fetcher)->runAll();
+        self::assertSame($sourceId, (int) $this->dumpTable('import_source')[0]['id']);
+
+        $result = $this->availabilityService()->compute('2026-08-04', '2026-08-04');
+
+        $rulePitchDay = null;
+        foreach ($result['venues'][0]['plaetze'] as $pitch) {
+            if ($pitch['id'] === $rulePitch) {
+                $rulePitchDay = $pitch['tage'][0];
+            }
+        }
+        self::assertNotNull($rulePitchDay);
+        $states = array_map(static fn(array $i): string => $i['zustand'], $rulePitchDay['intervalle']);
+        self::assertContains('belegt', $states);
+        self::assertSame([], $result['venues'][0]['hinweise'], 'a matched pitch means no open-pitch hint');
     }
 }

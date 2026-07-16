@@ -22,7 +22,13 @@
     // Kalenderansichten bleiben leer (Issue #19).
     const istListenAnsicht = (calendarViewType) => calendarViewType === 'listNachlade';
 
-    const api = { baueEventsParams, istListenAnsicht };
+    // Offline-Fallback der Platzbelegung (Issue #10): serverseitig liefert
+    // typ=belegung Heimspiele mit zugeordnetem Platz mit (EventFeedService),
+    // dieser Filter hält das Offline-Bundle (typ='') damit konsistent.
+    const istBelegungsRelevant = (e) => e.typ === 'belegung' || e.typ === 'sperrung'
+        || (e.typ === 'spiel' && e.pitch_id !== null && e.status !== 'abgesagt');
+
+    const api = { baueEventsParams, istListenAnsicht, istBelegungsRelevant };
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = api;
     } else {

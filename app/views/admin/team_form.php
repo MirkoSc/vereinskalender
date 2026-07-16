@@ -49,4 +49,56 @@
         <button type="submit">Speichern</button>
         <a href="/admin/teams">Abbrechen</a>
     </form>
+
+    <?php if (($homePitchRules ?? null) !== null): ?>
+        <h3>Saisonale Heimspielstätte</h3>
+        <p>
+            Heimspiele werden beim Import automatisch dem im Zeitraum gültigen Platz zugeordnet
+            (Gültig-ab/-bis jeweils einschließlich). Eine manuelle Platz-Zuordnung am Spiel bleibt
+            immer unangetastet; ohne passende Regel gilt der Standard-Platz der Spielstätte.
+        </p>
+        <?php if ($homePitchRules === []): ?>
+            <p>Noch keine Regel hinterlegt.</p>
+        <?php else: ?>
+            <table>
+                <thead><tr><th>Platz</th><th>Gültig ab</th><th>Gültig bis</th><th></th></tr></thead>
+                <tbody>
+                <?php foreach ($homePitchRules as $rule): ?>
+                    <tr>
+                        <td><?= e($rule['pitch_name'] ?? '') ?></td>
+                        <td><?= e(date('d.m.Y', strtotime((string) $rule['gueltig_ab']))) ?></td>
+                        <td><?= e(date('d.m.Y', strtotime((string) $rule['gueltig_bis']))) ?></td>
+                        <td>
+                            <form method="post" action="/admin/heimplaetze/<?= e($rule['id']) ?>/loeschen" class="inline-form">
+                                <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
+                                <button type="submit" class="linklike danger">Löschen</button>
+                            </form>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+        <form method="post" action="/admin/teams/<?= e($teamId) ?>/heimplatz" class="heimplatz-form">
+            <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
+            <label>
+                Platz
+                <select name="pitch_id" required>
+                    <option value="">– wählen –</option>
+                    <?php foreach ($pitches as $pitch): ?>
+                        <option value="<?= e($pitch['id']) ?>"><?= e($pitch['name']) ?> (<?= e($pitch['venue_name'] ?? '') ?>)</option>
+                    <?php endforeach; ?>
+                </select>
+            </label>
+            <label>
+                Gültig ab
+                <input type="date" name="gueltig_ab" required>
+            </label>
+            <label>
+                Gültig bis
+                <input type="date" name="gueltig_bis" required>
+            </label>
+            <button type="submit">Hinzufügen</button>
+        </form>
+    <?php endif; ?>
 </section>

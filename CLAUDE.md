@@ -70,9 +70,17 @@ sind KEINE Projektionen.
   Konfliktprüfung lehnt neue Belegungen ab; 'eingeschraenkt' → Belegen
   erlaubt, Buchungsdialog warnt mit Grund, Termine tragen Markierung.
 - **match**: team_id FK, anstoss, gegner, heimspiel, ort_text (ICS-LOCATION
-  roh), pitch_id NULL (nur Heimspiele), status ('geplant'|'abgesagt'),
-  import_source_id NULL, ics_uid, ics_sequence, sync_hash.
-  **UNIQUE(import_source_id, ics_uid)**.
+  roh), pitch_id NULL (nur Heimspiele), pitch_manuell (true = manuelle
+  Platz-Zuordnung, der Import fasst pitch_id dann nie an; Alt-Events ohne
+  Feld werden beim Replay deterministisch auf false gehoben, Upcasting
+  analog pitch.farbe), status ('geplant'|'abgesagt'), import_source_id
+  NULL, ics_uid, ics_sequence, sync_hash. **UNIQUE(import_source_id,
+  ics_uid)**.
+- **team_home_pitch**: team_id FK, pitch_id FK, gueltig_ab, gueltig_bis
+  (beide INKLUSIVE, wie training_slot). Je Team überlappungsfrei (auch ein
+  gemeinsamer Grenztag zählt als Überlappung). Pflege eingebettet im
+  Team-Formular; der Saison-Assistent bietet die Übernahme in neue
+  Zeiträume an (Abschnitt 5).
 - **import_source**: team_id FK, ics_url, aktiv, letzter_lauf,
   letzter_status, fehlertext
 - **venue** (Heimverein): name, farbe, adresse, default_pitch_id NULL,
@@ -129,12 +137,14 @@ jederzeit per Replay rekonstruierbar.
 
 CSRF-Token für alle Schreibrouten. Passwörter nie loggen.
 
-Admin-Funktionen: Teams/Plätze/Spielstätten-CRUD, Import-Quellen,
-Event-Historie (Filter: IP/Name/Typ/Quelle/Zeitraum; Einzel- und
-Massen-Ausschluss, Korrektur, Ausschluss aufheben, Rebuild mit Fortschritt),
-Backup erstellen/herunterladen, Update einspielen, Saison-Assistent
-(Teams umbenennen/deaktivieren/anlegen, Import-URLs erneuern – fussball.de
-vergibt pro Saison neue –, Slots der Vorsaison als Kopiervorlage).
+Admin-Funktionen: Teams/Plätze/Spielstätten-CRUD (Teams inkl. eingebetteter
+Heimspielstätten-Regeln, Abschnitt 3), Import-Quellen, Event-Historie
+(Filter: IP/Name/Typ/Quelle/Zeitraum; Einzel- und Massen-Ausschluss,
+Korrektur, Ausschluss aufheben, Rebuild mit Fortschritt), Backup
+erstellen/herunterladen, Update einspielen, Saison-Assistent (Teams
+umbenennen/deaktivieren/anlegen, Import-URLs erneuern – fussball.de vergibt
+pro Saison neue –, Slots und Heimspielstätten-Regeln der Vorsaison als
+Kopiervorlage).
 
 ### Dashboard & Monitoring
 
@@ -159,11 +169,19 @@ vergibt pro Saison neue –, Slots der Vorsaison als Kopiervorlage).
   bekannt + sync_hash geändert → UPDATE (Verlegung: UID bleibt,
   DTSTART/SEQUENCE ändern sich); unverändert → skip. Nachlauf: im Feed
   fehlende UIDs → `status='abgesagt'`, NIEMALS hart löschen.
-- `sync_hash` über anstoss + ort_text + gegner + summary-relevante Felder.
+- `sync_hash` über anstoss + ort_text + gegner + summary-relevante Felder
+  (NICHT pitch_id).
 - Heimspiel-Erkennung via `VenueMatcher`; Platz steht NICHT im ICS →
-  `pitch_id` mit `default_pitch_id` des Vereins vorbelegen, manuell änderbar
-  (als Event). Unsichere Zuordnungen erscheinen in der Verfügbarkeitsansicht
-  als Hinweis-Layer „Heimspiel, Platz offen" – nie stillschweigend „frei".
+  Zuordnung in fester Priorität: (1) manuelle Zuordnung (`pitch_manuell`)
+  bleibt IMMER unangetastet – Auswahl „automatisch" setzt sie zurück;
+  (2) die zum Anstoß-Datum gültige `team_home_pitch`-Regel (Grenztage
+  inklusive); (3) `default_pitch_id` des Vereins. Regel-Änderungen wirken
+  beim nächsten Lauf auch auf bestehende, nicht manuell zugeordnete
+  ZUKÜNFTIGE Spiele (eigenes Update-Event trotz unverändertem sync_hash,
+  wenn der Soll-Platz vom gespeicherten abweicht); vergangene Spiele werden
+  nie umgehängt. Unsichere Zuordnungen erscheinen in der
+  Verfügbarkeitsansicht als Hinweis-Layer „Heimspiel, Platz offen" – nie
+  stillschweigend „frei".
 - Fehler pro Quelle isolieren; Fehlertext in import_source, Anzeige im Admin.
 
 ## 7. Anzeigemodi, Farben, Filter
@@ -172,7 +190,9 @@ vergibt pro Saison neue –, Slots der Vorsaison als Kopiervorlage).
   Farbfelder (`team_farbe`, `venue_farbe`) + `venue_id`, zusätzlich
   `pitch_farbe` (NULL ohne zugeordneten Platz, z. B. Auswärtsspiel). Auch
   `/api/verfuegbarkeit` und das Offline-Bundle liefern die Platzfarbe mit.
-  Moduswechsel ist reines Frontend ohne neuen Request.
+  Moduswechsel ist reines Frontend ohne neuen Request. `typ=belegung`
+  liefert zusätzlich Heimspiele mit zugeordnetem Platz (Status ≠
+  abgesagt); sie erscheinen in der Platzbelegung auf ihrem Platz.
 - Spielstätten-Auflösung zur **Anzeigezeit** im einen `VenueMatcher`-Service
   (Anzeige UND Import): erster `venue_begriff` nach sortierung,
   case-insensitive in `ort_text` → venue + Farbe; kein Treffer → auswärts
@@ -302,7 +322,10 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   Verfügbarkeitsberechnung (Lücken innerhalb Nutzungszeiten);
   Zeitumstellungs-Tests (Slot-Expansion + ICS-Export über beide
   DST-Wochenenden); Migrationslauf von 0; Backup + Restore-Roundtrip;
-  Bootstrap-Admin-Regel.
+  Bootstrap-Admin-Regel; Heimspielstätten-Regeln (Zuordnungs-Priorität
+  manuell > Regel > Standard, Grenztag-Anstöße inklusive, Reflow nur für
+  zukünftige nicht manuell zugeordnete Spiele, pitch_manuell-Upcasting
+  beim Replay).
 - Konfliktprüfung im `BookingService`; DIESELBE Expansionslogik speist die
   Verfügbarkeitsansicht.
 - **Zeitzonen**: durchgängig `Europe/Berlin` (zentral im Bootstrap gesetzt,

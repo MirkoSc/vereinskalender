@@ -172,6 +172,49 @@ final class EventFeedTest extends DatabaseTestCase
         self::assertCount(1, $feed->events([...$range, 'bereich' => 'E']));
     }
 
+    public function testBelegungTypIncludesHomeMatchesOnTheirPitch(): void
+    {
+        // home match with a pitch: must appear in the occupancy view
+        $this->createMatch($this->teamId, [
+            'anstoss' => '2026-08-08 15:00:00',
+            'heimspiel' => true,
+            'ort_text' => 'Sportanlage Musterstadt',
+            'pitch_id' => $this->pitchId,
+        ]);
+        // away match: never a pitch, must not appear
+        $this->createMatch($this->teamId, [
+            'anstoss' => '2026-08-08 17:00:00',
+            'heimspiel' => false,
+            'ort_text' => 'Stadion Gegnerhausen',
+        ]);
+        // home match without an assigned pitch: must not appear
+        $this->createMatch($this->teamId, [
+            'anstoss' => '2026-08-08 19:00:00',
+            'heimspiel' => true,
+            'ort_text' => 'Sportanlage Musterstadt',
+        ]);
+        // cancelled home match with a pitch: must not appear
+        $this->createMatch($this->teamId, [
+            'anstoss' => '2026-08-08 21:00:00',
+            'heimspiel' => true,
+            'ort_text' => 'Sportanlage Musterstadt',
+            'pitch_id' => $this->pitchId,
+            'status' => 'abgesagt',
+        ]);
+
+        $range = ['von' => '2026-08-08', 'bis' => '2026-08-08'];
+        $belegung = $this->eventFeedService()->events([...$range, 'typ' => 'belegung']);
+        $matchEvents = array_values(array_filter($belegung, static fn(array $e): bool => $e['typ'] === 'spiel'));
+
+        self::assertCount(1, $matchEvents);
+        self::assertSame($this->pitchId, $matchEvents[0]['pitch_id']);
+
+        // typ='' (unfiltered) still contains the match exactly once
+        $alle = $this->eventFeedService()->events($range);
+        $alleMatches = array_values(array_filter($alle, static fn(array $e): bool => $e['typ'] === 'spiel'));
+        self::assertCount(4, $alleMatches, 'all four matches show up in the unfiltered feed, exactly once each');
+    }
+
     public function testRestrictionAppearsAsSperrungEvent(): void
     {
         $this->restrictionService()->create([
