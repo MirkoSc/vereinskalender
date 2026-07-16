@@ -187,6 +187,43 @@ final class ReplayDeterminismTest extends DatabaseTestCase
     }
 
     /**
+     * Issue #11: pitch events written before migration 011 carry no kuerzel.
+     * The upcast to '' (CLAUDE.md section 5) must be deterministic, both on
+     * the initial write and on replay.
+     */
+    public function testLegacyPitchEventWithoutKuerzelUpcastsToEmptyStringOnReplay(): void
+    {
+        $store = $this->eventStore();
+        $context = $this->context();
+
+        $venueId = $store->append(AggregateType::Venue, null, EventType::Created, [
+            'name' => 'SV Musterstadt',
+            'farbe' => '#1a7f37',
+            'adresse' => 'Sportweg 1, 12345 Musterstadt',
+            'default_pitch_id' => null,
+            'sortierung' => 0,
+        ], $context)->aggregateId;
+
+        // events written before migration 011 carry no kuerzel key at all
+        $store->append(AggregateType::Pitch, null, EventType::Created, [
+            'venue_id' => $venueId,
+            'name' => 'Rasenplatz 1',
+            'farbe' => '#0969da',
+            'typ' => 'Rasen',
+            'flutlicht' => true,
+            'adresse' => null,
+            'sortierung' => 0,
+        ], $context);
+
+        $pitch = $this->dumpTable('pitch')[0];
+        self::assertSame('', $pitch['kuerzel']);
+
+        $state = $this->runRebuildToCompletion($this->rebuildService());
+        self::assertSame([], $state->skipped);
+        self::assertSame($pitch, $this->dumpTable('pitch')[0]);
+    }
+
+    /**
      * Issue #10: match events written before pitch_manuell existed carry no
      * flag. The upcast to false (CLAUDE.md section 5) must be deterministic,
      * both on the initial write and on replay.

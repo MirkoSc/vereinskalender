@@ -6,13 +6,14 @@
     <?php else: ?>
         <table>
             <thead>
-                <tr><th>Farbe</th><th>Name</th><th>Spielstätte</th><th>Typ</th><th>Flutlicht</th><th>Sortierung</th><th></th></tr>
+                <tr><th>Farbe</th><th>Name</th><th>Kürzel</th><th>Spielstätte</th><th>Typ</th><th>Flutlicht</th><th>Sortierung</th><th></th></tr>
             </thead>
             <tbody>
             <?php foreach ($pitches as $pitch): ?>
                 <tr>
                     <td><span class="swatch" style="background: <?= e($pitch['farbe']) ?>"></span></td>
                     <td><a href="/admin/plaetze/<?= e($pitch['id']) ?>"><?= e($pitch['name']) ?></a></td>
+                    <td><?= e($pitch['kuerzel']) ?></td>
                     <td><?= e($pitch['venue_name'] ?? '–') ?></td>
                     <td><?= e($pitch['typ']) ?></td>
                     <td><?= ((int) $pitch['flutlicht'] === 1) ? 'ja' : 'nein' ?></td>

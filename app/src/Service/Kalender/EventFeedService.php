@@ -149,6 +149,7 @@ final readonly class EventFeedService
                         : $auswaertsFarbe,
                     'pitch_id' => $occurrence->pitchId,
                     'pitch_name' => $pitch !== null ? (string) $pitch['name'] : null,
+                    'pitch_kuerzel' => $pitch !== null ? (string) $pitch['kuerzel'] : null,
                     'pitch_farbe' => $pitch !== null ? (string) $pitch['farbe'] : null,
                     // address fallback for the Maps link (CLAUDE.md section 4:
                     // pitch.adresse only set when it differs from the venue's)
@@ -187,6 +188,7 @@ final readonly class EventFeedService
                         : $auswaertsFarbe,
                     'pitch_id' => (int) $restriction['pitch_id'],
                     'pitch_name' => $pitch !== null ? (string) $pitch['name'] : null,
+                    'pitch_kuerzel' => $pitch !== null ? (string) $pitch['kuerzel'] : null,
                     'pitch_farbe' => $pitch !== null ? (string) $pitch['farbe'] : null,
                     'pitch_adresse' => $pitch !== null && $pitch['adresse'] !== null ? (string) $pitch['adresse'] : null,
                     'venue_adresse' => $venueId !== null && isset($venues[$venueId]) ? (string) $venues[$venueId]['adresse'] : null,
@@ -236,6 +238,7 @@ final readonly class EventFeedService
                         : $auswaertsFarbe,
                     'pitch_id' => $pitchId,
                     'pitch_name' => $pitchId !== null ? (string) ($pitches[$pitchId]['name'] ?? '') : null,
+                    'pitch_kuerzel' => $pitch !== null ? (string) $pitch['kuerzel'] : null,
                     'pitch_farbe' => $pitch !== null ? (string) $pitch['farbe'] : null,
                     'pitch_adresse' => $pitch !== null && $pitch['adresse'] !== null ? (string) $pitch['adresse'] : null,
                     'venue_adresse' => $venueId !== null && isset($venues[$venueId]) ? (string) $venues[$venueId]['adresse'] : null,

@@ -69,6 +69,7 @@ final readonly class PitchService
         $payload = [
             'venue_id' => (int) $pitch['venue_id'],
             'name' => (string) $pitch['name'],
+            'kuerzel' => (string) $pitch['kuerzel'],
             'farbe' => (string) $pitch['farbe'],
             'typ' => (string) $pitch['typ'],
             'flutlicht' => (bool) $pitch['flutlicht'],
@@ -96,6 +97,11 @@ final readonly class PitchService
             $errors['name'] = 'Name ist erforderlich (max. 100 Zeichen).';
         }
 
+        $kuerzel = trim((string) ($input['kuerzel'] ?? ''));
+        if ($kuerzel === '' || mb_strlen($kuerzel) > 10) {
+            $errors['kuerzel'] = 'Kürzel ist erforderlich (max. 10 Zeichen).';
+        }
+
         $typ = trim((string) ($input['typ'] ?? ''));
         if (mb_strlen($typ) > 50) {
             $errors['typ'] = 'Typ darf max. 50 Zeichen lang sein.';
@@ -118,6 +124,7 @@ final readonly class PitchService
         return [
             'venue_id' => $venueId,
             'name' => $name,
+            'kuerzel' => $kuerzel,
             'farbe' => $farbe,
             'typ' => $typ,
             'flutlicht' => ($input['flutlicht'] ?? '') !== '',

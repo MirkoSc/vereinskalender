@@ -26,6 +26,11 @@
             <?php if (isset($errors['name'])): ?><span class="field-error"><?= e($errors['name']) ?></span><?php endif; ?>
         </label>
         <label>
+            Kürzel (z. B. „R1", erscheint als Text bei der Platz-Gruppierung im Spielplan)
+            <input type="text" name="kuerzel" value="<?= e($values['kuerzel'] ?? '') ?>" required maxlength="10">
+            <?php if (isset($errors['kuerzel'])): ?><span class="field-error"><?= e($errors['kuerzel']) ?></span><?php endif; ?>
+        </label>
+        <label>
             Typ (z. B. „Rasen", „Kunstrasen")
             <input type="text" name="typ" value="<?= e($values['typ'] ?? '') ?>" maxlength="50">
             <?php if (isset($errors['typ'])): ?><span class="field-error"><?= e($errors['typ']) ?></span><?php endif; ?>
