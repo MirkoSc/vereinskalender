@@ -236,6 +236,196 @@ final class IcsImportTest extends DatabaseTestCase
         self::assertSame('geplant', $this->dumpTable('match')[0]['status'], 'nothing cancelled');
     }
 
+    public function testRuleAssignsPitchOnImport(): void
+    {
+        $rulePitch = $this->createPitch($this->venueId, 'Kunstrasen');
+        $this->createHomePitchRule($this->teamId, $rulePitch, '2099-01-01', '2099-12-31');
+
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('heim', '20990808T150000', 'SV Musterstadt - FC Gegner', 'Sportanlage Musterstadt'),
+            self::vevent('gast', '20990815T130000', 'FC Anders - SV Musterstadt', 'Stadion Anders'),
+        )]);
+        $this->icsImportService($fetcher)->runAll();
+
+        $matches = $this->dumpTable('match');
+        $heim = array_values(array_filter($matches, static fn(array $m): bool => $m['ics_uid'] === 'heim'))[0];
+        $gast = array_values(array_filter($matches, static fn(array $m): bool => $m['ics_uid'] === 'gast'))[0];
+
+        self::assertSame($rulePitch, (int) $heim['pitch_id'], 'rule pitch wins over the venue default');
+        self::assertNull($gast['pitch_id'], 'away matches never get a pitch');
+    }
+
+    public function testRuleBoundaryDaysAreInclusive(): void
+    {
+        $rulePitch = $this->createPitch($this->venueId, 'Kunstrasen');
+        $this->createHomePitchRule($this->teamId, $rulePitch, '2099-08-01', '2099-11-30');
+
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('grenze-ab', '20990801T003000', 'SV Musterstadt - A', 'Sportanlage Musterstadt'),
+            self::vevent('grenze-bis', '20991130T200000', 'SV Musterstadt - B', 'Sportanlage Musterstadt'),
+            self::vevent('davor', '20990731T200000', 'SV Musterstadt - C', 'Sportanlage Musterstadt'),
+            self::vevent('danach', '20991201T000000', 'SV Musterstadt - D', 'Sportanlage Musterstadt'),
+        )]);
+        $this->icsImportService($fetcher)->runAll();
+
+        $byUid = [];
+        foreach ($this->dumpTable('match') as $m) {
+            $byUid[$m['ics_uid']] = $m;
+        }
+
+        self::assertSame($rulePitch, (int) $byUid['grenze-ab']['pitch_id'], 'kickoff on gueltig_ab counts');
+        self::assertSame($rulePitch, (int) $byUid['grenze-bis']['pitch_id'], 'kickoff on gueltig_bis counts');
+        self::assertSame($this->pitchId, (int) $byUid['davor']['pitch_id'], 'day before falls back to default');
+        self::assertSame($this->pitchId, (int) $byUid['danach']['pitch_id'], 'day after falls back to default');
+    }
+
+    public function testRuleChangeReflowsFutureNonManualMatchesOnNextRun(): void
+    {
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('heim', '20990808T150000', 'SV Musterstadt - FC Gegner', 'Sportanlage Musterstadt'),
+        )]);
+        $import = $this->icsImportService($fetcher);
+        $import->runAll();
+        self::assertSame($this->pitchId, (int) $this->dumpTable('match')[0]['pitch_id'], 'default pitch before any rule');
+
+        $rulePitch = $this->createPitch($this->venueId, 'Kunstrasen');
+        $this->createHomePitchRule($this->teamId, $rulePitch, '2099-01-01', '2099-12-31');
+
+        // byte-identical feed: hash unchanged, but the rule now demands a different pitch
+        $result = $import->runAll()[0];
+        self::assertSame([0, 1, 0, 0], [$result->inserted, $result->updated, $result->cancelled, $result->skipped]);
+        $match = $this->dumpTable('match')[0];
+        self::assertSame($rulePitch, (int) $match['pitch_id']);
+
+        // idempotent: a third run with the same feed skips (no update loop)
+        $result = $import->runAll()[0];
+        self::assertSame([0, 0, 0, 1], [$result->inserted, $result->updated, $result->cancelled, $result->skipped]);
+    }
+
+    public function testManualAssignmentAlwaysWinsOverRule(): void
+    {
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('heim', '20990808T150000', 'SV Musterstadt - FC Gegner', 'Sportanlage Musterstadt'),
+        )]);
+        $import = $this->icsImportService($fetcher);
+        $import->runAll();
+
+        $manualPitch = $this->createPitch($this->venueId, 'Ausweichplatz');
+        $matchId = (int) $this->dumpTable('match')[0]['id'];
+        $matchService = new \App\Service\Kalender\MatchService(
+            $this->eventStore(),
+            new \App\Repository\MatchRepository($this->pdo()),
+            new \App\Repository\PitchRepository($this->pdo()),
+        );
+        $matchService->assignPitch($matchId, ['pitch_id' => (string) $manualPitch], $this->context('Platzwart Paul'));
+        self::assertSame(1, (int) $this->dumpTable('match')[0]['pitch_manuell']);
+
+        $rulePitch = $this->createPitch($this->venueId, 'Kunstrasen');
+        $this->createHomePitchRule($this->teamId, $rulePitch, '2099-01-01', '2099-12-31');
+
+        $result = $import->runAll()[0];
+        self::assertSame([0, 0, 0, 1], [$result->inserted, $result->updated, $result->cancelled, $result->skipped]);
+        self::assertSame($manualPitch, (int) $this->dumpTable('match')[0]['pitch_id']);
+        self::assertSame(1, (int) $this->dumpTable('match')[0]['pitch_manuell']);
+    }
+
+    public function testManualAssignmentSurvivesLocationTextChange(): void
+    {
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('heim', '20990808T150000', 'SV Musterstadt - FC Gegner', 'Sportanlage Musterstadt'),
+        )]);
+        $import = $this->icsImportService($fetcher);
+        $import->runAll();
+
+        $manualPitch = $this->createPitch($this->venueId, 'Ausweichplatz');
+        $matchId = (int) $this->dumpTable('match')[0]['id'];
+        $matchService = new \App\Service\Kalender\MatchService(
+            $this->eventStore(),
+            new \App\Repository\MatchRepository($this->pdo()),
+            new \App\Repository\PitchRepository($this->pdo()),
+        );
+        $matchService->assignPitch($matchId, ['pitch_id' => (string) $manualPitch], $this->context('Platzwart Paul'));
+
+        // location text changes too -> pre-PR this silently lost the manual pitch
+        $fetcher->set(self::URL, self::feed(
+            self::vevent('heim', '20990808T150000', 'SV Musterstadt - FC Gegner', 'Sportanlage Musterstadt, Nebenplatz', 1),
+        ));
+        $import->runAll();
+
+        self::assertSame($manualPitch, (int) $this->dumpTable('match')[0]['pitch_id']);
+    }
+
+    public function testPastMatchesAreNeverReflowedByRules(): void
+    {
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('vergangen', '20200808T150000', 'SV Musterstadt - FC Gegner', 'Sportanlage Musterstadt'),
+        )]);
+        $import = $this->icsImportService($fetcher);
+        $import->runAll();
+        self::assertSame($this->pitchId, (int) $this->dumpTable('match')[0]['pitch_id']);
+
+        $rulePitch = $this->createPitch($this->venueId, 'Kunstrasen');
+        $this->createHomePitchRule($this->teamId, $rulePitch, '2020-01-01', '2020-12-31');
+
+        $result = $import->runAll()[0];
+        self::assertSame([0, 0, 0, 1], [$result->inserted, $result->updated, $result->cancelled, $result->skipped]);
+        self::assertSame($this->pitchId, (int) $this->dumpTable('match')[0]['pitch_id'], 'past matches are never reflowed');
+    }
+
+    public function testCancelledFollowUpPreservesPitchManuell(): void
+    {
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('heim', '20990808T150000', 'SV Musterstadt - FC Gegner', 'Sportanlage Musterstadt'),
+        )]);
+        $import = $this->icsImportService($fetcher);
+        $import->runAll();
+
+        $manualPitch = $this->createPitch($this->venueId, 'Ausweichplatz');
+        $matchId = (int) $this->dumpTable('match')[0]['id'];
+        $matchService = new \App\Service\Kalender\MatchService(
+            $this->eventStore(),
+            new \App\Repository\MatchRepository($this->pdo()),
+            new \App\Repository\PitchRepository($this->pdo()),
+        );
+        $matchService->assignPitch($matchId, ['pitch_id' => (string) $manualPitch], $this->context('Platzwart Paul'));
+
+        $fetcher->set(self::URL, self::feed());
+        $import->runAll();
+
+        $match = $this->dumpTable('match')[0];
+        self::assertSame('abgesagt', $match['status']);
+        self::assertSame(1, (int) $match['pitch_manuell']);
+        self::assertSame($manualPitch, (int) $match['pitch_id']);
+    }
+
+    public function testEmptyManualSelectionResetsToAutomatic(): void
+    {
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('heim', '20990808T150000', 'SV Musterstadt - FC Gegner', 'Sportanlage Musterstadt'),
+        )]);
+        $import = $this->icsImportService($fetcher);
+        $import->runAll();
+
+        $manualPitch = $this->createPitch($this->venueId, 'Ausweichplatz');
+        $matchId = (int) $this->dumpTable('match')[0]['id'];
+        $matchService = new \App\Service\Kalender\MatchService(
+            $this->eventStore(),
+            new \App\Repository\MatchRepository($this->pdo()),
+            new \App\Repository\PitchRepository($this->pdo()),
+        );
+        $matchService->assignPitch($matchId, ['pitch_id' => (string) $manualPitch], $this->context('Platzwart Paul'));
+
+        // resetting to the empty option turns automatic assignment back on
+        $matchService->assignPitch($matchId, ['pitch_id' => ''], $this->context('Platzwart Paul'));
+        self::assertSame(0, (int) $this->dumpTable('match')[0]['pitch_manuell']);
+
+        $rulePitch = $this->createPitch($this->venueId, 'Kunstrasen');
+        $this->createHomePitchRule($this->teamId, $rulePitch, '2099-01-01', '2099-12-31');
+
+        $import->runAll();
+        self::assertSame($rulePitch, (int) $this->dumpTable('match')[0]['pitch_id']);
+    }
+
     public function testImportEventsCarryImportSource(): void
     {
         $fetcher = new FakeFeedFetcher([self::URL => self::feed(

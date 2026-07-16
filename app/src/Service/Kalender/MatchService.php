@@ -13,11 +13,12 @@ use App\Service\EventStore\EventStore;
 use App\Service\ValidationException;
 
 /**
- * Manual pitch assignment for imported matches (CLAUDE.md section 7): the
- * concrete pitch is not in the ICS; the import pre-fills the venue default
- * and the assignment stays manually changeable - name-based, as an event.
- * The sync_hash does not cover pitch_id, so the next import run keeps the
- * manual assignment (as long as the location text is unchanged).
+ * Manual pitch assignment for imported matches (CLAUDE.md section 6): the
+ * concrete pitch is not in the ICS; the import pre-fills it from a
+ * team_home_pitch rule or the venue default. Choosing a concrete pitch here
+ * sets pitch_manuell=true, which the import then never touches again;
+ * choosing the empty option resets to automatic (pitch_manuell=false), so
+ * the next import run re-assigns by rule/default.
  */
 final readonly class MatchService
 {
@@ -54,6 +55,7 @@ final readonly class MatchService
             'heimspiel' => (int) $match['heimspiel'] === 1,
             'ort_text' => (string) $match['ort_text'],
             'pitch_id' => $pitchId,
+            'pitch_manuell' => $pitchId !== null,
             'status' => (string) $match['status'],
             'import_source_id' => $match['import_source_id'] !== null ? (int) $match['import_source_id'] : null,
             'ics_uid' => (string) $match['ics_uid'],

@@ -16,6 +16,7 @@ use App\Service\Projection\PitchProjector;
 use App\Service\Projection\PitchRestrictionProjector;
 use App\Service\Projection\ProjectorRegistry;
 use App\Service\Projection\SlotExceptionProjector;
+use App\Service\Projection\TeamHomePitchProjector;
 use App\Service\Projection\TeamProjector;
 use App\Service\Projection\TrainingSlotProjector;
 use App\Service\Projection\VenueBegriffProjector;
@@ -76,6 +77,7 @@ abstract class DatabaseTestCase extends TestCase
             new PitchRestrictionProjector($this->pdo()),
             new ImportSourceProjector($this->pdo()),
             new MatchProjector($this->pdo()),
+            new TeamHomePitchProjector($this->pdo()),
         ]);
     }
 
@@ -184,6 +186,26 @@ abstract class DatabaseTestCase extends TestCase
         )->aggregateId;
     }
 
+    /**
+     * @param array<string, mixed> $overrides
+     */
+    protected function createHomePitchRule(int $teamId, int $pitchId, string $gueltigAb, string $gueltigBis, array $overrides = []): int
+    {
+        return $this->eventStore()->append(
+            \App\Domain\AggregateType::TeamHomePitch,
+            null,
+            \App\Domain\EventType::Created,
+            [
+                'team_id' => $teamId,
+                'pitch_id' => $pitchId,
+                'gueltig_ab' => $gueltigAb,
+                'gueltig_bis' => $gueltigBis,
+                ...$overrides,
+            ],
+            $this->context(),
+        )->aggregateId;
+    }
+
     protected function createImportSource(int $teamId, string $icsUrl = 'https://example.test/feed.ics'): int
     {
         return $this->eventStore()->append(
@@ -204,6 +226,7 @@ abstract class DatabaseTestCase extends TestCase
             new \App\Repository\ImportSourceRepository($pdo),
             new \App\Repository\MatchRepository($pdo),
             new \App\Repository\VenueRepository($pdo),
+            new \App\Repository\TeamHomePitchRepository($pdo),
             \App\Service\Kalender\VenueMatcher::fromDatabase($pdo),
             $fetcher,
         );
@@ -232,6 +255,18 @@ abstract class DatabaseTestCase extends TestCase
         return new \App\Service\Kalender\RestrictionService(
             $this->eventStore(),
             new \App\Repository\PitchRestrictionRepository($pdo),
+            new \App\Repository\PitchRepository($pdo),
+        );
+    }
+
+    protected function teamHomePitchService(): \App\Service\Stammdaten\TeamHomePitchService
+    {
+        $pdo = $this->pdo();
+
+        return new \App\Service\Stammdaten\TeamHomePitchService(
+            $this->eventStore(),
+            new \App\Repository\TeamHomePitchRepository($pdo),
+            new \App\Repository\TeamRepository($pdo),
             new \App\Repository\PitchRepository($pdo),
         );
     }

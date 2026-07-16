@@ -129,6 +129,8 @@ return static function (Router $router, Container $c): void {
     $router->get('/admin/teams/{id:\d+}', $guard(fn(Request $r, array $p) => $c->teamController()->editForm($r, $p)));
     $router->post('/admin/teams/{id:\d+}', $guard(fn(Request $r, array $p) => $c->teamController()->update($r, $p)));
     $router->post('/admin/teams/{id:\d+}/loeschen', $guard(fn(Request $r, array $p) => $c->teamController()->delete($r, $p)));
+    $router->post('/admin/teams/{id:\d+}/heimplatz', $guard(fn(Request $r, array $p) => $c->teamController()->addHomePitch($r, $p)));
+    $router->post('/admin/heimplaetze/{id:\d+}/loeschen', $guard(fn(Request $r, array $p) => $c->teamController()->deleteHomePitch($r, $p)));
 
     $router->get('/admin/plaetze', $guard(fn(Request $r, array $p) => $c->pitchController()->index($r)));
     $router->get('/admin/plaetze/neu', $guard(fn(Request $r, array $p) => $c->pitchController()->createForm($r)));
@@ -176,6 +178,7 @@ return static function (Router $router, Container $c): void {
 
     $router->get('/admin/saison', $guard(fn(Request $r, array $p) => $c->saisonController()->page($r)));
     $router->post('/admin/saison/slots-kopieren', $guard(fn(Request $r, array $p) => $c->saisonController()->copySlots($r)));
+    $router->post('/admin/saison/heimplaetze-kopieren', $guard(fn(Request $r, array $p) => $c->saisonController()->copyHomePitchRules($r)));
 
     $router->get('/admin/seiten/{key:impressum|datenschutz}', $guard(fn(Request $r, array $p) => $c->pageAdminController()->form($r, $p)));
     $router->post('/admin/seiten/{key:impressum|datenschutz}', $guard(fn(Request $r, array $p) => $c->pageAdminController()->save($r, $p)));

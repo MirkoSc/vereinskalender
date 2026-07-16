@@ -1,6 +1,6 @@
 <section>
     <h2>Saison-Assistent</h2>
-    <p>Geführter Ablauf zum Saisonwechsel in drei Schritten:</p>
+    <p>Geführter Ablauf zum Saisonwechsel in vier Schritten:</p>
 
     <h3>1. Teams anpassen</h3>
     <p>
@@ -61,6 +61,39 @@
                 <label>gültig bis <input type="date" name="gueltig_bis" required></label>
             </div>
             <button type="submit" class="button">Ausgewählte Slots übernehmen</button>
+        </form>
+    <?php endif; ?>
+
+    <h3>4. Heimspielstätten-Regeln übernehmen</h3>
+    <?php if ($homePitchRules === []): ?>
+        <p>Keine Heimspielstätten-Regeln vorhanden.</p>
+    <?php else: ?>
+        <p>
+            Regeln der Vorsaison als Kopiervorlage in einen neuen Gültigkeitszeitraum übernehmen.
+            Jede Kopie durchläuft die Überlappungs-Prüfung je Team.
+        </p>
+        <form method="post" action="/admin/saison/heimplaetze-kopieren">
+            <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
+            <table>
+                <thead><tr><th></th><th>Team</th><th>Platz</th><th>Bisher gültig</th><th>Neu gültig ab</th><th>Neu gültig bis</th></tr></thead>
+                <tbody>
+                <?php foreach ($homePitchRules as $rule): ?>
+                    <?php
+                        $neuAb = date('Y-m-d', strtotime((string) $rule['gueltig_ab'] . ' +1 year'));
+                        $neuBis = date('Y-m-d', strtotime((string) $rule['gueltig_bis'] . ' +1 year'));
+                    ?>
+                    <tr>
+                        <td><input type="checkbox" name="rule_ids[]" value="<?= e($rule['id']) ?>" <?= (int) $rule['abgelaufen'] === 1 ? 'checked' : '' ?>></td>
+                        <td><?= e($rule['team_name'] ?? ('Team #' . $rule['team_id'])) ?></td>
+                        <td><?= e($rule['pitch_name'] ?? ('Platz #' . $rule['pitch_id'])) ?></td>
+                        <td><?= e($rule['gueltig_ab']) ?> bis <?= e($rule['gueltig_bis']) ?><?= (int) $rule['abgelaufen'] === 1 ? ' (abgelaufen)' : '' ?></td>
+                        <td><input type="date" name="gueltig_ab[<?= e($rule['id']) ?>]" value="<?= e($neuAb) ?>" required></td>
+                        <td><input type="date" name="gueltig_bis[<?= e($rule['id']) ?>]" value="<?= e($neuBis) ?>" required></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+            <button type="submit" class="button">Ausgewählte Regeln übernehmen</button>
         </form>
     <?php endif; ?>
 </section>
