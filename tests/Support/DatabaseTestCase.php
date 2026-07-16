@@ -126,13 +126,13 @@ abstract class DatabaseTestCase extends TestCase
         )->aggregateId;
     }
 
-    protected function createPitch(int $venueId, string $name = 'Rasenplatz 1', string $farbe = '#0969da'): int
+    protected function createPitch(int $venueId, string $name = 'Rasenplatz 1', string $farbe = '#0969da', string $kuerzel = 'P1'): int
     {
         return $this->eventStore()->append(
             \App\Domain\AggregateType::Pitch,
             null,
             \App\Domain\EventType::Created,
-            ['venue_id' => $venueId, 'name' => $name, 'farbe' => $farbe, 'typ' => 'Rasen', 'flutlicht' => true, 'adresse' => null, 'sortierung' => 0],
+            ['venue_id' => $venueId, 'name' => $name, 'kuerzel' => $kuerzel, 'farbe' => $farbe, 'typ' => 'Rasen', 'flutlicht' => true, 'adresse' => null, 'sortierung' => 0],
             $this->context(),
         )->aggregateId;
     }

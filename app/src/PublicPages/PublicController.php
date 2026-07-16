@@ -139,6 +139,7 @@ final readonly class PublicController
                 '/js/push.js',
                 '/js/nachlade.js',
                 '/js/kalender-events.js',
+                '/js/kalender-pitch.js',
                 '/js/kalender.js',
             ],
         ]));
@@ -169,6 +170,7 @@ final readonly class PublicController
             'id' => (int) $p['id'],
             'venue_id' => (int) $p['venue_id'],
             'name' => (string) $p['name'],
+            'kuerzel' => (string) $p['kuerzel'],
             'farbe' => (string) $p['farbe'],
             'venue_name' => (string) ($p['venue_name'] ?? ''),
         ], $this->pitches->findAll());

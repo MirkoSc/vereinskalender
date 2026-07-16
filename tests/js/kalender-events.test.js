@@ -35,6 +35,11 @@ test('baueEventsParams übernimmt aktive Filter, aber nicht pitch (clientseitig)
     assert.equal(params.toString(), 'typ=belegung&team=5&venue=heim');
 });
 
+test('baueEventsParams lässt pitch auch im Spielplan weg (Issue #11: clientseitiger Filter)', () => {
+    const params = baueEventsParams('spielplan', { team: '', bereich: '', venue: '', pitch: '3' });
+    assert.equal(params.toString(), 'typ=spiel');
+});
+
 test('istBelegungsRelevant: Heimspiele mit Platz gehören zur Platzbelegung (Issue #10)', () => {
     assert.equal(istBelegungsRelevant({ typ: 'belegung' }), true);
     assert.equal(istBelegungsRelevant({ typ: 'sperrung' }), true);

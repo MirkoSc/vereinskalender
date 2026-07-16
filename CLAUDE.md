@@ -48,11 +48,14 @@ sind KEINE Projektionen.
   kuerzel, farbe (aus vordefinierter Palette), aktiv, sortierung. Mehrere
   Mannschaften je Bereich; je Mannschaft eine import_source. Inaktive Teams
   verschwinden aus Filtern/Neuanlagen, Historie bleibt.
-- **pitch**: venue_id FK (Heimverein), name, farbe (aus vordefinierter
-  Palette), typ, flutlicht, adresse NULL (nur falls abweichend), sortierung.
-  Alt-Events ohne Farbe (vor Einführung der Spalte) werden beim Replay
-  deterministisch auf eine feste Default-Farbe gehoben (Upcasting, analog
-  training_slot).
+- **pitch**: venue_id FK (Heimverein), name, kuerzel (Pflichtfeld, max. 10
+  Zeichen, für die Text-Beschriftung bei der Platz-Gruppierung im
+  Spielplan), farbe (aus vordefinierter Palette), typ, flutlicht, adresse
+  NULL (nur falls abweichend), sortierung. Alt-Events ohne Farbe bzw. ohne
+  Kürzel (vor Einführung der jeweiligen Spalte) werden beim Replay
+  deterministisch auf eine feste Default-Farbe bzw. ein leeres Kürzel
+  gehoben (Upcasting, analog training_slot); das Frontend fällt bei leerem
+  Kürzel auf den Platznamen zurück.
 - **training_slot**: team_ids (Liste 1..n – gemeinsames Training ist EIN
   Slot), pitch_id FK, wochentage (Liste 1..n aus 1–7), beginn, ende,
   gueltig_ab, gueltig_bis. Wiederholungsregel, zur Laufzeit expandiert.
@@ -188,11 +191,20 @@ Kopiervorlage).
 
 - `GET /api/events?von=&bis=&typ=&team=&bereich=&venue=` liefert IMMER beide
   Farbfelder (`team_farbe`, `venue_farbe`) + `venue_id`, zusätzlich
-  `pitch_farbe` (NULL ohne zugeordneten Platz, z. B. Auswärtsspiel). Auch
-  `/api/verfuegbarkeit` und das Offline-Bundle liefern die Platzfarbe mit.
-  Moduswechsel ist reines Frontend ohne neuen Request. `typ=belegung`
-  liefert zusätzlich Heimspiele mit zugeordnetem Platz (Status ≠
-  abgesagt); sie erscheinen in der Platzbelegung auf ihrem Platz.
+  `pitch_farbe` und `pitch_kuerzel` (beide NULL ohne zugeordneten Platz,
+  z. B. Auswärtsspiel). Auch `/api/verfuegbarkeit` und das Offline-Bundle
+  liefern Platzfarbe und -kürzel mit. Moduswechsel ist reines Frontend ohne
+  neuen Request. `typ=belegung` liefert zusätzlich Heimspiele mit
+  zugeordnetem Platz (Status ≠ abgesagt); sie erscheinen in der
+  Platzbelegung auf ihrem Platz.
+- Platzfilter (`filter-pitch`, clientseitig, `/api/events` kennt ihn nicht):
+  in der Platzbelegung unterhalb der Desktop-Sidebar-Schwelle (~1100 px)
+  ersetzt er die Platz-Spalten; im Spielplan gilt er unabhängig von der
+  Bildschirmbreite (kein Ressourcen-View dort). Ein gewählter Einzelplatz
+  zeigt nur dessen Termine; „Alle Plätze" färbt nach Platzfarbe mit
+  Platz-Kürzel (Fallback Platzname) als Text-Präfix vor dem Titel;
+  Auswärtsspiele (nie eine `pitch_id`) bilden dabei die eigene Gruppe
+  „Auswärts" mit der globalen Auswärtsfarbe.
 - Spielstätten-Auflösung zur **Anzeigezeit** im einen `VenueMatcher`-Service
   (Anzeige UND Import): erster `venue_begriff` nach sortierung,
   case-insensitive in `ort_text` → venue + Farbe; kein Treffer → auswärts

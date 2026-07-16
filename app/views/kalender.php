@@ -47,16 +47,15 @@
         </select>
     </label>
 
-    <?php if ($ansicht === 'belegung'): ?>
-        <!-- Issue #6: unterhalb der Desktop-Sidebar-Schwelle (~1100px) ersetzt
-             diese Auswahl die Platz-Spalten; "Alle" faerbt nach Platzfarbe. -->
-        <label class="filter filter-narrow">
-            Platz
-            <select id="filter-pitch">
-                <option value="">Alle Plätze</option>
-            </select>
-        </label>
-    <?php endif; ?>
+    <!-- Platzfilter (Issue #6: Platzbelegung, ersetzt unterhalb der Desktop-
+         Sidebar-Schwelle die Platz-Spalten; Issue #11: Spielplan, immer
+         sichtbar). "Alle" faerbt/gruppiert nach Platzfarbe + Kürzel. -->
+    <label class="filter<?= $ansicht === 'belegung' ? ' filter-narrow' : '' ?>">
+        Platz
+        <select id="filter-pitch">
+            <option value="">Alle Plätze</option>
+        </select>
+    </label>
 
     <div class="dialog-actions">
         <button type="button" class="button" id="filter-close">Fertig</button>
