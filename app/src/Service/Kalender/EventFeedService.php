@@ -194,7 +194,7 @@ final readonly class EventFeedService
             }
         }
 
-        if ($typ === '' || $typ === 'spiel') {
+        if ($typ === '' || $typ === 'spiel' || $typ === 'belegung') {
             foreach ($this->matches->findInRange($von . ' 00:00:00', $bis . ' 23:59:59') as $match) {
                 $teamId = (int) $match['team_id'];
                 $team = $teams[$teamId] ?? null;
@@ -211,6 +211,12 @@ final readonly class EventFeedService
                 $start = new \DateTimeImmutable((string) $match['anstoss']);
                 $pitchId = $match['pitch_id'] !== null ? (int) $match['pitch_id'] : null;
                 $pitch = $pitchId !== null ? ($pitches[$pitchId] ?? null) : null;
+
+                // occupancy view: only matches actually occupying a pitch
+                // (same semantics as AvailabilityService)
+                if ($typ === 'belegung' && ($pitchId === null || (string) $match['status'] === 'abgesagt')) {
+                    continue;
+                }
 
                 $events[] = [
                     'id' => 'match-' . (int) $match['id'],

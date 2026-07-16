@@ -6,7 +6,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { baueEventsParams, istListenAnsicht } = require('../../public/js/kalender-events.js');
+const { baueEventsParams, istListenAnsicht, istBelegungsRelevant } = require('../../public/js/kalender-events.js');
 
 test('istListenAnsicht braucht nur den View-Typ, kein fetchInfo.view (Issue #19)', () => {
     // Nachbau von FullCalendars echtem fetchInfo-Objekt: start/end/startStr/
@@ -33,4 +33,12 @@ test('baueEventsParams liefert nur den typ-Parameter ohne aktive Filter', () => 
 test('baueEventsParams übernimmt aktive Filter, aber nicht pitch (clientseitig)', () => {
     const params = baueEventsParams('belegung', { team: '5', bereich: '', venue: 'heim', pitch: '3' });
     assert.equal(params.toString(), 'typ=belegung&team=5&venue=heim');
+});
+
+test('istBelegungsRelevant: Heimspiele mit Platz gehören zur Platzbelegung (Issue #10)', () => {
+    assert.equal(istBelegungsRelevant({ typ: 'belegung' }), true);
+    assert.equal(istBelegungsRelevant({ typ: 'sperrung' }), true);
+    assert.equal(istBelegungsRelevant({ typ: 'spiel', pitch_id: 3, status: 'geplant' }), true);
+    assert.equal(istBelegungsRelevant({ typ: 'spiel', pitch_id: null, status: 'geplant' }), false, 'kein Platz zugeordnet');
+    assert.equal(istBelegungsRelevant({ typ: 'spiel', pitch_id: 3, status: 'abgesagt' }), false, 'abgesagt');
 });
