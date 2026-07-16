@@ -3,8 +3,8 @@
 // nachlade.js/filter.js/konflikte.js).
 (() => {
     // /api/events-Query aus Ansicht + aktiven Filtern (Issue #4/#8). 'pitch'
-    // filtert nur clientseitig (applyPitchFilter in kalender.js), /api/events
-    // kennt es nicht.
+    // filtert nur clientseitig (applyPitchFilter in kalender.js, Spielplan
+    // und Platzbelegung, Issue #6/#11), /api/events kennt es nicht.
     const baueEventsParams = (ansicht, filters) => {
         const params = new URLSearchParams({ typ: ansicht === 'belegung' ? 'belegung' : 'spiel' });
         for (const [key, value] of Object.entries(filters)) {

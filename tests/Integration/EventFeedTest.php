@@ -43,6 +43,7 @@ final class EventFeedTest extends DatabaseTestCase
             self::assertArrayHasKey('venue_farbe', $event, $event['id']);
             self::assertArrayHasKey('venue_id', $event, $event['id']);
             self::assertArrayHasKey('pitch_farbe', $event, $event['id']);
+            self::assertArrayHasKey('pitch_kuerzel', $event, $event['id']);
         }
     }
 
@@ -125,6 +126,8 @@ final class EventFeedTest extends DatabaseTestCase
         self::assertNull($events[1]['pitch_adresse']);
         self::assertNull($events[0]['pitch_farbe'], 'Heimspiel ohne Platz-Zuordnung');
         self::assertNull($events[1]['pitch_farbe'], 'Auswärtsspiel hat keinen Platz');
+        self::assertNull($events[0]['pitch_kuerzel'], 'Heimspiel ohne Platz-Zuordnung');
+        self::assertNull($events[1]['pitch_kuerzel'], 'Auswärtsspiel hat keinen Platz');
     }
 
     public function testFiltersTeamBereichVenue(): void
@@ -208,6 +211,7 @@ final class EventFeedTest extends DatabaseTestCase
 
         self::assertCount(1, $matchEvents);
         self::assertSame($this->pitchId, $matchEvents[0]['pitch_id']);
+        self::assertSame('P1', $matchEvents[0]['pitch_kuerzel'], 'Issue #11: Platz-Kürzel für die Spielplan-Gruppierung');
 
         // typ='' (unfiltered) still contains the match exactly once
         $alle = $this->eventFeedService()->events($range);

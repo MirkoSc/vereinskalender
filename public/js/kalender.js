@@ -38,14 +38,14 @@
     };
     const pitchLabel = (id) => appData.pitches.find((p) => String(p.id) === id)?.name ?? `Platz #${id}`;
 
+    // Platzfilter gilt in beiden Ansichten (Issue #6: Platzbelegung,
+    // Issue #11: Spielplan) - beide teilen dieses Skript.
     const filterDefinitionen = [
         { key: 'team', default: '', label: (wert) => `Team: ${activeTeams.find((t) => String(t.id) === wert)?.name ?? wert}` },
         { key: 'bereich', default: '', label: (wert) => `Bereich: ${bereichLabel(wert)}` },
         { key: 'venue', default: '', label: (wert) => `Ort: ${venueLabel(wert)}` },
+        { key: 'pitch', default: '', label: (wert) => `Platz: ${pitchLabel(wert)}` },
     ];
-    if (ansicht === 'belegung') {
-        filterDefinitionen.push({ key: 'pitch', default: '', label: (wert) => `Platz: ${pitchLabel(wert)}` });
-    }
 
     const urlParams = new URLSearchParams(window.location.search);
     const filters = window.VKFilter.leseFilterAusUrl(urlParams, filterDefinitionen);
@@ -130,19 +130,25 @@
 
     renderFilterUi();
 
-    // ---- pitch selector (Issue #6, Platzbelegung only, narrow screens) ----
-    // Below the desktop-sidebar breakpoint the pitch columns give way to a
-    // dropdown: "Alle Plätze" (one shared week colored by Platzfarbe, pitch
-    // name as text) or a single pitch (normal week, just that pitch).
-    // Client-side only: /api/events has no pitch filter, every event already
-    // carries pitch_id/pitch_farbe/pitch_name from the events feed.
+    // ---- pitch selector (Issue #6: Platzbelegung, schmale Bildschirme;
+    // Issue #11: Spielplan, alle Breiten) ----
+    // In der Platzbelegung geben unterhalb der Desktop-Sidebar-Schwelle die
+    // Platz-Spalten einer Dropdown-Auswahl nach: "Alle Plätze" (eine
+    // gemeinsame Woche, gefärbt nach Platzfarbe, Kürzel als Text) oder ein
+    // Einzelplatz (normale Woche, nur dieser Platz). Der Spielplan hat nie
+    // Platz-Spalten (kein Ressourcen-View), daher gilt dieselbe Auswahl dort
+    // unabhängig von der Bildschirmbreite. Client-side only: /api/events hat
+    // keinen Platzfilter, jedes Event trägt pitch_id/pitch_farbe/pitch_name/
+    // pitch_kuerzel bereits im Events-Feed.
     // Snapshot once, like the existing isMobile check below: the dropdown's
     // visibility is driven from this same flag (not a live CSS media query),
     // so it can never disagree with the filtering/coloring logic it drives.
     const isWideBelegung = window.matchMedia('(min-width: 1100px)').matches;
     const pitchSelect = document.querySelector('#filter-pitch');
     if (pitchSelect) {
-        pitchSelect.closest('.filter-narrow')?.classList.toggle('filter-narrow-hidden', isWideBelegung);
+        if (ansicht === 'belegung') {
+            pitchSelect.closest('.filter-narrow')?.classList.toggle('filter-narrow-hidden', isWideBelegung);
+        }
         for (const pitch of appData.pitches) {
             pitchSelect.add(new Option(`${pitch.name} (${pitch.venue_name})`, String(pitch.id)));
         }
@@ -158,8 +164,7 @@
             setzeFilter('pitch', pitchSelect.value);
         });
     }
-    // "Alle" chosen below the breakpoint: color by pitch instead of team/venue
-    const pitchAlleAktiv = () => ansicht === 'belegung' && !isWideBelegung && (filters.pitch ?? '') === '';
+    const pitchGruppierungAktiv = () => window.VKKalenderPitch.pitchGruppierungAktiv(ansicht, isWideBelegung, filters.pitch);
 
     for (const button of document.querySelectorAll('.segmented button')) {
         button.addEventListener('click', () => {
@@ -178,15 +183,21 @@
             // same CSS custom properties as app.css, not a second literal (Issue #1)
             return props.art === 'gesperrt' ? 'var(--color-danger)' : 'var(--color-warning)';
         }
-        if (pitchAlleAktiv()) {
-            return props.pitch_farbe ?? 'var(--color-text-muted)';
+        if (pitchGruppierungAktiv()) {
+            return window.VKKalenderPitch.pitchEventFarbe(props);
         }
         return modus === 'team' ? props.team_farbe : props.venue_farbe;
     };
 
-    // "Alle Plätze" (Issue #6): Platzfarbe allein reicht nicht (Farbe nie
-    // einziges Signal) - Platzname als Text vor den Titel setzen.
-    const eventTitle = (props) => (pitchAlleAktiv() && props.pitch_name ? `${props.pitch_name}: ${props.titel}` : props.titel);
+    // "Alle Plätze" (Issue #6/#11): Farbe allein reicht nicht (Farbe nie
+    // einziges Signal) - Platz-Kürzel bzw. "Auswärts" als Text vor den Titel.
+    const eventTitle = (props) => {
+        if (!pitchGruppierungAktiv()) {
+            return props.titel;
+        }
+        const praefix = window.VKKalenderPitch.pitchEventPraefix(props);
+        return praefix ? `${praefix}: ${props.titel}` : props.titel;
+    };
 
     const toFcEvent = (e) => ({
         id: e.id,
@@ -200,14 +211,18 @@
         extendedProps: e,
     });
 
-    // Einzelplatz (Issue #6): auf schmalen Bildschirmen filtert die Auswahl
-    // sowohl Belegungen als auch Sperrungen auf genau diesen Platz. Ab der
-    // Breiten-Schwelle bleibt der Filter wirkungslos, auch wenn ein alter
-    // Wert aus localStorage noch gesetzt ist - dort zeigen die Spalten immer
-    // alle Plätze (das Dropdown ist dort ja auch ausgeblendet).
-    const applyPitchFilter = (events) => (ansicht === 'belegung' && !isWideBelegung && filters.pitch !== ''
-        ? events.filter((e) => String(e.pitch_id) === filters.pitch)
-        : events);
+    // Einzelplatz (Issue #6/#11): in der Platzbelegung nur auf schmalen
+    // Bildschirmen (ab der Breiten-Schwelle bleibt der Filter wirkungslos,
+    // auch wenn ein alter Wert aus localStorage noch gesetzt ist - dort
+    // zeigen die Spalten immer alle Plätze); im Spielplan immer, unabhängig
+    // von der Breite (kein Ressourcen-View dort). Filtert Belegungen,
+    // Sperrungen und Spiele auf genau diesen Platz - Auswärtsspiele haben
+    // nie eine pitch_id und fallen dabei automatisch heraus.
+    const applyPitchFilter = (events) => (
+        (ansicht === 'spielplan' || (ansicht === 'belegung' && !isWideBelegung)) && filters.pitch !== ''
+            ? events.filter((e) => String(e.pitch_id) === filters.pitch)
+            : events
+    );
 
     const recolor = () => {
         for (const event of calendar.getEvents()) {
