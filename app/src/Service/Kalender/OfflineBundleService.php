@@ -61,6 +61,7 @@ final readonly class OfflineBundleService
                 'id' => (int) $p['id'],
                 'venue_id' => (int) $p['venue_id'],
                 'name' => (string) $p['name'],
+                'kuerzel' => (string) $p['kuerzel'],
                 'farbe' => (string) $p['farbe'],
                 'venue_name' => (string) ($p['venue_name'] ?? ''),
             ], $this->pitches->findAll()),

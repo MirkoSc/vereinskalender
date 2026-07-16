@@ -25,9 +25,10 @@ final class PitchProjector extends TableProjector
     }
 
     /**
-     * Pitch events written before migration 009 carry no color; upcast them
-     * deterministically to the same default the migration backfills onto
-     * existing rows (CLAUDE.md section 5).
+     * Pitch events written before migration 009 carry no color, and events
+     * before migration 011 carry no kuerzel; upcast both deterministically
+     * to the same defaults the migrations backfill onto existing rows
+     * (CLAUDE.md section 5).
      */
     public function normalizePayload(array $payload): array
     {
@@ -36,11 +37,12 @@ final class PitchProjector extends TableProjector
         return [
             ...$payload,
             'farbe' => $farbe === '' ? Palette::PITCH_DEFAULT : $farbe,
+            'kuerzel' => (string) ($payload['kuerzel'] ?? ''),
         ];
     }
 
     protected function columns(): array
     {
-        return ['venue_id', 'name', 'farbe', 'typ', 'flutlicht', 'adresse', 'sortierung'];
+        return ['venue_id', 'name', 'kuerzel', 'farbe', 'typ', 'flutlicht', 'adresse', 'sortierung'];
     }
 }

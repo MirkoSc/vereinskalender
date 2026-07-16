@@ -31,6 +31,7 @@ final class PitchServiceTest extends DatabaseTestCase
         $id = $this->pitchService()->create([
             'venue_id' => (string) $venueId,
             'name' => 'Rasenplatz 2',
+            'kuerzel' => 'R2',
             'farbe' => '#bc4c00',
         ], $this->context());
 
@@ -46,6 +47,7 @@ final class PitchServiceTest extends DatabaseTestCase
             $this->pitchService()->create([
                 'venue_id' => (string) $venueId,
                 'name' => 'Rasenplatz 2',
+                'kuerzel' => 'R2',
                 'farbe' => '#123456',
             ], $this->context());
             self::fail('expected ValidationException');
@@ -54,10 +56,48 @@ final class PitchServiceTest extends DatabaseTestCase
         }
     }
 
+    /**
+     * Issue #11: Plätze bekommen ein Kürzel wie Teams, für die Text-
+     * Beschriftung der "nach Platz"-Gruppierung im Spielplan.
+     */
+    public function testCreateWithoutKuerzelIsRejected(): void
+    {
+        $venueId = $this->createVenue();
+
+        try {
+            $this->pitchService()->create([
+                'venue_id' => (string) $venueId,
+                'name' => 'Rasenplatz 2',
+                'kuerzel' => '',
+                'farbe' => '#bc4c00',
+            ], $this->context());
+            self::fail('expected ValidationException');
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey('kuerzel', $e->getErrors());
+        }
+    }
+
+    public function testCreateWithTooLongKuerzelIsRejected(): void
+    {
+        $venueId = $this->createVenue();
+
+        try {
+            $this->pitchService()->create([
+                'venue_id' => (string) $venueId,
+                'name' => 'Rasenplatz 2',
+                'kuerzel' => 'ZuLangesKuerzel',
+                'farbe' => '#bc4c00',
+            ], $this->context());
+            self::fail('expected ValidationException');
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey('kuerzel', $e->getErrors());
+        }
+    }
+
     public function testDeleteReemitsCurrentColorInFullPicturePayload(): void
     {
         $venueId = $this->createVenue();
-        $pitchId = $this->createPitch($venueId, 'Rasenplatz 3', '#d1247f');
+        $pitchId = $this->createPitch($venueId, 'Rasenplatz 3', '#d1247f', 'R3');
 
         $this->pitchService()->delete($pitchId, $this->context());
 
@@ -66,6 +106,7 @@ final class PitchServiceTest extends DatabaseTestCase
             ->fetch();
         $payload = json_decode((string) $events['payload'], true);
         self::assertSame('#d1247f', $payload['farbe']);
+        self::assertSame('R3', $payload['kuerzel']);
     }
 
     public function testPitchDefaultColorIsInPalette(): void
