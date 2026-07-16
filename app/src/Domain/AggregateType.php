@@ -15,4 +15,5 @@ enum AggregateType: string
     case PitchRestriction = 'pitch_restriction';
     case Match = 'match';
     case ImportSource = 'import_source';
+    case TeamHomePitch = 'team_home_pitch';
 }

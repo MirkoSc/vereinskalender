@@ -91,6 +91,35 @@ final class NotificationTriggerTest extends DatabaseTestCase
         self::assertTrue($absage['abgesagt']);
     }
 
+    /**
+     * Issue #10: a team_home_pitch rule change reflows the pitch of an
+     * existing match on the next import run (pitch-only Updated event,
+     * anstoss/status unchanged). That must stay silent - a "Platz geändert"
+     * push category does not exist.
+     */
+    public function testPitchOnlyUpdateDoesNotEnqueue(): void
+    {
+        $teamId = $this->createTeam();
+        $venueId = $this->createVenue();
+        $pitchA = $this->createPitch($venueId, 'Platz A');
+        $pitchB = $this->createPitch($venueId, 'Platz B');
+        $store = $this->eventStoreWithTrigger();
+
+        $matchPayload = [
+            'team_id' => $teamId, 'anstoss' => '2099-08-08 15:00:00', 'gegner' => 'FC Gegner',
+            'heimspiel' => true, 'ort_text' => 'Ort', 'pitch_id' => $pitchA, 'pitch_manuell' => false,
+            'status' => 'geplant', 'import_source_id' => null, 'ics_uid' => 'u1', 'ics_sequence' => 0,
+            'sync_hash' => 'h1',
+        ];
+        $matchId = $store->append(AggregateType::Match, null, EventType::Created, $matchPayload, $this->context())->aggregateId;
+
+        $store->append(AggregateType::Match, $matchId, EventType::Updated, [
+            ...$matchPayload, 'pitch_id' => $pitchB,
+        ], $this->context());
+
+        self::assertCount(0, $this->dumpTable('notification_queue'), 'pitch-only reflow stays silent');
+    }
+
     public function testPreferenceMatching(): void
     {
         $sub = static fn(array $praeferenzen): array => [

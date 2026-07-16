@@ -241,7 +241,7 @@
                 return [];
             }
             const typFilter = ansicht === 'belegung'
-                ? (e) => e.typ === 'belegung' || e.typ === 'sperrung'
+                ? window.VKKalenderEvents.istBelegungsRelevant
                 : (e) => e.typ === 'spiel';
             const bundleEvents = bundle.events
                 .filter(typFilter)
@@ -575,7 +575,7 @@
                 const label = document.createElement('label');
                 label.textContent = 'Platz-Zuordnung';
                 const select = document.createElement('select');
-                select.add(new Option('– kein Platz zugeordnet –', ''));
+                select.add(new Option('– automatisch (Regel/Standard-Platz) –', ''));
                 for (const pitch of appData.pitches) {
                     select.add(new Option(`${pitch.name} (${pitch.venue_name})`, String(pitch.id)));
                 }

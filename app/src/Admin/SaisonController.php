@@ -32,6 +32,7 @@ final class SaisonController extends AdminController
             'teams' => $this->teams->findAll(),
             'sources' => $this->sources->findAll(),
             'slots' => $this->saison->copyCandidates(),
+            'homePitchRules' => $this->saison->homePitchCandidates(),
         ]);
     }
 
@@ -50,6 +51,38 @@ final class SaisonController extends AdminController
         $result = $this->saison->copySlots($slotIds, $gueltigAb, $gueltigBis, $this->context($request));
 
         $meldung = sprintf('%d Trainingsslot(s) für die neue Saison angelegt.', $result['angelegt']);
+        if ($result['fehler'] !== []) {
+            $meldung .= ' Probleme: ' . implode(' ', $result['fehler']);
+        }
+        $this->session->flash($meldung);
+
+        return Response::redirect('/admin/saison');
+    }
+
+    public function copyHomePitchRules(Request $request): ResponseInterface
+    {
+        $ruleIds = array_values(array_filter(array_map(intval(...), (array) ($request->post['rule_ids'] ?? []))));
+        $gueltigAbByRule = (array) ($request->post['gueltig_ab'] ?? []);
+        $gueltigBisByRule = (array) ($request->post['gueltig_bis'] ?? []);
+
+        if ($ruleIds === []) {
+            $this->session->flash('Bitte mindestens eine Heimspielstätten-Regel auswählen.');
+
+            return Response::redirect('/admin/saison');
+        }
+
+        $items = [];
+        foreach ($ruleIds as $ruleId) {
+            $items[] = [
+                'id' => $ruleId,
+                'gueltig_ab' => trim((string) ($gueltigAbByRule[$ruleId] ?? '')),
+                'gueltig_bis' => trim((string) ($gueltigBisByRule[$ruleId] ?? '')),
+            ];
+        }
+
+        $result = $this->saison->copyHomePitchRules($items, $this->context($request));
+
+        $meldung = sprintf('%d Heimspielstätten-Regel(n) übernommen.', $result['angelegt']);
         if ($result['fehler'] !== []) {
             $meldung .= ' Probleme: ' . implode(' ', $result['fehler']);
         }

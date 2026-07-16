@@ -39,6 +39,7 @@ use App\Repository\PitchRestrictionRepository;
 use App\Repository\PushSubscriptionRepository;
 use App\Repository\SettingRepository;
 use App\Repository\SlotExceptionRepository;
+use App\Repository\TeamHomePitchRepository;
 use App\Repository\TeamRepository;
 use App\Repository\TrainingSlotRepository;
 use App\Repository\UsageStatRepository;
@@ -70,12 +71,14 @@ use App\Service\Projection\PitchProjector;
 use App\Service\Projection\PitchRestrictionProjector;
 use App\Service\Projection\ProjectorRegistry;
 use App\Service\Projection\SlotExceptionProjector;
+use App\Service\Projection\TeamHomePitchProjector;
 use App\Service\Projection\TeamProjector;
 use App\Service\Projection\TrainingSlotProjector;
 use App\Service\Projection\VenueBegriffProjector;
 use App\Service\Projection\VenueProjector;
 use App\Service\Migration\Migrator;
 use App\Service\Stammdaten\PitchService;
+use App\Service\Stammdaten\TeamHomePitchService;
 use App\Service\Stammdaten\TeamService;
 use App\Service\Stammdaten\VenueService;
 use App\Service\Update\ReleaseDownloader;
@@ -127,6 +130,7 @@ final class Container
             new PitchRestrictionProjector($this->pdo()),
             new ImportSourceProjector($this->pdo()),
             new MatchProjector($this->pdo()),
+            new TeamHomePitchProjector($this->pdo()),
         ]));
     }
 
@@ -222,6 +226,7 @@ final class Container
             $this->pdo(),
             $this->trainingSlotRepository(),
             $this->bookingService(),
+            $this->teamHomePitchService(),
         ));
     }
 
@@ -273,6 +278,11 @@ final class Container
     public function pitchRestrictionRepository(): PitchRestrictionRepository
     {
         return $this->cached('pitchRestrictionRepository', fn(): PitchRestrictionRepository => new PitchRestrictionRepository($this->pdo()));
+    }
+
+    public function teamHomePitchRepository(): TeamHomePitchRepository
+    {
+        return $this->cached('teamHomePitchRepository', fn(): TeamHomePitchRepository => new TeamHomePitchRepository($this->pdo()));
     }
 
     public function matchRepository(): MatchRepository
@@ -343,6 +353,7 @@ final class Container
             $this->importSourceRepository(),
             $this->matchRepository(),
             $this->venueRepository(),
+            $this->teamHomePitchRepository(),
             $this->venueMatcher(),
             new HttpIcsFeedFetcher(),
             $this->alarmMailer(),
@@ -467,6 +478,16 @@ final class Container
         return $this->cached('restrictionService', fn(): RestrictionService => new RestrictionService(
             $this->eventStore(),
             $this->pitchRestrictionRepository(),
+            $this->pitchRepository(),
+        ));
+    }
+
+    public function teamHomePitchService(): TeamHomePitchService
+    {
+        return $this->cached('teamHomePitchService', fn(): TeamHomePitchService => new TeamHomePitchService(
+            $this->eventStore(),
+            $this->teamHomePitchRepository(),
+            $this->teamRepository(),
             $this->pitchRepository(),
         ));
     }
@@ -597,6 +618,9 @@ final class Container
             $this->session(),
             $this->teamRepository(),
             $this->teamService(),
+            $this->teamHomePitchRepository(),
+            $this->teamHomePitchService(),
+            $this->pitchRepository(),
         ));
     }
 

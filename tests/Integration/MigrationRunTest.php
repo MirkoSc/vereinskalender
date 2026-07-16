@@ -13,7 +13,7 @@ final class MigrationRunTest extends DatabaseTestCase
     {
         $migrator = new Migrator($this->pdo(), $this->migrationsDir());
 
-        self::assertSame(9, $migrator->currentVersion());
+        self::assertSame(10, $migrator->currentVersion());
         self::assertSame([], $migrator->pending());
 
         $tables = $this->pdo()
@@ -24,7 +24,7 @@ final class MigrationRunTest extends DatabaseTestCase
             'schema_version', 'event', 'aggregate_sequence', 'admin',
             'team', 'pitch', 'venue', 'venue_begriff',
             'training_slot', 'slot_exception', 'pitch_restriction', 'match', 'setting',
-            'import_source',
+            'import_source', 'team_home_pitch',
             'push_subscription', 'notification_queue', 'usage_stat', 'rate_limit', 'page',
         ];
         foreach ($expectedTables as $expected) {
@@ -38,6 +38,6 @@ final class MigrationRunTest extends DatabaseTestCase
         $result = $migrator->migrate();
 
         self::assertSame([], $result->applied);
-        self::assertSame(9, $result->toVersion);
+        self::assertSame(10, $result->toVersion);
     }
 }
