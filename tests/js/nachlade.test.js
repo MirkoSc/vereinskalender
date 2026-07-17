@@ -6,8 +6,32 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-    naechsterMonatEnde, naechsteBatchGrenze, istErschoepft, mergeEvents,
+    wochenStart, naechsterMonatEnde, naechsteBatchGrenze, istErschoepft, mergeEvents,
 } = require('../../public/js/nachlade.js');
+
+// Issue #26: die Terminliste (Mobil-Default von Platzbelegung/Spielplan)
+// darf beim initialen Öffnen nicht bei "heute" beginnen, sonst fehlen
+// bereits vergangene Tage der laufenden Woche - der sichtbare Bereich muss
+// den vollen Wochenanfang (Montag, firstDay:1) abdecken.
+test('wochenStart liefert Montag 00:00 für einen Wochentag in der Mitte der Woche', () => {
+    // Donnerstag
+    assert.equal(wochenStart(new Date(2026, 6, 16, 14, 30)).toDateString(), new Date(2026, 6, 13).toDateString());
+});
+
+test('wochenStart bleibt am Montag selbst unverändert (nur Uhrzeit auf 00:00)', () => {
+    assert.equal(wochenStart(new Date(2026, 6, 13, 23, 59)).toDateString(), new Date(2026, 6, 13).toDateString());
+});
+
+test('wochenStart springt am Sonntag auf den Montag davor zurück (ISO-Wochenende)', () => {
+    assert.equal(wochenStart(new Date(2026, 6, 19, 9, 0)).toDateString(), new Date(2026, 6, 13).toDateString());
+});
+
+test('wochenStart setzt die Uhrzeit auf Mitternacht', () => {
+    const start = wochenStart(new Date(2026, 6, 16, 23, 59, 59));
+    assert.equal(start.getHours(), 0);
+    assert.equal(start.getMinutes(), 0);
+    assert.equal(start.getSeconds(), 0);
+});
 
 test('naechsterMonatEnde deckt den kompletten nächsten Monat ab - Monatsanfang', () => {
     assert.equal(naechsterMonatEnde(new Date(2026, 6, 1)), '2026-08-31');

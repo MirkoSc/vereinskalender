@@ -253,13 +253,18 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   Listen-View (`listNachlade`, Basistyp `list`); Platzbelegung über Premium
   Resource-Views, Lizenzkey `GPL-My-Project-Is-Open-Source` (Projekt ist
   GPLv3).
-- **Terminliste mit Nachladen**: `listNachlade` zeigt initial mindestens den
-  kompletten nächsten Monat und lädt beim Scrollen ans Listenende weitere
-  Batches nach (`von`/`bis` wächst schrittweise, die API kennt keine
-  Pagination). Client-seitiger Cache dedupliziert nach Event-`id` (spätester
-  Stand gewinnt, z. B. bei einer verlegten Partie); aktive Filter setzen
-  Cache und Bereich auf den initialen Monat zurück. Reine Frontend-Logik
-  (`public/js/nachlade.js`, unit-getestet mit `node --test tests/js`).
+- **Terminliste mit Nachladen**: `listNachlade` ist auf Mobilgeräten die
+  Default-Ansicht von Platzbelegung UND Spielplan (nicht nur ein optionaler
+  Modus); ihr sichtbarer Bereich beginnt deshalb am Wochenanfang (Montag) der
+  laufenden Woche, nicht bei „heute" – sonst fehlten beim Öffnen bereits
+  vergangene Tage der aktuellen Woche (Issue #26). Sie zeigt initial
+  mindestens den kompletten nächsten Monat und lädt beim Scrollen ans
+  Listenende weitere Batches nach (`von`/`bis` wächst schrittweise, die API
+  kennt keine Pagination). Client-seitiger Cache dedupliziert nach
+  Event-`id` (spätester Stand gewinnt, z. B. bei einer verlegten Partie);
+  aktive Filter setzen Cache und Bereich auf den initialen Monat zurück.
+  Reine Frontend-Logik (`public/js/nachlade.js`, unit-getestet mit
+  `node --test tests/js`).
 - Mobile-Patterns: Bottom-Sheets, Chip-Filter, Segmented Control,
   Touch-Ziele ≥ 44 px.
 - **PWA/Offline**: Service Worker cached App-Shell; Daten über
