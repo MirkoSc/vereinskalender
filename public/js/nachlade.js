@@ -26,9 +26,12 @@
         return toIsoDate(naechste);
     };
 
-    const tageZwischen = (vonIso, bisIso) => Math.round(
-        (new Date(`${bisIso}T00:00:00`) - new Date(`${vonIso}T00:00:00`)) / 86400000,
-    );
+    // Abbruchbedingung (Issue #24): kein festes Zeitlimit mehr - es wird
+    // nachgeladen, bis mehrere Batches in Folge leer bleiben (Annäherung an
+    // "kein Termin mehr in der DB nach dem letzten geladenen liegt", da die
+    // API selbst keinen "Ende erreicht"-Marker liefert).
+    const LEERE_BATCHES_BIS_ERSCHOEPFT = 3;
+    const istErschoepft = (leereBatchesInFolge) => leereBatchesInFolge >= LEERE_BATCHES_BIS_ERSCHOEPFT;
 
     // Batches können sich überlappen (Retry, schnelles Scrollen mit
     // überholenden Antworten) - Map-Merge nach id verhindert Duplikate;
@@ -42,7 +45,7 @@
     };
 
     const api = {
-        toIsoDate, naechsterMonatEnde, naechsteBatchGrenze, tageZwischen, mergeEvents,
+        toIsoDate, naechsterMonatEnde, naechsteBatchGrenze, istErschoepft, mergeEvents,
     };
 
     if (typeof module !== 'undefined' && module.exports) {
