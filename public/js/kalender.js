@@ -240,8 +240,10 @@
     };
 
     // Ein Bereich [von, bis) laden - per Fetch oder, offline, aus dem
-    // IndexedDB-Bundle (heute..+7, CLAUDE.md Abschnitt 9). Wird sowohl vom
-    // normalen Grid-Fetch als auch batchweise von der Terminliste genutzt.
+    // IndexedDB-Bundle mit dem kompletten Datenbestand (CLAUDE.md Abschnitt 8,
+    // Issue #25: kein 7-Tage-Fenster mehr - Trainings-Slots werden clientseitig
+    // aus den Regeln expandiert, VKOfflineEvents). Wird sowohl vom normalen
+    // Grid-Fetch als auch batchweise von der Terminliste genutzt.
     const fetchEventsRange = async (von, bis, params) => {
         const p = new URLSearchParams(params);
         p.set('von', von);
@@ -258,18 +260,11 @@
                 throw error;
             }
             window.VKOffline.showBanner(bundle);
-            if (bis < bundle.von || von > bundle.bis) {
-                window.VKOffline.showBanner({
-                    stand: `${bundle.stand} – dieser Zeitraum liegt außerhalb des Offline-Fensters (${bundle.von} bis ${bundle.bis})`,
-                });
-                return [];
-            }
             const typFilter = ansicht === 'belegung'
                 ? window.VKKalenderEvents.istBelegungsRelevant
                 : (e) => e.typ === 'spiel';
-            const bundleEvents = bundle.events
+            const bundleEvents = window.VKOfflineEvents.eventsAusBundle(bundle, von, bis)
                 .filter(typFilter)
-                .filter((e) => e.start.slice(0, 10) <= bis && e.start.slice(0, 10) >= von)
                 .filter((e) => {
                     if (filters.team === '') {
                         return true;
