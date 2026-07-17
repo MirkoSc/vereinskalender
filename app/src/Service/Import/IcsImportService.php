@@ -163,6 +163,7 @@ final readonly class IcsImportService
             $payload = [
                 'team_id' => $teamId,
                 'anstoss' => $anstoss,
+                'ende' => null,
                 'gegner' => $gegner,
                 'heimspiel' => $isHome,
                 'ort_text' => $ortText,
@@ -198,6 +199,7 @@ final readonly class IcsImportService
             $payload = [
                 'team_id' => (int) $match['team_id'],
                 'anstoss' => (string) $match['anstoss'],
+                'ende' => $match['ende'] !== null ? (string) $match['ende'] : null,
                 'gegner' => (string) $match['gegner'],
                 'heimspiel' => (int) $match['heimspiel'] === 1,
                 'ort_text' => (string) $match['ort_text'],

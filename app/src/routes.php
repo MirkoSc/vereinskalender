@@ -78,6 +78,10 @@ return static function (Router $router, Container $c): void {
     $router->post('/api/sperrungen', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->createRestriction($r)));
     $router->post('/api/sperrungen/{id:\d+}/loeschen', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->deleteRestriction($r, $p)));
     $router->post('/api/spiele/{id:\d+}/platz', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->assignPitch($r, $p)));
+    $router->post('/api/spiele/pruefen', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->checkMatch($r)));
+    $router->post('/api/spiele', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->createMatch($r)));
+    $router->post('/api/spiele/{id:\d+}', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->updateMatch($r, $p)));
+    $router->post('/api/spiele/{id:\d+}/loeschen', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->deleteMatch($r, $p)));
     $router->post('/api/push/subscribe', $publicWrite(fn(Request $r, array $p) => $c->pushApiController()->subscribe($r), false));
     $router->post('/api/push/unsubscribe', $publicWrite(fn(Request $r, array $p) => $c->pushApiController()->unsubscribe($r), false));
 
