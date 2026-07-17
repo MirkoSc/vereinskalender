@@ -30,4 +30,29 @@
         </label>
         <button type="submit" class="button">Speichern</button>
     </form>
+
+    <h2>Vereinswappen</h2>
+    <?php if ($wappenVorhanden): ?>
+        <p>
+            <img src="/icon/logo.png?v=<?= e($wappenVersion) ?>" alt="Aktuelles Wappen" style="height: 4rem; width: 4rem; object-fit: contain;">
+            <?php if ($wappenHochgeladenAm !== ''): ?>
+                <br>Hochgeladen am <?= e($wappenHochgeladenAm) ?>
+            <?php endif; ?>
+        </p>
+    <?php else: ?>
+        <p>Noch kein Wappen hochgeladen – es wird der neutrale Platzhalter verwendet.</p>
+    <?php endif; ?>
+    <form method="post" action="/admin/einstellungen/wappen" enctype="multipart/form-data">
+        <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
+        <label>Wappen hochladen (PNG, mind. 32x32, empfohlen mind. 512x512, max. 3 MB)
+            <input type="file" name="wappen" accept="image/png" required>
+        </label>
+        <button type="submit" class="button">Hochladen</button>
+    </form>
+    <p class="hint">
+        Favicon, App-Icon und das Logo oben links werden automatisch aus dem
+        Wappen abgeleitet. Bereits als App installierte Kalender (Homescreen)
+        übernehmen ein neues Wappen erst bei einer Neuinstallation – das ist
+        so vom Betriebssystem vorgegeben.
+    </p>
 </section>

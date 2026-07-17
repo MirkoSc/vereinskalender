@@ -10,6 +10,7 @@ use App\Http\Response;
 use App\Http\ResponseInterface;
 use App\Service\Migration\Migrator;
 use App\Service\Migration\SqlSplitter;
+use App\Service\Wappen\WappenService;
 use App\View\View;
 
 /**
@@ -164,6 +165,7 @@ final readonly class InstallController
 
         $dumpFile = $varDir . '/install_restore_dump.sql';
         file_put_contents($dumpFile, $zip->getFromName('dump.sql'));
+        new WappenService($this->paths->wappenDir())->restoreFromZip($zip);
         $zip->close();
 
         $_SESSION['install'] = [

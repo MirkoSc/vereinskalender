@@ -8,6 +8,11 @@
     <link rel="stylesheet" href="/css/app.css?v=<?= e($version) ?>">
     <link rel="manifest" href="/manifest.webmanifest">
     <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <?php if ($wappenVorhanden): ?>
+        <link rel="icon" type="image/png" sizes="32x32" href="/icon/favicon-32.png?v=<?= e($wappenVersion) ?>">
+        <link rel="icon" type="image/png" sizes="16x16" href="/icon/favicon-16.png?v=<?= e($wappenVersion) ?>">
+        <link rel="apple-touch-icon" sizes="180x180" href="/icon/apple-touch-icon.png?v=<?= e($wappenVersion) ?>">
+    <?php endif; ?>
     <?php if (($colorCss ?? '') !== ''): ?>
         <style><?= $colorCss /* built from palette-validated hex values */ ?></style>
     <?php endif; ?>
@@ -15,7 +20,10 @@
 <body>
 <div id="offline-banner" class="offline-banner" hidden aria-live="polite"></div>
 <header class="site-header">
-    <h1><a href="/" class="brand">Vereinskalender</a></h1>
+    <h1><a href="/" class="brand">
+        <img src="<?= $wappenVorhanden ? '/icon/logo.png?v=' . e($wappenVersion) : '/icon.svg' ?>" alt="" class="brand-logo">
+        Vereinskalender
+    </a></h1>
     <nav class="main-nav">
         <a href="/belegung">Platzbelegung</a>
         <a href="/spielplan">Spielplan</a>
