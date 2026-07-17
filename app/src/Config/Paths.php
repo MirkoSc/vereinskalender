@@ -49,4 +49,9 @@ final readonly class Paths
     {
         return $this->releaseRoot . '/VERSION';
     }
+
+    public function wappenDir(): string
+    {
+        return $this->sharedDir() . '/var/wappen';
+    }
 }

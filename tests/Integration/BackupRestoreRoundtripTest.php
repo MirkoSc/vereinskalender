@@ -6,6 +6,7 @@ namespace App\Tests\Integration;
 
 use App\Service\Backup\BackupService;
 use App\Service\Migration\SqlSplitter;
+use App\Service\Wappen\WappenService;
 use App\Tests\Support\DatabaseTestCase;
 
 /**
@@ -16,12 +17,14 @@ final class BackupRestoreRoundtripTest extends DatabaseTestCase
 {
     private string $backupDir;
     private string $configFile;
+    private string $wappenDir;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->backupDir = sys_get_temp_dir() . '/vk_backup_' . uniqid('', true);
         $this->configFile = $this->backupDir . '/config.php';
+        $this->wappenDir = sys_get_temp_dir() . '/vk_backup_wappen_' . uniqid('', true);
         mkdir($this->backupDir, 0775, true);
         file_put_contents($this->configFile, "<?php return ['dummy' => true];\n");
     }
@@ -34,12 +37,30 @@ final class BackupRestoreRoundtripTest extends DatabaseTestCase
         if (is_dir($this->backupDir)) {
             rmdir($this->backupDir);
         }
+        foreach (glob($this->wappenDir . '/*') ?: [] as $file) {
+            unlink($file);
+        }
+        if (is_dir($this->wappenDir)) {
+            rmdir($this->wappenDir);
+        }
         parent::tearDown();
     }
 
     private function service(): BackupService
     {
-        return new BackupService($this->pdo(), $this->backupDir, $this->configFile, '9.9.9-test');
+        return new BackupService($this->pdo(), $this->backupDir, $this->configFile, '9.9.9-test', new WappenService($this->wappenDir));
+    }
+
+    private function uploadSampleWappen(): void
+    {
+        $image = imagecreatetruecolor(64, 64);
+        imagefill($image, 0, 0, imagecolorallocate($image, 34, 139, 34));
+        $path = sys_get_temp_dir() . '/vk_backup_wappen_src_' . uniqid('', true) . '.png';
+        imagepng($image, $path);
+
+        $errors = new WappenService($this->wappenDir)->upload($path, (int) filesize($path));
+        unlink($path);
+        self::assertSame([], $errors);
     }
 
     public function testBackupRestoreRoundtrip(): void
@@ -89,6 +110,31 @@ final class BackupRestoreRoundtripTest extends DatabaseTestCase
         foreach ($before as $table => $rows) {
             self::assertSame($rows, $this->dumpTable($table), 'restored table ' . $table . ' must be identical');
         }
+    }
+
+    public function testBackupIncludesWappenAndRestoreUnpacksIt(): void
+    {
+        $this->uploadSampleWappen();
+
+        $name = $this->service()->create();
+        $zip = new \ZipArchive();
+        self::assertTrue($zip->open($this->backupDir . '/' . $name));
+        self::assertNotFalse($zip->getFromName('wappen/original.png'), 'original crest is part of the backup');
+        self::assertNotFalse($zip->getFromName('wappen/icon-512.png'), 'derived sizes are part of the backup');
+
+        // restore into a fresh instance, like the installer does
+        $restoreDir = sys_get_temp_dir() . '/vk_backup_wappen_restore_' . uniqid('', true);
+        $restored = new WappenService($restoreDir);
+        $restored->restoreFromZip($zip);
+        $zip->close();
+
+        self::assertTrue($restored->exists());
+        self::assertNotNull($restored->iconPath('icon-512.png'));
+
+        foreach (glob($restoreDir . '/*') ?: [] as $file) {
+            unlink($file);
+        }
+        rmdir($restoreDir);
     }
 
     public function testRotationKeepsNewestTen(): void

@@ -162,7 +162,7 @@ Korrektur, Ausschluss aufheben, Rebuild mit Fortschritt), Backup
 erstellen/herunterladen, Update einspielen, Saison-Assistent (Teams
 umbenennen/deaktivieren/anlegen, Import-URLs erneuern – fussball.de vergibt
 pro Saison neue –, Slots und Heimspielstätten-Regeln der Vorsaison als
-Kopiervorlage).
+Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
 
 ### Dashboard & Monitoring
 
@@ -293,6 +293,19 @@ Kopiervorlage).
 - **Farbe ist nie das einzige Signal**: Events tragen immer Text
   (Team-Kürzel/Ortsname), Zustände immer ein Label. Abnahmekriterium.
 - Cache-Busting: Assets `?v=<VERSION>`, SW-Cache-Name enthält Version.
+- **Vereinswappen**: Admin-Upload (nur PNG – GD kann kein SVG rastern, einzige
+  auf Shared Hosting garantiert vorhandene Bild-Erweiterung), Ablage in
+  `shared/var/wappen/` (überlebt Updates, Teil von Backup-ZIP und Restore,
+  Abschnitt 9). Größen (Favicon 16/32, Apple-Touch-Icon 180, PWA-Icon
+  192/512 maskable, Logo 256) werden per GD beim Upload einmalig abgeleitet,
+  nicht bei jedem Request; Cache-Busting über `?v=<Datei-mtime>`, kein
+  DB-Zugriff nötig. `manifest.webmanifest` wird dynamisch per PHP-Route
+  ausgeliefert (Icons zeigen bei vorhandenem Wappen auf die Ableitungen,
+  sonst auf den neutralen SVG-Platzhalter `icon.svg`, der auch als Logo-
+  Fallback in der Kopfzeile dient). Hinweis im Admin: bereits installierte
+  PWAs übernehmen ein neues Icon erst bei Neuinstallation (Plattform-
+  Verhalten). Dateiname/Zeitstempel des Uploads landen als Setting, die
+  Bilddatei selbst nie im Event-Log (Abschnitt 3).
 
 ## 9. Self-Update, Backup, Installer
 

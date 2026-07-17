@@ -14,6 +14,8 @@ final readonly class View
     public function __construct(
         private string $viewsDir,
         private string $version,
+        private bool $wappenVorhanden = false,
+        private string $wappenVersion = '0',
     ) {
     }
 
@@ -26,7 +28,13 @@ final readonly class View
 
         return $this->renderFile(
             $this->viewsDir . '/' . $layout . '.php',
-            [...$data, 'content' => $content, 'version' => $this->version],
+            [
+                ...$data,
+                'content' => $content,
+                'version' => $this->version,
+                'wappenVorhanden' => $this->wappenVorhanden,
+                'wappenVersion' => $this->wappenVersion,
+            ],
         );
     }
 
