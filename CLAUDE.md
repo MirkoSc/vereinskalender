@@ -267,11 +267,29 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   `node --test tests/js`).
 - Mobile-Patterns: Bottom-Sheets, Chip-Filter, Segmented Control,
   Touch-Ziele ≥ 44 px.
-- **PWA/Offline**: Service Worker cached App-Shell; Daten über
-  `GET /api/offline-bundle` (heute..+7 Tage + Teams/Spielstätten/Farben/
-  Settings/Restriktionen – beide Modi + Filter müssen offline funktionieren),
-  in IndexedDB mit Zeitstempel. Offline: Banner „Offline – Stand: <Zeit>"
-  (Pflicht), Hinweis außerhalb des 7-Tage-Fensters, **Schreiben gesperrt**.
+- **PWA/Offline**: Service Worker cached App-Shell; `GET /api/offline-bundle`
+  (format-versioniert, aktuell 2) liefert den **kompletten Datenbestand**
+  (Issue #25): alle Spiele und Sperrungen bereits serialisiert (Feed-Shape,
+  inkl. Platz-/Vereinszuordnung über `VenueMatcher`/`MatchDuration`),
+  Trainings-Slots dagegen als **Regeln** (nicht expandiert) plus ihre
+  Ausnahmen, dazu Teams/Spielstätten/Plätze/Farben/Settings. Alle vier
+  öffentlichen Ansichten – Spielplan, Platzbelegung, Terminliste UND
+  Verfügbarkeit – müssen offline vollständig funktionieren, nicht nur für
+  ein Zeitfenster: `public/js/offline-events.js` expandiert Slots
+  clientseitig (Port von `SlotExpander`) und baut das `/api/events`-Shape;
+  `public/js/offline-verfuegbarkeit.js` berechnet die Verfügbarkeit
+  clientseitig (Port von `AvailabilityCalculator`) inkl. Nutzungszeiten,
+  Prioritäten und Hinweis-Layer. Serverseitig sind `EventSerializer`
+  (Spiel-/Sperrungs-Serialisierung) und `AvailabilityCalculator`
+  (Timeline-Berechnung) als reine, DB-freie Klassen ausgelagert, damit
+  dieselben goldenen Fixtures (`tests/fixtures/parity/`) PHP-Referenz UND
+  JS-Port paritätsgetestet gegeneinander prüfen (Abschnitt 11). Ablage in
+  IndexedDB mit Zeitstempel, Aktualisierung bei jedem Online-Besuch. Offline:
+  Banner „⚠ Offline – Stand: <Zeit>" (Pflicht, prominent, mit
+  Verlegungsrisiko-Hinweis, da nun auch weit entfernte Termine offline
+  sichtbar sind), **kein** Zeitfenster-Hinweis mehr, **Schreiben gesperrt**.
+  Ein Bundle mit veraltetem `format` gilt als „keine Daten" und wird beim
+  nächsten Online-Besuch ersetzt.
 - **Web-Push**: Kategorien Platzrestriktion (beide Arten) und
   Spielverlegung/-absage, je Team filterbar; Opt-in nur per Klick.
   push_subscription + notification_queue (mit ausgeloest_von_event_id);
@@ -388,7 +406,18 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   blockiert / Überlappung + eingeschraenkt warnen, **„Import ignoriert
   manuelle Spiele"-Regression**, ende-Fallback in Konfliktprüfung/
   Verfügbarkeit/Feed/Export, ende-NULL-Upcasting beim Replay, Push bei
-  Verlegung/Absage manueller Spiele, kein Push bei Löschung).
+  Verlegung/Absage manueller Spiele, kein Push bei Löschung); **Offline-
+  Paritätstests** (Issue #25): goldene Fixtures
+  (`tests/fixtures/parity/bundle.json` + `cases.json`, inkl. beider
+  DST-Wochenenden, überlappender Slots, mehrtägiger vor dem Zeitraum
+  beginnender Sperrung) prüfen, dass die clientseitigen Ports
+  (`public/js/offline-events.js`, `public/js/offline-verfuegbarkeit.js`)
+  byte-identisch zur PHP-Referenz (`SlotExpander`/`EventSerializer`,
+  `AvailabilityCalculator`) sind – `tests/Kalender/ParityFixturesTest.php`
+  (PHPUnit, DB-frei) und `tests/js/offline-*.test.js` (`node --test
+  tests/js`, Teil der CI) laufen gegen dieselben committeten
+  `expected/*.json`; bei Algorithmus-Änderungen `generate.php` neu laufen
+  lassen und den Diff bewusst reviewen.
 - Konfliktprüfung im `BookingService`; DIESELBE Expansionslogik speist die
   Verfügbarkeitsansicht.
 - **Zeitzonen**: durchgängig `Europe/Berlin` (zentral im Bootstrap gesetzt,

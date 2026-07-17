@@ -141,26 +141,34 @@ final class FeinschliffTest extends DatabaseTestCase
             'gueltig_ab' => new \DateTimeImmutable('today')->format('Y-m-d'),
             'gueltig_bis' => new \DateTimeImmutable('+30 days')->format('Y-m-d'),
         ], $this->context());
+        $this->createMatch($teamId, ['anstoss' => '2020-01-01 15:00:00']);
+        $this->createMatch($teamId, ['anstoss' => '2099-01-01 15:00:00']);
 
         $pdo = $this->pdo();
         $bundle = new \App\Service\Kalender\OfflineBundleService(
-            $this->eventFeedService(),
-            $this->availabilityService(),
+            new \App\Repository\TrainingSlotRepository($pdo),
+            new \App\Repository\SlotExceptionRepository($pdo),
+            new \App\Repository\PitchRestrictionRepository($pdo),
+            new \App\Repository\MatchRepository($pdo),
             new \App\Repository\TeamRepository($pdo),
-            new \App\Repository\VenueRepository($pdo),
             new \App\Repository\PitchRepository($pdo),
+            new \App\Repository\VenueRepository($pdo),
             new SettingRepository($pdo),
+            \App\Service\Kalender\VenueMatcher::fromDatabase($pdo),
         )->build();
 
-        self::assertSame(new \DateTimeImmutable('today')->format('Y-m-d'), $bundle['von']);
-        self::assertNotSame([], $bundle['events'], 'the slot occurrence is inside the 7-day window');
-        self::assertArrayHasKey('team_farbe', $bundle['events'][0], 'both color modes work offline');
-        self::assertArrayHasKey('venue_farbe', $bundle['events'][0]);
-        self::assertArrayHasKey('pitch_farbe', $bundle['events'][0]);
+        self::assertSame(2, $bundle['format']);
+        self::assertCount(2, $bundle['spiele'], 'the complete dataset: past AND future matches, no date window');
+        self::assertArrayHasKey('team_farbe', $bundle['spiele'][0], 'both color modes work offline');
+        self::assertArrayHasKey('venue_farbe', $bundle['spiele'][0]);
+        self::assertArrayHasKey('pitch_farbe', $bundle['spiele'][0]);
+        self::assertCount(1, $bundle['slots'], 'training slots as RULES, not expanded occurrences');
+        self::assertSame([$teamId], $bundle['slots'][0]['team_ids']);
+        self::assertSame([], $bundle['ausnahmen']);
+        self::assertSame([], $bundle['sperrungen']);
         self::assertNotSame([], $bundle['teams']);
         self::assertSame('#0969da', $bundle['pitches'][0]['farbe']);
-        self::assertNotSame([], $bundle['verfuegbarkeit']['venues']);
-        self::assertSame('#0969da', $bundle['verfuegbarkeit']['venues'][0]['plaetze'][0]['farbe']);
+        self::assertNull($bundle['pitches'][0]['adresse']);
         self::assertSame('#57606a', $bundle['settings']['auswaerts_farbe']);
     }
 }

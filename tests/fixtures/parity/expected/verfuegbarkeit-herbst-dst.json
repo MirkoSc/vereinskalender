@@ -1,0 +1,308 @@
+{
+    "von": "2026-10-19",
+    "bis": "2026-10-25",
+    "nutzungszeiten": {
+        "von": "08:00",
+        "bis": "22:00"
+    },
+    "venues": [
+        {
+            "id": 1,
+            "name": "SV Musterstadt",
+            "adresse": "Sportweg 1",
+            "farbe": "#1a7f37",
+            "hinweise": [],
+            "plaetze": [
+                {
+                    "id": 1,
+                    "name": "Rasenplatz 1",
+                    "kuerzel": "P1",
+                    "farbe": "#0969da",
+                    "adresse": null,
+                    "tage": [
+                        {
+                            "datum": "2026-10-19",
+                            "intervalle": [
+                                {
+                                    "von": "08:00",
+                                    "bis": "22:00",
+                                    "zustand": "frei"
+                                }
+                            ],
+                            "einschraenkungen": []
+                        },
+                        {
+                            "datum": "2026-10-20",
+                            "intervalle": [
+                                {
+                                    "von": "08:00",
+                                    "bis": "19:00",
+                                    "zustand": "frei"
+                                },
+                                {
+                                    "von": "19:00",
+                                    "bis": "20:30",
+                                    "zustand": "belegt",
+                                    "label": "Training E1+E2"
+                                },
+                                {
+                                    "von": "20:30",
+                                    "bis": "22:00",
+                                    "zustand": "frei"
+                                }
+                            ],
+                            "einschraenkungen": []
+                        },
+                        {
+                            "datum": "2026-10-21",
+                            "intervalle": [
+                                {
+                                    "von": "08:00",
+                                    "bis": "22:00",
+                                    "zustand": "frei"
+                                }
+                            ],
+                            "einschraenkungen": []
+                        },
+                        {
+                            "datum": "2026-10-22",
+                            "intervalle": [
+                                {
+                                    "von": "08:00",
+                                    "bis": "22:00",
+                                    "zustand": "frei"
+                                }
+                            ],
+                            "einschraenkungen": []
+                        },
+                        {
+                            "datum": "2026-10-23",
+                            "intervalle": [
+                                {
+                                    "von": "08:00",
+                                    "bis": "22:00",
+                                    "zustand": "frei"
+                                }
+                            ],
+                            "einschraenkungen": []
+                        },
+                        {
+                            "datum": "2026-10-24",
+                            "intervalle": [
+                                {
+                                    "von": "08:00",
+                                    "bis": "22:00",
+                                    "zustand": "frei"
+                                }
+                            ],
+                            "einschraenkungen": []
+                        },
+                        {
+                            "datum": "2026-10-25",
+                            "intervalle": [
+                                {
+                                    "von": "08:00",
+                                    "bis": "19:00",
+                                    "zustand": "frei"
+                                },
+                                {
+                                    "von": "19:00",
+                                    "bis": "20:30",
+                                    "zustand": "belegt",
+                                    "label": "Training E1+E2"
+                                },
+                                {
+                                    "von": "20:30",
+                                    "bis": "22:00",
+                                    "zustand": "frei"
+                                }
+                            ],
+                            "einschraenkungen": []
+                        }
+                    ]
+                },
+                {
+                    "id": 2,
+                    "name": "Kunstrasen",
+                    "kuerzel": "P2",
+                    "farbe": "#bc4c00",
+                    "adresse": "Nebenweg 2",
+                    "tage": [
+                        {
+                            "datum": "2026-10-19",
+                            "intervalle": [
+                                {
+                                    "von": "08:00",
+                                    "bis": "22:00",
+                                    "zustand": "frei"
+                                }
+                            ],
+                            "einschraenkungen": []
+                        },
+                        {
+                            "datum": "2026-10-20",
+                            "intervalle": [
+                                {
+                                    "von": "08:00",
+                                    "bis": "22:00",
+                                    "zustand": "frei"
+                                }
+                            ],
+                            "einschraenkungen": []
+                        },
+                        {
+                            "datum": "2026-10-21",
+                            "intervalle": [
+                                {
+                                    "von": "08:00",
+                                    "bis": "22:00",
+                                    "zustand": "frei"
+                                }
+                            ],
+                            "einschraenkungen": []
+                        },
+                        {
+                            "datum": "2026-10-22",
+                            "intervalle": [
+                                {
+                                    "von": "08:00",
+                                    "bis": "22:00",
+                                    "zustand": "frei"
+                                }
+                            ],
+                            "einschraenkungen": []
+                        },
+                        {
+                            "datum": "2026-10-23",
+                            "intervalle": [
+                                {
+                                    "von": "08:00",
+                                    "bis": "22:00",
+                                    "zustand": "frei"
+                                }
+                            ],
+                            "einschraenkungen": []
+                        },
+                        {
+                            "datum": "2026-10-24",
+                            "intervalle": [
+                                {
+                                    "von": "08:00",
+                                    "bis": "22:00",
+                                    "zustand": "frei"
+                                }
+                            ],
+                            "einschraenkungen": []
+                        },
+                        {
+                            "datum": "2026-10-25",
+                            "intervalle": [
+                                {
+                                    "von": "08:00",
+                                    "bis": "22:00",
+                                    "zustand": "frei"
+                                }
+                            ],
+                            "einschraenkungen": []
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "id": 2,
+            "name": "TSV Nachbarort",
+            "adresse": "Waldweg 5",
+            "farbe": "#8250df",
+            "hinweise": [],
+            "plaetze": [
+                {
+                    "id": 3,
+                    "name": "Platz A",
+                    "kuerzel": "PA",
+                    "farbe": "#cf222e",
+                    "adresse": null,
+                    "tage": [
+                        {
+                            "datum": "2026-10-19",
+                            "intervalle": [
+                                {
+                                    "von": "08:00",
+                                    "bis": "22:00",
+                                    "zustand": "frei"
+                                }
+                            ],
+                            "einschraenkungen": []
+                        },
+                        {
+                            "datum": "2026-10-20",
+                            "intervalle": [
+                                {
+                                    "von": "08:00",
+                                    "bis": "22:00",
+                                    "zustand": "frei"
+                                }
+                            ],
+                            "einschraenkungen": []
+                        },
+                        {
+                            "datum": "2026-10-21",
+                            "intervalle": [
+                                {
+                                    "von": "08:00",
+                                    "bis": "22:00",
+                                    "zustand": "frei"
+                                }
+                            ],
+                            "einschraenkungen": []
+                        },
+                        {
+                            "datum": "2026-10-22",
+                            "intervalle": [
+                                {
+                                    "von": "08:00",
+                                    "bis": "22:00",
+                                    "zustand": "frei"
+                                }
+                            ],
+                            "einschraenkungen": []
+                        },
+                        {
+                            "datum": "2026-10-23",
+                            "intervalle": [
+                                {
+                                    "von": "08:00",
+                                    "bis": "22:00",
+                                    "zustand": "frei"
+                                }
+                            ],
+                            "einschraenkungen": []
+                        },
+                        {
+                            "datum": "2026-10-24",
+                            "intervalle": [
+                                {
+                                    "von": "08:00",
+                                    "bis": "22:00",
+                                    "zustand": "frei"
+                                }
+                            ],
+                            "einschraenkungen": []
+                        },
+                        {
+                            "datum": "2026-10-25",
+                            "intervalle": [
+                                {
+                                    "von": "08:00",
+                                    "bis": "22:00",
+                                    "zustand": "frei"
+                                }
+                            ],
+                            "einschraenkungen": []
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

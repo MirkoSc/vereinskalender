@@ -73,9 +73,12 @@ final class SlotExpander
     }
 
     /**
+     * Accepts a PHP list or a JSON-encoded string (projection rows deliver
+     * JSON strings, offline-bundle/validated payloads deliver plain lists).
+     *
      * @return list<int>
      */
-    private static function intList(mixed $value): array
+    public static function intList(mixed $value): array
     {
         if (is_string($value)) {
             $value = json_decode($value, true) ?? [];

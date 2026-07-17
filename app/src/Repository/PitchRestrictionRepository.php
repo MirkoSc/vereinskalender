@@ -23,6 +23,17 @@ final readonly class PitchRestrictionRepository
     }
 
     /**
+     * All restrictions (offline bundle, CLAUDE.md section 8: complete
+     * dataset).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function findAll(): array
+    {
+        return $this->pdo->query('SELECT * FROM pitch_restriction ORDER BY von, id')->fetchAll();
+    }
+
+    /**
      * Restrictions overlapping the datetime range [von, bis].
      *
      * @return list<array<string, mixed>>

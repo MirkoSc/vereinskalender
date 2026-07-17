@@ -69,7 +69,10 @@ final readonly class PublicController
             'title' => 'Platz-Verfügbarkeit',
             'appData' => $appData,
             'colorCss' => $colorCss,
-            'scripts' => ['/js/konflikte.js', '/js/filter.js', '/js/schreiben.js', '/js/offline.js', '/js/push.js', '/js/verfuegbarkeit.js'],
+            'scripts' => [
+                '/js/konflikte.js', '/js/filter.js', '/js/schreiben.js', '/js/offline.js', '/js/push.js',
+                '/js/offline-events.js', '/js/offline-verfuegbarkeit.js', '/js/verfuegbarkeit.js',
+            ],
         ]));
     }
 
@@ -207,6 +210,7 @@ final readonly class PublicController
                 '/js/schreiben.js',
                 '/js/offline.js',
                 '/js/push.js',
+                '/js/offline-events.js',
                 '/js/nachlade.js',
                 '/js/kalender-events.js',
                 '/js/kalender-pitch.js',
