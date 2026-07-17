@@ -346,11 +346,13 @@
     // Laden) auf einen bereits verworfenen Cache weiterschreiben würde.
     let listeGeneration = 0;
 
-    const heuteStart = () => {
-        const heute = new Date();
-        heute.setHours(0, 0, 0, 0);
-        return heute;
-    };
+    // Wochenbeginn statt "heute" (Issue #26): die Terminliste ist auf
+    // Mobilgeräten die DEFAULT-Ansicht von Platzbelegung/Spielplan (s.
+    // initialViewTyp weiter unten), ihre untere Grenze bestimmt deshalb auch,
+    // ob "diese Woche" beim Öffnen vollständig erscheint - ein Start bei
+    // "heute" ließ bereits vergangene Tage der laufenden Woche fehlen.
+    // Details/Test bei wochenStart() in nachlade.js.
+    const listeStart = () => window.VKNachlade.wochenStart(new Date());
 
     const listeHorizontEnde = () => {
         const ende = new Date();
@@ -388,8 +390,8 @@
             if (!titleEl || !listeAktiv) {
                 return;
             }
-            const von = new Date(`${window.VKNachlade.toIsoDate(heuteStart())}T00:00:00`);
-            const bisIso = listeGeladenBis ?? window.VKNachlade.toIsoDate(heuteStart());
+            const von = new Date(`${window.VKNachlade.toIsoDate(listeStart())}T00:00:00`);
+            const bisIso = listeGeladenBis ?? window.VKNachlade.toIsoDate(listeStart());
             const bis = new Date(`${bisIso}T00:00:00`);
             const fmt = (d) => d.toLocaleDateString('de-DE', { day: 'numeric', month: 'short', year: 'numeric' });
             titleEl.textContent = `${fmt(von)} – ${fmt(bis)}`;
@@ -401,7 +403,7 @@
     // Aufruf sichtbar (Issue #31, Akzeptanzkriterium "sofort sichtbar") -
     // nicht erst nachdem der Fetch fertig ist.
     const ladeEinenBatch = async (params, bisGrenze) => {
-        const von = listeGeladenBis ?? window.VKNachlade.toIsoDate(heuteStart());
+        const von = listeGeladenBis ?? window.VKNachlade.toIsoDate(listeStart());
         if (bisGrenze <= von) {
             return;
         }
@@ -423,7 +425,7 @@
     };
 
     const listeNaechsteGrenze = () => window.VKNachlade.naechsteBatchGrenze(
-        listeGeladenBis ?? window.VKNachlade.toIsoDate(heuteStart()),
+        listeGeladenBis ?? window.VKNachlade.toIsoDate(listeStart()),
         LIST_BATCH_TAGE,
     );
 
@@ -547,7 +549,7 @@
         views: {
             listNachlade: {
                 type: 'list',
-                visibleRange: { start: heuteStart(), end: `${listeHorizontEnde()}T00:00:00` },
+                visibleRange: { start: listeStart(), end: `${listeHorizontEnde()}T00:00:00` },
             },
         },
         resources: ansicht === 'belegung' && isWideBelegung
@@ -569,7 +571,7 @@
         // großzügig, dass keine Grid-Ansicht sie je zufällig anfragt.
         events: async (info, success, failure) => {
             const params = window.VKKalenderEvents.baueEventsParams(ansicht, filters);
-            const istListenFetch = info.startStr.slice(0, 10) === window.VKNachlade.toIsoDate(heuteStart())
+            const istListenFetch = info.startStr.slice(0, 10) === window.VKNachlade.toIsoDate(listeStart())
                 && info.endStr.slice(0, 10) === listeHorizontEnde();
 
             if (istListenFetch) {
