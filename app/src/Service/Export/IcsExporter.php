@@ -9,6 +9,7 @@ use App\Repository\PitchRepository;
 use App\Repository\SlotExceptionRepository;
 use App\Repository\TeamRepository;
 use App\Repository\TrainingSlotRepository;
+use App\Service\Kalender\MatchDuration;
 use App\Service\Kalender\SlotExpander;
 
 /**
@@ -20,7 +21,6 @@ use App\Service\Kalender\SlotExpander;
 final readonly class IcsExporter
 {
     private const string UID_DOMAIN = 'vereinskalender';
-    private const string MATCH_DURATION = '+2 hours';
 
     /** Horizon for expanding recurring slots into concrete VEVENTs. */
     private const string SLOT_RANGE_PAST = '-30 days';
@@ -60,12 +60,13 @@ final readonly class IcsExporter
                 continue;
             }
             $start = new \DateTimeImmutable((string) $match['anstoss']);
+            $ende = $match['ende'] !== null ? (string) $match['ende'] : null;
             $kuerzel = $teamNames[(int) $match['team_id']] ?? '';
 
             $events[] = self::vevent(
                 uid: sprintf('match-%d@%s', (int) $match['id'], self::UID_DOMAIN),
                 start: $start,
-                end: $start->modify(self::MATCH_DURATION),
+                end: MatchDuration::effectiveEnd((string) $match['anstoss'], $ende),
                 summary: trim($kuerzel . ': ' . (string) $match['gegner']),
                 location: (string) $match['ort_text'],
                 sequence: (int) $match['ics_sequence'],

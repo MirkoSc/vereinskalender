@@ -120,6 +120,56 @@ final class NotificationTriggerTest extends DatabaseTestCase
         self::assertCount(0, $this->dumpTable('notification_queue'), 'pitch-only reflow stays silent');
     }
 
+    /**
+     * Issue #12: the trigger reads only anstoss/status/team_id/gegner and
+     * never checks import_source_id - a manually created match (Freund-
+     * schaftsspiel) notifies exactly like an imported one on Verlegung and
+     * Absage, with no extra wiring.
+     */
+    public function testManualMatchRelocationAndCancellationEnqueue(): void
+    {
+        $teamId = $this->createTeam();
+        $store = $this->eventStoreWithTrigger();
+
+        $matchPayload = [
+            'team_id' => $teamId, 'anstoss' => '2099-08-08 15:00:00', 'ende' => null,
+            'gegner' => 'Freundschaftsspiel', 'heimspiel' => false, 'ort_text' => 'Nachbarort',
+            'pitch_id' => null, 'pitch_manuell' => false, 'status' => 'geplant',
+            'import_source_id' => null, 'ics_uid' => '', 'ics_sequence' => 0, 'sync_hash' => '',
+        ];
+        $matchId = $store->append(AggregateType::Match, null, EventType::Created, $matchPayload, $this->context())->aggregateId;
+
+        $store->append(AggregateType::Match, $matchId, EventType::Updated, [
+            ...$matchPayload, 'anstoss' => '2099-08-09 11:00:00', 'ics_sequence' => 1,
+        ], $this->context());
+        $store->append(AggregateType::Match, $matchId, EventType::Updated, [
+            ...$matchPayload, 'anstoss' => '2099-08-09 11:00:00', 'status' => 'abgesagt', 'ics_sequence' => 2,
+        ], $this->context());
+
+        $queue = $this->dumpTable('notification_queue');
+        self::assertCount(2, $queue, 'push fires for manual matches exactly like imported ones');
+        self::assertSame('spielaenderung', $queue[0]['typ']);
+        self::assertSame('spielaenderung', $queue[1]['typ']);
+    }
+
+    public function testManualMatchDeletionDoesNotEnqueue(): void
+    {
+        $teamId = $this->createTeam();
+        $store = $this->eventStoreWithTrigger();
+
+        $matchPayload = [
+            'team_id' => $teamId, 'anstoss' => '2099-08-08 15:00:00', 'ende' => null,
+            'gegner' => 'Freundschaftsspiel', 'heimspiel' => false, 'ort_text' => 'Nachbarort',
+            'pitch_id' => null, 'pitch_manuell' => false, 'status' => 'geplant',
+            'import_source_id' => null, 'ics_uid' => '', 'ics_sequence' => 0, 'sync_hash' => '',
+        ];
+        $matchId = $store->append(AggregateType::Match, null, EventType::Created, $matchPayload, $this->context())->aggregateId;
+
+        $store->append(AggregateType::Match, $matchId, EventType::Deleted, $matchPayload, $this->context());
+
+        self::assertCount(0, $this->dumpTable('notification_queue'), 'deleting a match is not a Verlegung/Absage');
+    }
+
     public function testPreferenceMatching(): void
     {
         $sub = static fn(array $praeferenzen): array => [

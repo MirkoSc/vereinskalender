@@ -116,11 +116,7 @@ final class IcsImportTest extends DatabaseTestCase
         // manual assignment to another pitch (as event, name-based)
         $otherPitch = $this->createPitch($this->venueId, 'Kunstrasen');
         $matchId = (int) $this->dumpTable('match')[0]['id'];
-        $matchService = new \App\Service\Kalender\MatchService(
-            $this->eventStore(),
-            new \App\Repository\MatchRepository($this->pdo()),
-            new \App\Repository\PitchRepository($this->pdo()),
-        );
+        $matchService = $this->matchService();
         $matchService->assignPitch($matchId, ['pitch_id' => (string) $otherPitch], $this->context('Platzwart Paul'));
 
         // kickoff changes, location stays -> manual pitch is preserved
@@ -312,11 +308,7 @@ final class IcsImportTest extends DatabaseTestCase
 
         $manualPitch = $this->createPitch($this->venueId, 'Ausweichplatz');
         $matchId = (int) $this->dumpTable('match')[0]['id'];
-        $matchService = new \App\Service\Kalender\MatchService(
-            $this->eventStore(),
-            new \App\Repository\MatchRepository($this->pdo()),
-            new \App\Repository\PitchRepository($this->pdo()),
-        );
+        $matchService = $this->matchService();
         $matchService->assignPitch($matchId, ['pitch_id' => (string) $manualPitch], $this->context('Platzwart Paul'));
         self::assertSame(1, (int) $this->dumpTable('match')[0]['pitch_manuell']);
 
@@ -339,11 +331,7 @@ final class IcsImportTest extends DatabaseTestCase
 
         $manualPitch = $this->createPitch($this->venueId, 'Ausweichplatz');
         $matchId = (int) $this->dumpTable('match')[0]['id'];
-        $matchService = new \App\Service\Kalender\MatchService(
-            $this->eventStore(),
-            new \App\Repository\MatchRepository($this->pdo()),
-            new \App\Repository\PitchRepository($this->pdo()),
-        );
+        $matchService = $this->matchService();
         $matchService->assignPitch($matchId, ['pitch_id' => (string) $manualPitch], $this->context('Platzwart Paul'));
 
         // location text changes too -> pre-PR this silently lost the manual pitch
@@ -382,11 +370,7 @@ final class IcsImportTest extends DatabaseTestCase
 
         $manualPitch = $this->createPitch($this->venueId, 'Ausweichplatz');
         $matchId = (int) $this->dumpTable('match')[0]['id'];
-        $matchService = new \App\Service\Kalender\MatchService(
-            $this->eventStore(),
-            new \App\Repository\MatchRepository($this->pdo()),
-            new \App\Repository\PitchRepository($this->pdo()),
-        );
+        $matchService = $this->matchService();
         $matchService->assignPitch($matchId, ['pitch_id' => (string) $manualPitch], $this->context('Platzwart Paul'));
 
         $fetcher->set(self::URL, self::feed());
@@ -408,11 +392,7 @@ final class IcsImportTest extends DatabaseTestCase
 
         $manualPitch = $this->createPitch($this->venueId, 'Ausweichplatz');
         $matchId = (int) $this->dumpTable('match')[0]['id'];
-        $matchService = new \App\Service\Kalender\MatchService(
-            $this->eventStore(),
-            new \App\Repository\MatchRepository($this->pdo()),
-            new \App\Repository\PitchRepository($this->pdo()),
-        );
+        $matchService = $this->matchService();
         $matchService->assignPitch($matchId, ['pitch_id' => (string) $manualPitch], $this->context('Platzwart Paul'));
 
         // resetting to the empty option turns automatic assignment back on
@@ -424,6 +404,74 @@ final class IcsImportTest extends DatabaseTestCase
 
         $import->runAll();
         self::assertSame($rulePitch, (int) $this->dumpTable('match')[0]['pitch_id']);
+    }
+
+    /**
+     * Issue #12 regression lock-in: the sync works exclusively on
+     * WHERE import_source_id = ? (candidate lookup AND the cancel sweep),
+     * so manual matches (import_source_id IS NULL) are invisible to it -
+     * no update, no cancellation, no reflow, ever.
+     */
+    public function testSyncNeverTouchesManualMatches(): void
+    {
+        // future manual match; one even shares the ics_uid of a feed event
+        // to prove the (source, uid) key - not the uid alone - scopes the sync
+        $manualId = $this->createMatch($this->teamId, [
+            'anstoss' => '2099-09-01 15:00:00',
+            'gegner' => 'FC Freundschaft',
+        ]);
+        $manualSameUidId = $this->createMatch($this->teamId, [
+            'anstoss' => '2099-09-08 15:00:00',
+            'gegner' => 'Turnier',
+            'ics_uid' => 'u1',
+        ]);
+
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('u1', '20990808T150000', 'Spiel', 'Ort'),
+        )]);
+        $import = $this->icsImportService($fetcher);
+
+        $import->runAll();
+        // second run with an empty feed: the cancel sweep must not reach them
+        $fetcher->set(self::URL, self::feed());
+        $import->runAll();
+
+        $byId = [];
+        foreach ($this->dumpTable('match') as $m) {
+            $byId[(int) $m['id']] = $m;
+        }
+        foreach ([$manualId, $manualSameUidId] as $id) {
+            self::assertSame('geplant', $byId[$id]['status'], 'cancel sweep must not touch manual matches');
+            self::assertNull($byId[$id]['import_source_id']);
+        }
+
+        // exactly one event per manual aggregate: the original Created
+        foreach ([$manualId, $manualSameUidId] as $id) {
+            $events = array_values(array_filter(
+                $this->dumpTable('event'),
+                static fn(array $e): bool => $e['aggregat_typ'] === 'match' && (int) $e['aggregat_id'] === $id,
+            ));
+            self::assertCount(1, $events, 'import must not append events to manual matches');
+        }
+    }
+
+    public function testImportPayloadCarriesEndeNull(): void
+    {
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('u1', '20990808T150000', 'Spiel', 'Ort'),
+        )]);
+        $this->icsImportService($fetcher)->runAll();
+
+        $match = $this->dumpTable('match')[0];
+        self::assertNull($match['ende'], 'imported matches never carry an explicit end');
+
+        $event = array_values(array_filter(
+            $this->dumpTable('event'),
+            static fn(array $e): bool => $e['aggregat_typ'] === 'match',
+        ))[0];
+        $payload = json_decode((string) $event['payload'], true);
+        self::assertArrayHasKey('ende', $payload, 'full-picture payload includes the ende key');
+        self::assertNull($payload['ende']);
     }
 
     public function testImportEventsCarryImportSource(): void

@@ -366,6 +366,9 @@ final class Container
             $this->eventStore(),
             $this->matchRepository(),
             $this->pitchRepository(),
+            $this->teamRepository(),
+            $this->venueMatcher(),
+            $this->bookingService(),
         ));
     }
 

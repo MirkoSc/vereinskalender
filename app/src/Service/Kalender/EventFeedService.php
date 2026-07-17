@@ -25,7 +25,6 @@ use App\Service\ValidationException;
  */
 final readonly class EventFeedService
 {
-    private const string MATCH_DURATION = '+2 hours';
     private const int MAX_RANGE_DAYS = 400;
 
     public function __construct(
@@ -204,15 +203,21 @@ final readonly class EventFeedService
                     continue;
                 }
 
-                // display-time venue resolution (retroactive keywords)
-                $venueId = $this->venueMatcher->match((string) $match['ort_text']);
+                $pitchId = $match['pitch_id'] !== null ? (int) $match['pitch_id'] : null;
+                $pitch = $pitchId !== null ? ($pitches[$pitchId] ?? null) : null;
+
+                // display-time venue resolution (retroactive keywords); a
+                // match occupying a pitch is by definition at that pitch's
+                // venue, so this is the fallback when ort_text matches no
+                // begriff (e.g. an empty ort_text on a manual match)
+                $venueId = $this->venueMatcher->match((string) $match['ort_text'])
+                    ?? ($pitch !== null ? (int) $pitch['venue_id'] : null);
                 if (!$matchesVenue($venueId)) {
                     continue;
                 }
 
                 $start = new \DateTimeImmutable((string) $match['anstoss']);
-                $pitchId = $match['pitch_id'] !== null ? (int) $match['pitch_id'] : null;
-                $pitch = $pitchId !== null ? ($pitches[$pitchId] ?? null) : null;
+                $ende = $match['ende'] !== null ? (string) $match['ende'] : null;
 
                 // occupancy view: only matches actually occupying a pitch
                 // (same semantics as AvailabilityService)
@@ -224,8 +229,9 @@ final readonly class EventFeedService
                     'id' => 'match-' . (int) $match['id'],
                     'typ' => 'spiel',
                     'match_id' => (int) $match['id'],
+                    'manuell' => $match['import_source_id'] === null,
                     'start' => $start->format('Y-m-d\TH:i:s'),
-                    'ende' => $start->modify(self::MATCH_DURATION)->format('Y-m-d\TH:i:s'),
+                    'ende' => MatchDuration::effectiveEnd((string) $match['anstoss'], $ende)->format('Y-m-d\TH:i:s'),
                     'titel' => (string) $team['kuerzel'] . ' – ' . (string) $match['gegner'],
                     'team_id' => $teamId,
                     'team_name' => (string) $team['name'],

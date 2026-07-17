@@ -28,22 +28,23 @@ final class MatchProjector extends TableProjector
     }
 
     /**
-     * Match events written before pitch_manuell existed carry no flag;
-     * upcast them deterministically to false, matching the migration
-     * DEFAULT (CLAUDE.md section 5).
+     * Match events written before pitch_manuell/ende existed carry no such
+     * key; upcast them deterministically (pitch_manuell -> false, ende ->
+     * null), matching the migration DEFAULTs (CLAUDE.md section 5).
      */
     public function normalizePayload(array $payload): array
     {
         return [
             ...$payload,
             'pitch_manuell' => (bool) ($payload['pitch_manuell'] ?? false),
+            'ende' => $payload['ende'] ?? null,
         ];
     }
 
     protected function columns(): array
     {
         return [
-            'team_id', 'anstoss', 'gegner', 'heimspiel', 'ort_text', 'pitch_id',
+            'team_id', 'anstoss', 'ende', 'gegner', 'heimspiel', 'ort_text', 'pitch_id',
             'pitch_manuell', 'status', 'import_source_id', 'ics_uid', 'ics_sequence',
             'sync_hash',
         ];

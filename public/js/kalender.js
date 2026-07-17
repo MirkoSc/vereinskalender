@@ -45,6 +45,7 @@
         { key: 'bereich', default: '', label: (wert) => `Bereich: ${bereichLabel(wert)}` },
         { key: 'venue', default: '', label: (wert) => `Ort: ${venueLabel(wert)}` },
         { key: 'pitch', default: '', label: (wert) => `Platz: ${pitchLabel(wert)}` },
+        { key: 'manuell', default: '', label: (wert) => (wert === 'nur' ? 'Nur manuelle Termine' : 'Ohne manuelle Termine') },
     ];
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -108,12 +109,16 @@
         onFilterChange();
     };
 
+    const manuellSelect = document.querySelector('#filter-manuell');
+
     teamSelect.value = filters.team;
     bereichSelect.value = filters.bereich;
     venueSelect.value = filters.venue;
+    manuellSelect.value = filters.manuell;
     teamSelect.addEventListener('change', () => setzeFilter('team', teamSelect.value));
     bereichSelect.addEventListener('change', () => setzeFilter('bereich', bereichSelect.value));
     venueSelect.addEventListener('change', () => setzeFilter('venue', venueSelect.value));
+    manuellSelect.addEventListener('change', () => setzeFilter('manuell', manuellSelect.value));
 
     document.querySelector('#filter-button').addEventListener('click', () => filterDialog.showModal());
     document.querySelector('#filter-close').addEventListener('click', () => filterDialog.close());
@@ -223,6 +228,10 @@
             ? events.filter((e) => String(e.pitch_id) === filters.pitch)
             : events
     );
+
+    // Beide clientseitigen Filter zusammen anwenden (auch im Offline-Pfad,
+    // da fetchEventsRange auch dort schon fertige Event-Objekte liefert).
+    const applyClientFilters = (events) => window.VKKalenderEvents.manuellFilterAnwenden(applyPitchFilter(events), filters.manuell);
 
     const recolor = () => {
         for (const event of calendar.getEvents()) {
@@ -355,7 +364,7 @@
             // nichts Neues zu laden (z. B. zweiter Scroll-Trigger während
             // noch derselbe Bereich aktiv ist, oder ein reines Refetch bei
             // Platzauswahl-Änderung) - aus dem Cache neu filtern und rendern
-            success(applyPitchFilter(listeEvents).map(toFcEvent));
+            success(applyClientFilters(listeEvents).map(toFcEvent));
             return;
         }
         listeIndikatorSetzen(true);
@@ -367,7 +376,7 @@
             if (listeLeereBatches >= 3 || window.VKNachlade.tageZwischen(von, bis) >= LIST_MAX_HORIZONT_TAGE) {
                 listeErschoepft = true;
             }
-            success(applyPitchFilter(listeEvents).map(toFcEvent));
+            success(applyClientFilters(listeEvents).map(toFcEvent));
         } catch (error) {
             failure(error);
         } finally {
@@ -454,7 +463,7 @@
             try {
                 const von = info.startStr.slice(0, 10);
                 const bis = info.endStr.slice(0, 10);
-                success(applyPitchFilter(await fetchEventsRange(von, bis, params)).map(toFcEvent));
+                success(applyClientFilters(await fetchEventsRange(von, bis, params)).map(toFcEvent));
             } catch (error) {
                 failure(error);
             }
@@ -584,9 +593,41 @@
                 detailContent.append(zeile('Status', 'ABGESAGT'));
             }
 
-            // the pitch is not part of the ICS: manual assignment, saved as
-            // an event with the editor's name (CLAUDE.md section 7)
-            if (props.heimspiel) {
+            if (props.manuell) {
+                // Issue #12: kein Import-Datenpunkt, sondern manuell erfasst
+                // - Farbe allein ist nie das Signal (CLAUDE.md Abschnitt 8)
+                detailContent.append(zeile('Quelle', 'Manuell eingetragen'));
+
+                const editButton = document.createElement('button');
+                editButton.type = 'button';
+                editButton.className = 'button';
+                editButton.textContent = 'Bearbeiten';
+                editButton.addEventListener('click', () => {
+                    detailDialog.close();
+                    openMatchDialog(props);
+                });
+
+                const deleteButton = document.createElement('button');
+                deleteButton.type = 'button';
+                deleteButton.className = 'linklike danger';
+                deleteButton.textContent = 'Spiel löschen';
+                deleteButton.addEventListener('click', async () => {
+                    if (!confirm('Dieses Spiel endgültig löschen?')) {
+                        return;
+                    }
+                    const result = await VK.post(`/api/spiele/${props.match_id}/loeschen`).catch(() => null);
+                    if (result?.ok) {
+                        detailDialog.close();
+                        calendar.refetchEvents();
+                    } else if (result) {
+                        alert(VK.fehlerText(result.data));
+                    }
+                });
+
+                detailActions.append(editButton, deleteButton);
+            } else if (props.heimspiel) {
+                // the pitch is not part of the ICS: manual assignment, saved
+                // as an event with the editor's name (CLAUDE.md section 7)
                 const label = document.createElement('label');
                 label.textContent = 'Platz-Zuordnung';
                 const select = document.createElement('select');
@@ -644,21 +685,12 @@
         detailDialog.showModal();
     };
 
-    // ---- booking + exception dialogs (occupancy view only) ----
-
-    if (ansicht !== 'belegung') {
-        return;
-    }
-
-    const bookingDialog = document.querySelector('#booking-dialog');
-    const bookingForm = document.querySelector('#booking-form');
-    const bookingFeedback = document.querySelector('#booking-feedback');
-    const bookingSubmit = bookingForm.querySelector('button[type="submit"]');
-
-    // Issue #9: eine Serie (oder ein anderer wiederholter Verursacher) wird
-    // als eine Zeile mit Anzahl + nächstem Termin dargestellt, aufklappbar
-    // für die Einzeltermine; initial max. 5 Gruppen, Rest per "weitere
-    // anzeigen". Der Server liefert die Gruppen bereits fertig aggregiert
+    // ---- Konflikt-Anzeige (Issue #9, Issue #12: von Booking- UND
+    // Match-Formular genutzt, daher oberhalb der Belegung-only-Guard) ----
+    // Eine Serie (oder ein anderer wiederholter Verursacher) wird als eine
+    // Zeile mit Anzahl + nächstem Termin dargestellt, aufklappbar für die
+    // Einzeltermine; initial max. 5 Gruppen, Rest per "weitere anzeigen".
+    // Der Server liefert die Gruppen bereits fertig aggregiert
     // (ConflictGrouper::group()).
     const INITIAL_KONFLIKT_GRUPPEN = 5;
 
@@ -691,9 +723,9 @@
         return li;
     };
 
-    const renderKonfliktGruppen = (gruppen, { warnung = false } = {}) => {
-        bookingFeedback.innerHTML = '';
-        bookingFeedback.className = warnung ? 'warning-message' : 'error-message';
+    const renderKonfliktGruppen = (feedback, gruppen, { warnung = false } = {}) => {
+        feedback.innerHTML = '';
+        feedback.className = warnung ? 'warning-message' : 'error-message';
         if (gruppen.length === 0) {
             return;
         }
@@ -704,7 +736,7 @@
         for (const gruppe of sichtbar) {
             liste.append(konfliktZeile(gruppe));
         }
-        bookingFeedback.append(liste);
+        feedback.append(liste);
 
         if (rest.length > 0) {
             const weitereButton = document.createElement('button');
@@ -717,15 +749,122 @@
                 }
                 weitereButton.remove();
             });
-            bookingFeedback.append(weitereButton);
+            feedback.append(weitereButton);
         }
 
         if (warnung) {
             const hinweis = document.createElement('p');
             hinweis.textContent = 'Trotzdem speichern?';
-            bookingFeedback.append(hinweis);
+            feedback.append(hinweis);
         }
     };
+
+    // ---- match dialog (Issue #12: manuell erfasste Spiele) ----
+    // Das Dialog-Markup liegt außerhalb des Belegung-only-Blocks (Issue #6/
+    // #11): das Bearbeiten/Löschen eines manuellen Spiels mit Platz wird
+    // auch aus der Platzbelegung heraus angeboten (dort erscheint es dank
+    // typ=belegung ebenfalls). Der "Spiel eintragen"-Button existiert nur
+    // im Spielplan (kalender.php).
+    const matchDialog = document.querySelector('#match-dialog');
+    const matchForm = document.querySelector('#match-form');
+    const matchFeedback = document.querySelector('#match-feedback');
+    const matchSubmit = matchForm.querySelector('button[type="submit"]');
+    const matchTitle = document.querySelector('#match-title');
+    const matchStatusFeld = document.querySelector('#match-status-feld');
+
+    const matchTeamSelect = document.querySelector('#match-team');
+    for (const team of activeTeams) {
+        matchTeamSelect.add(new Option(`${team.name} (${team.bereich})`, String(team.id)));
+    }
+    const matchPitchSelect = document.querySelector('#match-pitch');
+    for (const pitch of appData.pitches) {
+        matchPitchSelect.add(new Option(`${pitch.name} (${pitch.venue_name})`, String(pitch.id)));
+    }
+
+    let matchWarnungenBestaetigt = false;
+
+    const openMatchDialog = (props) => {
+        matchForm.reset();
+        matchFeedback.textContent = '';
+        matchFeedback.className = '';
+        matchSubmit.textContent = 'Speichern';
+        matchWarnungenBestaetigt = false;
+
+        const isEdit = props !== null;
+        matchTitle.textContent = isEdit ? 'Spiel bearbeiten' : 'Spiel eintragen';
+        matchStatusFeld.hidden = !isEdit;
+
+        matchForm.elements.match_id.value = isEdit ? String(props.match_id) : '';
+        matchForm.elements.team_id.value = isEdit ? String(props.team_id) : '';
+        matchForm.elements.datum.value = isEdit ? props.start.slice(0, 10) : '';
+        matchForm.elements.anstoss.value = isEdit ? props.start.slice(11, 16) : '';
+        // vorbelegt mit der effektiven Dauer (explizit oder Anstoß+2 Std.);
+        // wer die Automatik zurückwill, muss das Feld manuell leeren
+        matchForm.elements.ende.value = isEdit ? props.ende.slice(11, 16) : '';
+        matchForm.elements.gegner.value = isEdit ? props.gegner : '';
+        matchForm.elements.pitch_id.value = isEdit && props.pitch_id !== null ? String(props.pitch_id) : '';
+        matchForm.elements.ort_text.value = isEdit ? (props.ort_text ?? '') : '';
+        matchForm.elements.status.value = isEdit ? props.status : 'geplant';
+
+        matchDialog.showModal();
+    };
+
+    document.querySelector('#new-match')?.addEventListener('click', () => openMatchDialog(null));
+    document.querySelector('#match-cancel').addEventListener('click', () => matchDialog.close());
+
+    matchForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const data = Object.fromEntries(new FormData(matchForm));
+        const matchId = data.match_id;
+        const url = matchId === '' ? '/api/spiele' : `/api/spiele/${matchId}`;
+
+        try {
+            if (!matchWarnungenBestaetigt) {
+                const check = await VK.post('/api/spiele/pruefen', data);
+                if (!check.ok) {
+                    matchFeedback.className = 'error-message';
+                    matchFeedback.textContent = VK.fehlerText(check.data);
+                    return;
+                }
+                if (check.data.konflikte.length > 0) {
+                    renderKonfliktGruppen(matchFeedback, check.data.konflikte);
+                    return;
+                }
+                if (check.data.warnungen.length > 0) {
+                    // 'eingeschraenkt' bzw. Überschneidungen: erlaubt, aber
+                    // der Dialog muss erst warnen (CLAUDE.md Abschnitt 4)
+                    renderKonfliktGruppen(matchFeedback, check.data.warnungen, { warnung: true });
+                    matchSubmit.textContent = 'Trotzdem speichern';
+                    matchWarnungenBestaetigt = true;
+                    return;
+                }
+            }
+
+            const result = await VK.post(url, data);
+            if (result.ok) {
+                matchDialog.close();
+                calendar.refetchEvents();
+            } else {
+                matchFeedback.className = 'error-message';
+                matchFeedback.textContent = VK.fehlerText(result.data);
+                matchSubmit.textContent = 'Speichern';
+                matchWarnungenBestaetigt = false;
+            }
+        } catch {
+            // name dialog cancelled
+        }
+    });
+
+    // ---- booking + exception dialogs (occupancy view only) ----
+
+    if (ansicht !== 'belegung') {
+        return;
+    }
+
+    const bookingDialog = document.querySelector('#booking-dialog');
+    const bookingForm = document.querySelector('#booking-form');
+    const bookingFeedback = document.querySelector('#booking-feedback');
+    const bookingSubmit = bookingForm.querySelector('button[type="submit"]');
     const bookingTitle = document.querySelector('#booking-title');
     const wochentageFeld = document.querySelector('#booking-wochentage-feld');
     const gueltigFeld = document.querySelector('#booking-gueltig-feld');
@@ -865,13 +1004,13 @@
                     return;
                 }
                 if (check.data.konflikte.length > 0) {
-                    renderKonfliktGruppen(check.data.konflikte);
+                    renderKonfliktGruppen(bookingFeedback, check.data.konflikte);
                     return;
                 }
                 if (check.data.warnungen.length > 0) {
                     // 'eingeschraenkt': booking allowed, but the dialog must
                     // show the warning first (CLAUDE.md section 4)
-                    renderKonfliktGruppen(check.data.warnungen, { warnung: true });
+                    renderKonfliktGruppen(bookingFeedback, check.data.warnungen, { warnung: true });
                     bookingSubmit.textContent = 'Trotzdem speichern';
                     warnungenBestaetigt = true;
                     return;

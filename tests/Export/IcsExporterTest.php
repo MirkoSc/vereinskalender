@@ -50,6 +50,28 @@ final class IcsExporterTest extends DatabaseTestCase
         self::assertStringContainsString('DTSTART:20990808T130000Z', $ics);
     }
 
+    public function testMatchFeedUsesExplicitEndeWithTwoHourFallback(): void
+    {
+        $teamId = $this->createTeam('E1');
+        // manual tournament with explicit end (Issue #12)
+        $this->createMatch($teamId, [
+            'anstoss' => '2099-08-08 10:00:00',
+            'ende' => '2099-08-08 16:00:00',
+            'gegner' => 'Turnier',
+        ]);
+        // imported-style match without: kickoff + 2h
+        $this->createMatch($teamId, [
+            'anstoss' => '2099-08-15 15:00:00',
+            'gegner' => 'FC Gegner',
+        ]);
+
+        $ics = $this->exporter()->matchesFeed($teamId);
+
+        // August = CEST (UTC+2)
+        self::assertStringContainsString('DTEND:20990808T140000Z', $ics, 'explicit ende 16:00 local');
+        self::assertStringContainsString('DTEND:20990815T150000Z', $ics, 'fallback 17:00 local');
+    }
+
     /**
      * Mandatory (CLAUDE.md section 12): the export must be correct across
      * both DST transitions - same wall time, different UTC offset.
