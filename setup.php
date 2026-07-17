@@ -257,6 +257,11 @@ function setup_checks(string $webDir, string $rootDir): array
         'detail' => '',
     ];
     $checks[] = [
+        'label' => 'GD verfügbar (für das Vereinswappen)',
+        'ok' => extension_loaded('gd') && function_exists('imagecreatefrompng'),
+        'detail' => '',
+    ];
+    $checks[] = [
         'label' => 'HTTPS-Downloads möglich (allow_url_fopen + openssl)',
         'ok' => ini_get('allow_url_fopen') === '1' && extension_loaded('openssl'),
         'detail' => '',

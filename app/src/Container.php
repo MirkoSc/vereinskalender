@@ -84,6 +84,7 @@ use App\Service\Stammdaten\VenueService;
 use App\Service\Update\ReleaseDownloader;
 use App\Service\Update\ReleaseSwitcher;
 use App\Service\Update\UpdateService;
+use App\Service\Wappen\WappenService;
 use App\Support\Version;
 use App\View\View;
 
@@ -110,7 +111,17 @@ final class Container
 
     public function view(): View
     {
-        return $this->cached('view', fn(): View => new View($this->paths->viewsDir(), $this->version->value));
+        return $this->cached('view', fn(): View => new View(
+            $this->paths->viewsDir(),
+            $this->version->value,
+            $this->wappenService()->exists(),
+            $this->wappenService()->version(),
+        ));
+    }
+
+    public function wappenService(): WappenService
+    {
+        return $this->cached('wappenService', fn(): WappenService => new WappenService($this->paths->wappenDir()));
     }
 
     public function session(): Session
@@ -297,6 +308,7 @@ final class Container
             $this->paths->sharedDir() . '/var/backups',
             $this->paths->configFile(),
             $this->version->value,
+            $this->wappenService(),
         ));
     }
 
@@ -442,6 +454,7 @@ final class Container
             $this->view(),
             $this->session(),
             $this->settingRepository(),
+            $this->wappenService(),
         ));
     }
 
@@ -557,6 +570,7 @@ final class Container
             $this->usageStatRepository(),
             $this->version->value,
             $this->paths->publicDir(),
+            $this->wappenService(),
         ));
     }
 

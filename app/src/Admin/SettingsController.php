@@ -10,6 +10,7 @@ use App\Http\Response;
 use App\Http\ResponseInterface;
 use App\Http\Session;
 use App\Repository\SettingRepository;
+use App\Service\Wappen\WappenService;
 use App\View\View;
 
 final class SettingsController extends AdminController
@@ -18,6 +19,7 @@ final class SettingsController extends AdminController
         View $view,
         Session $session,
         private readonly SettingRepository $settings,
+        private readonly WappenService $wappen,
     ) {
         parent::__construct($view, $session);
     }
@@ -34,7 +36,32 @@ final class SettingsController extends AdminController
                 'alarm_email' => $this->settings->get('alarm_email', ''),
                 'ip_aufbewahrung_tage' => $this->settings->get('ip_aufbewahrung_tage', '90'),
             ],
+            'wappenVorhanden' => $this->wappen->exists(),
+            'wappenVersion' => $this->wappen->version(),
+            'wappenHochgeladenAm' => $this->settings->get('wappen_hochgeladen_am', ''),
         ]);
+    }
+
+    public function uploadWappen(Request $request): ResponseInterface
+    {
+        $upload = $_FILES['wappen'] ?? null;
+        if (!is_array($upload) || ($upload['error'] ?? \UPLOAD_ERR_NO_FILE) !== \UPLOAD_ERR_OK) {
+            $this->session->flash('Bitte eine PNG-Datei auswählen.');
+
+            return Response::redirect('/admin/einstellungen');
+        }
+
+        $fehler = $this->wappen->upload((string) $upload['tmp_name'], (int) $upload['size']);
+        if ($fehler !== []) {
+            $this->session->flash(implode(' ', $fehler));
+
+            return Response::redirect('/admin/einstellungen');
+        }
+
+        $this->settings->set('wappen_hochgeladen_am', new \DateTimeImmutable()->format('Y-m-d H:i:s'));
+        $this->session->flash('Wappen hochgeladen. Bereits installierte PWAs übernehmen es erst bei einer Neuinstallation.');
+
+        return Response::redirect('/admin/einstellungen');
     }
 
     public function save(Request $request): ResponseInterface

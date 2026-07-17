@@ -90,8 +90,17 @@ main {
 /* --- Public --- */
 
 .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
     color: inherit;
     text-decoration: none;
+}
+
+.brand-logo {
+    height: 1.75rem;
+    width: 1.75rem;
+    object-fit: contain;
 }
 
 .main-nav {

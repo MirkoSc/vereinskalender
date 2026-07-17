@@ -6,12 +6,14 @@ namespace App\PublicPages;
 
 use App\Http\Request;
 use App\Http\Response;
+use App\Http\ResponseInterface;
 use App\Repository\PageRepository;
 use App\Repository\PitchRepository;
 use App\Repository\SettingRepository;
 use App\Repository\TeamRepository;
 use App\Repository\UsageStatRepository;
 use App\Repository\VenueRepository;
+use App\Service\Wappen\WappenService;
 use App\Support\Markdown;
 use App\View\View;
 
@@ -32,6 +34,7 @@ final readonly class PublicController
         private UsageStatRepository $stats,
         private string $version,
         private string $publicDir,
+        private WappenService $wappen,
     ) {
     }
 
@@ -117,6 +120,73 @@ final readonly class PublicController
             'Content-Type' => 'text/javascript; charset=utf-8',
             'Cache-Control' => 'no-cache',
         ], str_replace('__VERSION__', $this->version, $template));
+    }
+
+    /**
+     * Served dynamically (not a static public/ file) so the icons list can
+     * point at the uploaded crest once one exists (issue #28).
+     */
+    public function manifest(Request $request): Response
+    {
+        $icons = $this->wappen->exists()
+            ? [
+                [
+                    'src' => '/icon/icon-192.png?v=' . $this->wappen->version(),
+                    'sizes' => '192x192',
+                    'type' => 'image/png',
+                    'purpose' => 'any maskable',
+                ],
+                [
+                    'src' => '/icon/icon-512.png?v=' . $this->wappen->version(),
+                    'sizes' => '512x512',
+                    'type' => 'image/png',
+                    'purpose' => 'any maskable',
+                ],
+            ]
+            : [
+                ['src' => '/icon.svg', 'sizes' => 'any', 'type' => 'image/svg+xml', 'purpose' => 'any'],
+            ];
+
+        $manifest = [
+            'name' => 'Vereinskalender',
+            'short_name' => 'Kalender',
+            'description' => 'Platzbelegung und Spielplan des Vereins',
+            'start_url' => '/belegung',
+            'display' => 'standalone',
+            'background_color' => '#f4f6f4',
+            'theme_color' => '#328551',
+            'lang' => 'de',
+            'icons' => $icons,
+        ];
+
+        return new Response(200, [
+            'Content-Type' => 'application/manifest+json; charset=utf-8',
+            'Cache-Control' => 'no-cache',
+        ], json_encode($manifest, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    }
+
+    /**
+     * @param array<string, string> $params
+     */
+    public function icon(Request $request, array $params): ResponseInterface
+    {
+        $path = $this->wappen->iconPath($params['name']);
+        if ($path === null) {
+            return new Response(404, ['Content-Type' => 'text/plain; charset=utf-8'], 'Icon nicht gefunden');
+        }
+
+        $bytes = file_get_contents($path);
+        if ($bytes === false) {
+            return new Response(404, ['Content-Type' => 'text/plain; charset=utf-8'], 'Icon nicht gefunden');
+        }
+
+        return new Response(200, [
+            'Content-Type' => 'image/png',
+            // the URL carries ?v=<wappenVersion>, so immutable caching is
+            // safe - a new upload gets a new URL (StaticFileHandler uses
+            // the same pattern for versioned assets)
+            'Cache-Control' => 'public, max-age=31536000, immutable',
+        ], $bytes);
     }
 
     private function calendarPage(string $ansicht, string $title): Response

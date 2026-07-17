@@ -19,6 +19,11 @@ return static function (Router $router, Container $c): void {
     $router->get('/abonnieren', static fn(Request $r, array $p): Response => $c->publicController()->abonnieren($r));
     $router->get('/{key:impressum|datenschutz}', static fn(Request $r, array $p): Response => $c->publicController()->seite($r, $p));
     $router->get('/sw.js', static fn(Request $r, array $p): Response => $c->publicController()->serviceWorker($r));
+    $router->get('/manifest.webmanifest', static fn(Request $r, array $p): Response => $c->publicController()->manifest($r));
+    $router->get(
+        '/icon/{name:favicon-16\.png|favicon-32\.png|apple-touch-icon\.png|icon-192\.png|icon-512\.png|logo\.png}',
+        static fn(Request $r, array $p): ResponseInterface => $c->publicController()->icon($r, $p),
+    );
 
     // ---- calendar subscription feeds (stable URLs, CLAUDE.md section 9) ----
 
@@ -189,4 +194,5 @@ return static function (Router $router, Container $c): void {
 
     $router->get('/admin/einstellungen', $guard(fn(Request $r, array $p) => $c->settingsController()->form($r)));
     $router->post('/admin/einstellungen', $guard(fn(Request $r, array $p) => $c->settingsController()->save($r)));
+    $router->post('/admin/einstellungen/wappen', $guard(fn(Request $r, array $p) => $c->settingsController()->uploadWappen($r)));
 };
