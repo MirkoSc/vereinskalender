@@ -301,14 +301,35 @@
         }
     };
 
-    // ---- Terminliste-Nachladen (Issue #4, Desktop-Fix + kein Zeitlimit
-    // Issue #24) ----
-    // Die "Liste" (FullCalendar list view) zeigt initial mindestens den
-    // kompletten nächsten Monat statt nur einer Woche und lädt automatisch
-    // weitere Batches nach (von/bis-Fenster wächst schrittweise; die API
-    // selbst kennt keine Pagination), bis die API mehrfach in Folge leer
-    // bleibt - kein festes Zeitlimit mehr.
+    // ---- Terminliste-Nachladen (Issue #31: kompletter Neuansatz) ----
+    // Vorherige Versuche (Issue #4/#24) haben jeden weiteren Batch per
+    // `calendar.changeView('listNachlade', { start, end })` geladen, um das
+    // sichtbare Fenster der FullCalendar-Listenansicht wachsen zu lassen.
+    // Zwei Probleme daran (Issue #31):
+    // 1) Ein View-WECHSEL in die Liste (Button-Klick, oder - mobil - das
+    //    Zurückwechseln von einer anderen Ansicht) ließ FullCalendars
+    //    `events`-Callback einmal mit dem FALSCHEN (alten) View-Kontext
+    //    laufen - Details und Beleg beim `events`-Handler weiter unten. Das
+    //    setzte den Nachlade-Zustand dauerhaft zurück, jeder spätere
+    //    Scroll-Trigger brach sofort ab - "PC lädt gar nicht mehr nach".
+    // 2) Selbst wenn das Nachladen auslöste (mobiler Kaltstart direkt in die
+    //    Liste), erzwang jeder changeView-Aufruf einen kompletten Neuaufbau
+    //    der gesamten Listen-DOM statt eines reinen Anhängens - das erklärt
+    //    die spürbare Verzögerung und das "unsichtbare" Nachladen
+    //    (Layout/Paint hinkt hinterher, bis ein manueller Scroll einen
+    //    Reflow erzwingt).
+    //
+    // Neuer Ansatz: `changeView()` wird für das Nachladen nie mehr benutzt.
+    // Die Listenansicht bekommt EINMALIG eine großzügige statische Range
+    // (heute..LISTE_HORIZONT_JAHRE), die FullCalendar nie wieder ändert.
+    // Das Laden weiterer Batches ist reine Anwendungslogik: eigener
+    // von/bis-Fortschritt (listeGeladenBis), Merge in den Cache, danach
+    // `calendar.refetchEvents()` - das ruft nur die events-Callback erneut
+    // auf (liest aus dem Cache), ohne die View-Range oder das Scroll-DOM
+    // anzufassen. Neue Termine hängen sich damit unterhalb des bereits
+    // gerenderten Bereichs an, die Scrollposition bleibt stabil.
     const LIST_BATCH_TAGE = 31;
+    const LISTE_HORIZONT_JAHRE = 15; // FC-Anzeigefenster; Abbruch der Ladekette regelt weiter listeErschoepft
     const listeLadeIndikator = document.querySelector('#liste-lade-indikator');
     const listeErschoepftHinweis = document.querySelector('#liste-erschoepft-hinweis');
     const listeSentinel = document.querySelector('#liste-sentinel');
@@ -319,6 +340,11 @@
     let listeErschoepft = false;
     let listeAktiv = false; // true solange die Liste die aktuell aktive View ist
     let listeLaedt = false;
+    // Generation-Zähler (bei jedem listeZuruecksetzen erhöht): schützt vor
+    // einer veralteten Hintergrund-Ladekette, die nach schnellem Wechsel
+    // weg von und zurück zur Liste (oder einem Filterwechsel mitten im
+    // Laden) auf einen bereits verworfenen Cache weiterschreiben würde.
+    let listeGeneration = 0;
 
     const heuteStart = () => {
         const heute = new Date();
@@ -326,11 +352,18 @@
         return heute;
     };
 
+    const listeHorizontEnde = () => {
+        const ende = new Date();
+        ende.setFullYear(ende.getFullYear() + LISTE_HORIZONT_JAHRE);
+        return window.VKNachlade.toIsoDate(ende);
+    };
+
     const listeZuruecksetzen = () => {
         listeEvents = [];
         listeGeladenBis = null;
         listeLeereBatches = 0;
         listeErschoepft = false;
+        listeGeneration += 1;
         if (listeErschoepftHinweis) {
             listeErschoepftHinweis.hidden = true;
         }
@@ -343,75 +376,122 @@
         }
     };
 
-    // Filterwechsel während die Liste aktiv ist: Cache verwerfen und auf
-    // den initialen Bereich (heute..nächster Monat) zurückspringen, statt
-    // den ggf. weit nachgeladenen Bereich mit neuen Filtern zu behalten.
-    const listeFilterGeaendert = () => {
-        listeZuruecksetzen();
-        const initialEnde = window.VKNachlade.naechsterMonatEnde(new Date());
-        const aktuellesEnde = calendar.view.activeEnd
-            ? window.VKNachlade.toIsoDate(calendar.view.activeEnd)
-            : null;
-        if (aktuellesEnde !== null && aktuellesEnde > initialEnde) {
-            calendar.changeView('listNachlade', { start: heuteStart(), end: `${initialEnde}T00:00:00` });
-        } else {
-            calendar.refetchEvents();
-        }
+    // Die View-Range ist absichtlich auf einen statischen 15-Jahres-Horizont
+    // fixiert (s. o.) - FullCalendars eigener Titel ("2026 – 2041") würde
+    // das wörtlich anzeigen und wäre irreführend. Der Titel wird deshalb
+    // hier manuell auf den tatsächlich geladenen Bereich gesetzt, nach jedem
+    // Batch neu (rAF, da FullCalendars eigenes Titel-Update nach refetch-
+    // Events erst im nächsten Frame passiert).
+    const listeTitelAktualisieren = () => {
+        requestAnimationFrame(() => {
+            const titleEl = document.querySelector('.fc-toolbar-title');
+            if (!titleEl || !listeAktiv) {
+                return;
+            }
+            const von = new Date(`${window.VKNachlade.toIsoDate(heuteStart())}T00:00:00`);
+            const bisIso = listeGeladenBis ?? window.VKNachlade.toIsoDate(heuteStart());
+            const bis = new Date(`${bisIso}T00:00:00`);
+            const fmt = (d) => d.toLocaleDateString('de-DE', { day: 'numeric', month: 'short', year: 'numeric' });
+            titleEl.textContent = `${fmt(von)} – ${fmt(bis)}`;
+        });
     };
 
-    const ladeListenBatch = async (info, params, success, failure) => {
-        if (!listeAktiv) {
-            listeZuruecksetzen();
-            listeAktiv = true;
-        }
+    // Ein Batch bis `bisGrenze` laden und in den Cache mergen (No-Op, falls
+    // bereits bis dorthin geladen wurde). Der Ladeindikator wird SOFORT beim
+    // Aufruf sichtbar (Issue #31, Akzeptanzkriterium "sofort sichtbar") -
+    // nicht erst nachdem der Fetch fertig ist.
+    const ladeEinenBatch = async (params, bisGrenze) => {
         const von = listeGeladenBis ?? window.VKNachlade.toIsoDate(heuteStart());
-        const bis = info.endStr.slice(0, 10);
-        if (bis <= von) {
-            // nichts Neues zu laden (z. B. zweiter Scroll-Trigger während
-            // noch derselbe Bereich aktiv ist, oder ein reines Refetch bei
-            // Platzauswahl-Änderung) - aus dem Cache neu filtern und rendern
-            success(applyClientFilters(listeEvents).map(toFcEvent));
+        if (bisGrenze <= von) {
             return;
         }
         listeIndikatorSetzen(true);
         try {
-            const batch = await fetchEventsRange(von, bis, params);
+            const batch = await fetchEventsRange(von, bisGrenze, params);
             listeLeereBatches = batch.length === 0 ? listeLeereBatches + 1 : 0;
             listeEvents = window.VKNachlade.mergeEvents(listeEvents, batch);
-            listeGeladenBis = bis;
+            listeGeladenBis = bisGrenze;
             if (window.VKNachlade.istErschoepft(listeLeereBatches)) {
                 listeErschoepft = true;
                 if (listeErschoepftHinweis) {
                     listeErschoepftHinweis.hidden = false;
                 }
             }
-            success(applyClientFilters(listeEvents).map(toFcEvent));
-        } catch (error) {
-            failure(error);
         } finally {
             listeIndikatorSetzen(false);
-            // Nach jedem Batch erneut prüfen, ob das Sentinel-Element noch im
-            // sichtbaren Bereich liegt (Issue #24, Desktop-Fix): auf breiten/
-            // hohen Bildschirmen kann ein einzelner Monat die Seite bereits
-            // ohne Scrollbalken füllen, wodurch ein reines "scroll"-Event nie
-            // ausgelöst wird (mobil ist der Viewport meist kürzer und
-            // überläuft sofort). re-observe() erzwingt eine frische
-            // IntersectionObserver-Auswertung, da ein unverändert sichtbares
-            // Element sonst keine neue Benachrichtigung auslöst.
-            if (listeSentinelObserver && listeSentinel && !listeErschoepft) {
-                listeSentinelObserver.unobserve(listeSentinel);
-                listeSentinelObserver.observe(listeSentinel);
-            }
         }
     };
 
-    const listeWeiterLaden = () => {
+    const listeNaechsteGrenze = () => window.VKNachlade.naechsteBatchGrenze(
+        listeGeladenBis ?? window.VKNachlade.toIsoDate(heuteStart()),
+        LIST_BATCH_TAGE,
+    );
+
+    const listeNeuRendern = () => {
+        calendar.refetchEvents();
+        listeTitelAktualisieren();
+    };
+
+    // Lädt den ersten Batch (mind. kompletter nächster Monat, Issue #4) und
+    // rendert ihn sofort; auf Desktop-Breiten (kein Scroll-Nachladen nötig,
+    // Issue #31) läuft die Ladekette danach im Hintergrund weiter, bis die
+    // API mehrfach leer bleibt - der Nutzer bekommt eine vollständige Liste
+    // ohne selbst nachladen zu müssen. Mobil bricht die Kette nach dem
+    // ersten Batch ab; weitere Batches lädt listeWeiterLaden() per Scroll.
+    // Netzwerkfehler brechen die Kette ab, ohne bereits geladene Termine zu
+    // verwerfen (fetchEventsRange versucht selbst schon den Offline-Bundle-
+    // Fallback, s. dort) - hier bleibt nur noch das Loggen für den seltenen
+    // Fall, dass auch das fehlschlägt.
+    const listeLadeKette = async (params) => {
+        const generation = listeGeneration;
+        const nochAktuell = () => generation === listeGeneration;
+        try {
+            if (!nochAktuell()) {
+                return;
+            }
+            await ladeEinenBatch(params, window.VKNachlade.naechsterMonatEnde(new Date()));
+            if (!nochAktuell()) {
+                return;
+            }
+            listeNeuRendern();
+            if (isMobile) {
+                return;
+            }
+            while (listeAktiv && !listeErschoepft && nochAktuell()) {
+                await ladeEinenBatch(params, listeNaechsteGrenze());
+                if (!nochAktuell()) {
+                    return;
+                }
+                listeNeuRendern();
+            }
+        } catch (error) {
+            console.error('Terminliste: Laden fehlgeschlagen', error);
+        }
+    };
+
+    // Scroll ans Listenende (mobil): genau einen weiteren Batch nachladen
+    // und direkt unterhalb anhängen (refetchEvents ändert nur die
+    // Event-Quelle, nicht die View-Range/das Scroll-DOM - Issue #31).
+    const listeWeiterLaden = async () => {
         if (!listeAktiv || calendar.view.type !== 'listNachlade' || listeErschoepft || listeLaedt) {
             return;
         }
-        const bisher = listeGeladenBis ?? window.VKNachlade.toIsoDate(heuteStart());
-        const neueGrenze = window.VKNachlade.naechsteBatchGrenze(bisher, LIST_BATCH_TAGE);
-        calendar.changeView('listNachlade', { start: heuteStart(), end: `${neueGrenze}T00:00:00` });
+        const params = window.VKKalenderEvents.baueEventsParams(ansicht, filters);
+        try {
+            await ladeEinenBatch(params, listeNaechsteGrenze());
+            listeNeuRendern();
+        } catch (error) {
+            console.error('Terminliste: Nachladen fehlgeschlagen', error);
+        }
+    };
+
+    // Filterwechsel während die Liste aktiv ist: Cache verwerfen und die
+    // Ladekette neu starten (die View-Range bleibt unverändert - sie ist
+    // statisch, s.o.).
+    const listeFilterGeaendert = () => {
+        listeZuruecksetzen();
+        listeNeuRendern();
+        listeLadeKette(window.VKKalenderEvents.baueEventsParams(ansicht, filters));
     };
 
     // IntersectionObserver statt Scroll-Event-Heuristik (Issue #24): ein
@@ -432,13 +512,6 @@
     const initialViewTyp = ansicht === 'belegung'
         ? (isWideBelegung ? 'resourceTimeGridWeek' : (isMobile ? 'listNachlade' : 'timeGridWeek'))
         : (isMobile ? 'listNachlade' : 'dayGridMonth');
-    // FullCalendar ruft die 'events'-Callback für den ersten Fetch synchron
-    // WÄHREND des Constructor-Aufrufs auf, bevor `calendar` unten zugewiesen
-    // ist - `calendar.view.type` wäre dort ein TDZ-Fehler, `info.view.type`
-    // existiert nicht (fetchInfo hat kein .view, Issue #19). Der aktive
-    // View-Typ wird deshalb separat mitgeführt: hier mit dem initialView
-    // vorbelegt, danach von datesSet aktuell gehalten.
-    let aktuellerViewTyp = initialViewTyp;
     const calendar = new FullCalendar.Calendar(document.querySelector('#kalender'), {
         schedulerLicenseKey: 'GPL-My-Project-Is-Open-Source',
         locale: 'de',
@@ -465,24 +538,48 @@
         // 360-430px); "Liste" ist gleichwertig kurz zu "Woche"/"Monat".
         buttonText: { today: '●', listNachlade: 'Liste' },
         buttonHints: { today: 'Heute' },
-        // Issue #4: eigene View statt "listWeek" - initial mindestens der
-        // komplette nächste Monat (nicht nur eine Woche); das Nachladen per
-        // Scroll wächst diesen Bereich anschließend selbst per changeView()
-        // weiter (siehe listeWeiterLaden), daher hier keine feste duration.
+        // Issue #4/#31: eigene View statt "listWeek" - das sichtbare Fenster
+        // ist absichtlich EINMALIG auf einen großzügigen Horizont fixiert
+        // (LISTE_HORIZONT_JAHRE) und wird danach nie mehr per changeView()
+        // verändert; das Nachladen weiterer Batches passiert rein in der
+        // Anwendungslogik (listeLadeKette/listeWeiterLaden), s. Kommentar
+        // oben bei den State-Variablen.
         views: {
             listNachlade: {
                 type: 'list',
-                visibleRange: { start: heuteStart(), end: `${window.VKNachlade.naechsterMonatEnde(new Date())}T00:00:00` },
+                visibleRange: { start: heuteStart(), end: `${listeHorizontEnde()}T00:00:00` },
             },
         },
         resources: ansicht === 'belegung' && isWideBelegung
             ? appData.pitches.map((p) => ({ id: String(p.id), title: `${p.name} (${p.venue_name})` }))
             : [],
+        // Issue #31, Desktop-Ursache: `events` feuert für eine neu aktivierte
+        // View, BEVOR `datesSet`/`calendar.view.type` den Wechsel
+        // widerspiegeln - eine frühere Version, die anhand eines separat
+        // mitgeführten "aktueller View-Typ"-Flags unterschied, griff deshalb
+        // bei jedem Wechsel IN die Liste (Button-Klick oder Zurückwechseln,
+        // reproduzierbar auch mobil) für genau diesen ersten Aufruf daneben:
+        // sie fiel in den Grid-Zweig, der `listeAktiv=false` setzte und
+        // dadurch jeden späteren Scroll-Trigger blockierte - "PC lädt gar
+        // nicht mehr nach". FullCalendar unterstützt zudem keine view-eigene
+        // `events`-Option (versucht, von FC stillschweigend ignoriert). Die
+        // Erkennung nutzt stattdessen `info.start/end` selbst: die sind zum
+        // Zeitpunkt des Aufrufs bereits korrekt (bestätigt per Netzwerk-Log),
+        // und die Listen-Range (heute..LISTE_HORIZONT_JAHRE) ist so
+        // großzügig, dass keine Grid-Ansicht sie je zufällig anfragt.
         events: async (info, success, failure) => {
             const params = window.VKKalenderEvents.baueEventsParams(ansicht, filters);
+            const istListenFetch = info.startStr.slice(0, 10) === window.VKNachlade.toIsoDate(heuteStart())
+                && info.endStr.slice(0, 10) === listeHorizontEnde();
 
-            if (window.VKKalenderEvents.istListenAnsicht(aktuellerViewTyp)) {
-                await ladeListenBatch(info, params, success, failure);
+            if (istListenFetch) {
+                if (!listeAktiv) {
+                    listeZuruecksetzen();
+                    listeAktiv = true;
+                    listeLadeKette(params);
+                }
+                success(applyClientFilters(listeEvents).map(toFcEvent));
+                listeTitelAktualisieren();
                 return;
             }
             listeAktiv = false;
@@ -499,11 +596,8 @@
         // FullCalendar's buttonHints only sets the hover title, not
         // aria-label; the icon-only "Heute" button (Issue #3) needs an
         // explicit one. datesSet fires on every toolbar re-render (nav,
-        // view switch), so re-apply it there too. Also keeps aktuellerViewTyp
-        // in sync (Issue #19: the events-Callback cannot read the view type
-        // off `calendar` or `info` itself, see above).
-        datesSet: (info) => {
-            aktuellerViewTyp = info.view.type;
+        // view switch), so re-apply it there too.
+        datesSet: () => {
             document.querySelector('.fc-today-button')?.setAttribute('aria-label', 'Heute');
         },
     });
