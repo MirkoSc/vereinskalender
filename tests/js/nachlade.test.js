@@ -6,7 +6,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-    naechsterMonatEnde, naechsteBatchGrenze, tageZwischen, mergeEvents,
+    naechsterMonatEnde, naechsteBatchGrenze, istErschoepft, mergeEvents,
 } = require('../../public/js/nachlade.js');
 
 test('naechsterMonatEnde deckt den kompletten nächsten Monat ab - Monatsanfang', () => {
@@ -33,9 +33,15 @@ test('naechsteBatchGrenze über einen Monatswechsel mit weniger Tagen', () => {
     assert.equal(naechsteBatchGrenze('2026-01-31', 31), '2026-03-03');
 });
 
-test('tageZwischen zählt volle Tage', () => {
-    assert.equal(tageZwischen('2026-07-15', '2026-08-31'), 47);
-    assert.equal(tageZwischen('2026-07-15', '2026-07-15'), 0);
+test('istErschoepft bleibt false, solange weniger als 3 Batches in Folge leer waren', () => {
+    assert.equal(istErschoepft(0), false);
+    assert.equal(istErschoepft(1), false);
+    assert.equal(istErschoepft(2), false);
+});
+
+test('istErschoepft wird ab 3 leeren Batches in Folge true - kein festes Zeitlimit', () => {
+    assert.equal(istErschoepft(3), true);
+    assert.equal(istErschoepft(4), true);
 });
 
 test('mergeEvents dedupliziert nach id - letzter Stand gewinnt', () => {
