@@ -23,6 +23,17 @@ final readonly class SlotExceptionRepository
     }
 
     /**
+     * All exceptions (offline bundle, CLAUDE.md section 8: complete
+     * dataset).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function findAll(): array
+    {
+        return $this->pdo->query('SELECT * FROM slot_exception ORDER BY slot_id, datum')->fetchAll();
+    }
+
+    /**
      * @param list<int> $slotIds
      * @return list<array<string, mixed>>
      */

@@ -222,12 +222,15 @@ final class Container
     public function offlineBundleService(): OfflineBundleService
     {
         return $this->cached('offlineBundleService', fn(): OfflineBundleService => new OfflineBundleService(
-            $this->eventFeedService(),
-            $this->availabilityService(),
+            $this->trainingSlotRepository(),
+            $this->slotExceptionRepository(),
+            $this->pitchRestrictionRepository(),
+            $this->matchRepository(),
             $this->teamRepository(),
-            $this->venueRepository(),
             $this->pitchRepository(),
+            $this->venueRepository(),
             $this->settingRepository(),
+            $this->venueMatcher(),
         ));
     }
 

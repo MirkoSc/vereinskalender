@@ -1,0 +1,90 @@
+[
+    {
+        "id": "slot-1-2027-03-23",
+        "typ": "belegung",
+        "slot_id": 1,
+        "start": "2027-03-23T19:00:00",
+        "ende": "2027-03-23T20:30:00",
+        "titel": "E1+E2 Training",
+        "team_id": 1,
+        "team_ids": [
+            1,
+            2
+        ],
+        "team_name": "E1 + E2",
+        "team_kuerzel": "E1+E2",
+        "team_farbe": "#0969da",
+        "venue_id": 1,
+        "venue_farbe": "#1a7f37",
+        "pitch_id": 1,
+        "pitch_name": "Rasenplatz 1",
+        "pitch_kuerzel": "P1",
+        "pitch_farbe": "#0969da",
+        "pitch_adresse": null,
+        "venue_adresse": "Sportweg 1",
+        "wochentage": [
+            2,
+            7
+        ],
+        "gueltig_ab": "2026-08-01",
+        "gueltig_bis": "2027-06-30"
+    },
+    {
+        "id": "slot-2-2027-03-23",
+        "typ": "belegung",
+        "slot_id": 2,
+        "start": "2027-03-23T19:00:00",
+        "ende": "2027-03-23T19:45:00",
+        "titel": "E1 Training",
+        "team_id": 1,
+        "team_ids": [
+            1
+        ],
+        "team_name": "E1",
+        "team_kuerzel": "E1",
+        "team_farbe": "#0969da",
+        "venue_id": 1,
+        "venue_farbe": "#1a7f37",
+        "pitch_id": 1,
+        "pitch_name": "Rasenplatz 1",
+        "pitch_kuerzel": "P1",
+        "pitch_farbe": "#0969da",
+        "pitch_adresse": null,
+        "venue_adresse": "Sportweg 1",
+        "wochentage": [
+            2
+        ],
+        "gueltig_ab": "2026-08-01",
+        "gueltig_bis": "2027-06-30"
+    },
+    {
+        "id": "slot-1-2027-03-28",
+        "typ": "belegung",
+        "slot_id": 1,
+        "start": "2027-03-28T19:00:00",
+        "ende": "2027-03-28T20:30:00",
+        "titel": "E1+E2 Training",
+        "team_id": 1,
+        "team_ids": [
+            1,
+            2
+        ],
+        "team_name": "E1 + E2",
+        "team_kuerzel": "E1+E2",
+        "team_farbe": "#0969da",
+        "venue_id": 1,
+        "venue_farbe": "#1a7f37",
+        "pitch_id": 1,
+        "pitch_name": "Rasenplatz 1",
+        "pitch_kuerzel": "P1",
+        "pitch_farbe": "#0969da",
+        "pitch_adresse": null,
+        "venue_adresse": "Sportweg 1",
+        "wochentage": [
+            2,
+            7
+        ],
+        "gueltig_ab": "2026-08-01",
+        "gueltig_bis": "2027-06-30"
+    }
+]

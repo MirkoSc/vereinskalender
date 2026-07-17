@@ -112,18 +112,32 @@
 
     renderFilterUi();
 
+    // Offline fallback (Issue #25): the bundle now carries the complete
+    // dataset (slot rules + all matches/restrictions) instead of a
+    // pre-computed window, so any week can be computed client-side
+    // (VKOfflineVerfuegbarkeit, ported from AvailabilityCalculator).
     const load = async () => {
         const von = iso(wochenstart);
         const bis = iso(addDays(wochenstart, 6));
         rangeLabel.textContent = `${wochenstart.toLocaleDateString('de-DE')} – ${addDays(wochenstart, 6).toLocaleDateString('de-DE')}`;
 
-        const response = await fetch(`/api/verfuegbarkeit?von=${von}&bis=${bis}`);
-        if (!response.ok) {
-            container.textContent = 'Verfügbarkeit konnte nicht geladen werden.';
-            return;
+        try {
+            const response = await fetch(`/api/verfuegbarkeit?von=${von}&bis=${bis}`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            lastData = await response.json();
+            render(lastData);
+        } catch (error) {
+            const bundle = await window.VKOffline?.load();
+            if (!bundle) {
+                container.textContent = 'Verfügbarkeit konnte nicht geladen werden.';
+                return;
+            }
+            window.VKOffline.showBanner(bundle);
+            lastData = window.VKOfflineVerfuegbarkeit.berechne(bundle, von, bis);
+            render(lastData);
         }
-        lastData = await response.json();
-        render(lastData);
     };
 
     const render = (data) => {

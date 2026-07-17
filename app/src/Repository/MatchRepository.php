@@ -46,6 +46,17 @@ final readonly class MatchRepository
     }
 
     /**
+     * All matches (offline bundle, CLAUDE.md section 8: complete dataset,
+     * past+future - the client filters/expands from this).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function findAll(): array
+    {
+        return $this->pdo->query('SELECT * FROM `match` ORDER BY anstoss, id')->fetchAll();
+    }
+
+    /**
      * Matches with kickoff in the datetime range [von, bis].
      *
      * @return list<array<string, mixed>>
