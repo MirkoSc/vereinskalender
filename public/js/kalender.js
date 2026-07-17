@@ -301,14 +301,17 @@
         }
     };
 
-    // ---- Terminliste-Nachladen (Issue #4) ----
+    // ---- Terminliste-Nachladen (Issue #4, Desktop-Fix + kein Zeitlimit
+    // Issue #24) ----
     // Die "Liste" (FullCalendar list view) zeigt initial mindestens den
-    // kompletten nächsten Monat statt nur einer Woche und lädt beim
-    // Scrollen ans Ende automatisch weitere Batches nach (von/bis-Fenster
-    // wächst schrittweise; die API selbst kennt keine Pagination).
+    // kompletten nächsten Monat statt nur einer Woche und lädt automatisch
+    // weitere Batches nach (von/bis-Fenster wächst schrittweise; die API
+    // selbst kennt keine Pagination), bis die API mehrfach in Folge leer
+    // bleibt - kein festes Zeitlimit mehr.
     const LIST_BATCH_TAGE = 31;
-    const LIST_MAX_HORIZONT_TAGE = 730;
     const listeLadeIndikator = document.querySelector('#liste-lade-indikator');
+    const listeErschoepftHinweis = document.querySelector('#liste-erschoepft-hinweis');
+    const listeSentinel = document.querySelector('#liste-sentinel');
 
     let listeEvents = [];
     let listeGeladenBis = null; // ISO-Datum, bis zu dem bereits vom Server geladen wurde
@@ -328,6 +331,9 @@
         listeGeladenBis = null;
         listeLeereBatches = 0;
         listeErschoepft = false;
+        if (listeErschoepftHinweis) {
+            listeErschoepftHinweis.hidden = true;
+        }
     };
 
     const listeIndikatorSetzen = (aktiv) => {
@@ -373,25 +379,34 @@
             listeLeereBatches = batch.length === 0 ? listeLeereBatches + 1 : 0;
             listeEvents = window.VKNachlade.mergeEvents(listeEvents, batch);
             listeGeladenBis = bis;
-            if (listeLeereBatches >= 3 || window.VKNachlade.tageZwischen(von, bis) >= LIST_MAX_HORIZONT_TAGE) {
+            if (window.VKNachlade.istErschoepft(listeLeereBatches)) {
                 listeErschoepft = true;
+                if (listeErschoepftHinweis) {
+                    listeErschoepftHinweis.hidden = false;
+                }
             }
             success(applyClientFilters(listeEvents).map(toFcEvent));
         } catch (error) {
             failure(error);
         } finally {
             listeIndikatorSetzen(false);
+            // Nach jedem Batch erneut prüfen, ob das Sentinel-Element noch im
+            // sichtbaren Bereich liegt (Issue #24, Desktop-Fix): auf breiten/
+            // hohen Bildschirmen kann ein einzelner Monat die Seite bereits
+            // ohne Scrollbalken füllen, wodurch ein reines "scroll"-Event nie
+            // ausgelöst wird (mobil ist der Viewport meist kürzer und
+            // überläuft sofort). re-observe() erzwingt eine frische
+            // IntersectionObserver-Auswertung, da ein unverändert sichtbares
+            // Element sonst keine neue Benachrichtigung auslöst.
+            if (listeSentinelObserver && listeSentinel && !listeErschoepft) {
+                listeSentinelObserver.unobserve(listeSentinel);
+                listeSentinelObserver.observe(listeSentinel);
+            }
         }
     };
 
-    const listeNaheAmEnde = () => (window.innerHeight + window.scrollY)
-        >= (document.documentElement.scrollHeight - 300);
-
     const listeWeiterLaden = () => {
         if (!listeAktiv || calendar.view.type !== 'listNachlade' || listeErschoepft || listeLaedt) {
-            return;
-        }
-        if (!listeNaheAmEnde()) {
             return;
         }
         const bisher = listeGeladenBis ?? window.VKNachlade.toIsoDate(heuteStart());
@@ -399,7 +414,19 @@
         calendar.changeView('listNachlade', { start: heuteStart(), end: `${neueGrenze}T00:00:00` });
     };
 
-    window.addEventListener('scroll', listeWeiterLaden, { passive: true });
+    // IntersectionObserver statt Scroll-Event-Heuristik (Issue #24): ein
+    // Sentinel-Element am Listenende statt window.scrollY/scrollHeight - das
+    // funktioniert unabhängig davon, ob überhaupt eine Scrollbar existiert.
+    const listeSentinelObserver = listeSentinel
+        ? new IntersectionObserver((entries) => {
+            if (entries.some((entry) => entry.isIntersecting)) {
+                listeWeiterLaden();
+            }
+        })
+        : null;
+    if (listeSentinelObserver && listeSentinel) {
+        listeSentinelObserver.observe(listeSentinel);
+    }
 
     const isMobile = window.matchMedia('(max-width: 767px)').matches;
     const initialViewTyp = ansicht === 'belegung'
