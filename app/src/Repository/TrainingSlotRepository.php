@@ -23,6 +23,17 @@ final readonly class TrainingSlotRepository
     }
 
     /**
+     * All slots (offline bundle, CLAUDE.md section 8: the client expands
+     * them as rules within gueltig_ab/bis).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function findAll(): array
+    {
+        return $this->pdo->query('SELECT * FROM training_slot ORDER BY id')->fetchAll();
+    }
+
+    /**
      * Slots whose validity range overlaps [von, bis].
      *
      * @return list<array<string, mixed>>

@@ -4,28 +4,43 @@ declare(strict_types=1);
 
 namespace App\Service\Kalender;
 
+use App\Repository\MatchRepository;
 use App\Repository\PitchRepository;
+use App\Repository\PitchRestrictionRepository;
 use App\Repository\SettingRepository;
+use App\Repository\SlotExceptionRepository;
 use App\Repository\TeamRepository;
+use App\Repository\TrainingSlotRepository;
 use App\Repository\VenueRepository;
 
 /**
- * ONE JSON for the offline window (CLAUDE.md section 9): all events from
- * today to today+7 plus teams, venues, colors, settings, and the
- * availability data - both display modes and all filters must work
- * offline from this bundle alone.
+ * ONE JSON with the complete dataset (CLAUDE.md section 8, Issue #25): all
+ * matches (past+future) and restrictions already serialized in the public
+ * event shape, training slots as RAW RULES (the client expands them within
+ * gueltig_ab/bis, same as SlotExpander) plus their exceptions, and teams,
+ * venues, pitches, colors, settings. All four public views - including
+ * Verfuegbarkeit - must work offline from this bundle alone; the client
+ * computes availability itself (offline-verfuegbarkeit.js, ported from
+ * AvailabilityCalculator, parity-tested against it).
+ *
+ * format is bumped whenever the shape changes; VKOffline.load() discards
+ * bundles with a mismatched format (treated as "no data", refreshed on the
+ * next online visit).
  */
 final readonly class OfflineBundleService
 {
-    public const int WINDOW_DAYS = 7;
+    public const int FORMAT = 2;
 
     public function __construct(
-        private EventFeedService $eventFeed,
-        private AvailabilityService $availability,
+        private TrainingSlotRepository $slots,
+        private SlotExceptionRepository $exceptions,
+        private PitchRestrictionRepository $restrictions,
+        private MatchRepository $matches,
         private TeamRepository $teams,
-        private VenueRepository $venues,
         private PitchRepository $pitches,
+        private VenueRepository $venues,
         private SettingRepository $settings,
+        private VenueMatcher $venueMatcher,
     ) {
     }
 
@@ -34,15 +49,52 @@ final readonly class OfflineBundleService
      */
     public function build(): array
     {
-        $von = new \DateTimeImmutable('today')->format('Y-m-d');
-        $bis = new \DateTimeImmutable('today +' . self::WINDOW_DAYS . ' days')->format('Y-m-d');
+        $teams = $this->teams->findAll();
+        $pitches = $this->pitches->findAll();
+        $venues = $this->venues->findAll();
+
+        $teamsById = [];
+        foreach ($teams as $team) {
+            $teamsById[(int) $team['id']] = $team;
+        }
+        $pitchesById = [];
+        foreach ($pitches as $pitch) {
+            $pitchesById[(int) $pitch['id']] = $pitch;
+        }
+        $venuesById = [];
+        foreach ($venues as $venue) {
+            $venuesById[(int) $venue['id']] = $venue;
+        }
+        $auswaertsFarbe = $this->settings->get('auswaerts_farbe', '#57606a');
+        $serializer = new EventSerializer($teamsById, $pitchesById, $venuesById, $this->venueMatcher, $auswaertsFarbe);
+
+        $spiele = [];
+        foreach ($this->matches->findAll() as $match) {
+            $event = $serializer->spiel($match);
+            if ($event !== null) {
+                $spiele[] = $event;
+            }
+        }
 
         return [
+            'format' => self::FORMAT,
             'stand' => new \DateTimeImmutable()->format('Y-m-d H:i:s'),
-            'von' => $von,
-            'bis' => $bis,
-            'events' => $this->eventFeed->events(['von' => $von, 'bis' => $bis]),
-            'verfuegbarkeit' => $this->availability->compute($von, $bis),
+            'spiele' => $spiele,
+            'sperrungen' => array_map($serializer->sperrung(...), $this->restrictions->findAll()),
+            'slots' => array_map(static fn(array $s): array => [
+                'id' => (int) $s['id'],
+                'team_ids' => SlotExpander::intList($s['team_ids']),
+                'pitch_id' => (int) $s['pitch_id'],
+                'wochentage' => SlotExpander::intList($s['wochentage']),
+                'beginn' => (string) $s['beginn'],
+                'ende' => (string) $s['ende'],
+                'gueltig_ab' => (string) $s['gueltig_ab'],
+                'gueltig_bis' => (string) $s['gueltig_bis'],
+            ], $this->slots->findAll()),
+            'ausnahmen' => array_map(static fn(array $e): array => [
+                'slot_id' => (int) $e['slot_id'],
+                'datum' => (string) $e['datum'],
+            ], $this->exceptions->findAll()),
             'teams' => array_map(static fn(array $t): array => [
                 'id' => (int) $t['id'],
                 'bereich' => (string) $t['bereich'],
@@ -50,23 +102,24 @@ final readonly class OfflineBundleService
                 'kuerzel' => (string) $t['kuerzel'],
                 'farbe' => (string) $t['farbe'],
                 'aktiv' => (int) $t['aktiv'] === 1,
-            ], $this->teams->findAll()),
+            ], $teams),
             'venues' => array_map(static fn(array $v): array => [
                 'id' => (int) $v['id'],
                 'name' => (string) $v['name'],
                 'farbe' => (string) $v['farbe'],
                 'adresse' => (string) $v['adresse'],
-            ], $this->venues->findAll()),
+            ], $venues),
             'pitches' => array_map(static fn(array $p): array => [
                 'id' => (int) $p['id'],
                 'venue_id' => (int) $p['venue_id'],
                 'name' => (string) $p['name'],
                 'kuerzel' => (string) $p['kuerzel'],
                 'farbe' => (string) $p['farbe'],
+                'adresse' => $p['adresse'] !== null ? (string) $p['adresse'] : null,
                 'venue_name' => (string) ($p['venue_name'] ?? ''),
-            ], $this->pitches->findAll()),
+            ], $pitches),
             'settings' => [
-                'auswaerts_farbe' => $this->settings->get('auswaerts_farbe', '#57606a'),
+                'auswaerts_farbe' => $auswaertsFarbe,
                 'nutzungszeiten_von' => $this->settings->get('nutzungszeiten_von', '08:00'),
                 'nutzungszeiten_bis' => $this->settings->get('nutzungszeiten_bis', '22:00'),
             ],

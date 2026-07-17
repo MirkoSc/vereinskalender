@@ -21,7 +21,9 @@ use App\Service\ValidationException;
  * pitch_farbe (null when there is no assigned pitch, e.g. away matches);
  * the display mode switch is pure frontend. Venue resolution happens at
  * display time through the VenueMatcher, away matches get the global away
- * color.
+ * color. Serialization itself lives in EventSerializer (shared with the
+ * offline bundle); this service loads rows, expands slots, and applies the
+ * typ/team/bereich/venue filters on the serialized events.
  */
 final readonly class EventFeedService
 {
@@ -75,6 +77,7 @@ final readonly class EventFeedService
             $venues[(int) $venue['id']] = $venue;
         }
         $auswaertsFarbe = $this->settings->get('auswaerts_farbe', '#57606a');
+        $serializer = new EventSerializer($teams, $pitches, $venues, $this->venueMatcher, $auswaertsFarbe);
 
         // a multi-team booking matches when ANY of its teams matches
         $matchesTeams = function (array $teamIds) use ($teamFilter, $bereichFilter, $teams): bool {
@@ -118,141 +121,38 @@ final readonly class EventFeedService
             );
 
             foreach ($occurrences as $occurrence) {
-                $slotTeams = array_values(array_filter(array_map(
-                    static fn(int $teamId): ?array => $teams[$teamId] ?? null,
-                    $occurrence->teamIds,
-                )));
-                $pitch = $pitches[$occurrence->pitchId] ?? null;
-                $venueId = $pitch !== null ? (int) $pitch['venue_id'] : null;
-                if ($slotTeams === [] || !$matchesTeams($occurrence->teamIds) || !$matchesVenue($venueId)) {
+                $event = $serializer->belegung($occurrence, $slotsById[$occurrence->slotId]);
+                if ($event === null || !$matchesTeams($event['team_ids']) || !$matchesVenue($event['venue_id'])) {
                     continue;
                 }
-                $slotRow = $slotsById[$occurrence->slotId];
-                $kuerzel = implode('+', array_map(static fn(array $t): string => (string) $t['kuerzel'], $slotTeams));
-
-                $events[] = [
-                    'id' => sprintf('slot-%d-%s', $occurrence->slotId, $occurrence->datum),
-                    'typ' => 'belegung',
-                    'slot_id' => $occurrence->slotId,
-                    'start' => $occurrence->start->format('Y-m-d\TH:i:s'),
-                    'ende' => $occurrence->end->format('Y-m-d\TH:i:s'),
-                    'titel' => $kuerzel . ' Training',
-                    'team_id' => $occurrence->teamIds[0],
-                    'team_ids' => $occurrence->teamIds,
-                    'team_name' => implode(' + ', array_map(static fn(array $t): string => (string) $t['name'], $slotTeams)),
-                    'team_kuerzel' => $kuerzel,
-                    'team_farbe' => (string) $slotTeams[0]['farbe'],
-                    'venue_id' => $venueId,
-                    'venue_farbe' => $venueId !== null
-                        ? (string) ($venues[$venueId]['farbe'] ?? $auswaertsFarbe)
-                        : $auswaertsFarbe,
-                    'pitch_id' => $occurrence->pitchId,
-                    'pitch_name' => $pitch !== null ? (string) $pitch['name'] : null,
-                    'pitch_kuerzel' => $pitch !== null ? (string) $pitch['kuerzel'] : null,
-                    'pitch_farbe' => $pitch !== null ? (string) $pitch['farbe'] : null,
-                    // address fallback for the Maps link (CLAUDE.md section 4:
-                    // pitch.adresse only set when it differs from the venue's)
-                    'pitch_adresse' => $pitch !== null && $pitch['adresse'] !== null ? (string) $pitch['adresse'] : null,
-                    'venue_adresse' => $venueId !== null && isset($venues[$venueId]) ? (string) $venues[$venueId]['adresse'] : null,
-                    // series data for the public edit dialog (scope choice)
-                    'wochentage' => array_map(intval(...), (array) json_decode((string) $slotRow['wochentage'], true)),
-                    'gueltig_ab' => (string) $slotRow['gueltig_ab'],
-                    'gueltig_bis' => (string) $slotRow['gueltig_bis'],
-                ];
+                $events[] = $event;
             }
 
             // restrictions as background layer of the occupancy view
             foreach ($this->restrictions->findOverlapping($von . ' 00:00:00', $bis . ' 23:59:59') as $restriction) {
-                $pitch = $pitches[(int) $restriction['pitch_id']] ?? null;
-                $venueId = $pitch !== null ? (int) $pitch['venue_id'] : null;
-                if (!$matchesVenue($venueId) || ($teamFilter !== null || $bereichFilter !== '')) {
+                $event = $serializer->sperrung($restriction);
+                if (!$matchesVenue($event['venue_id']) || ($teamFilter !== null || $bereichFilter !== '')) {
                     // restrictions have no team; hide them under team filters
                     continue;
                 }
-                $events[] = [
-                    'id' => 'sperrung-' . (int) $restriction['id'],
-                    'typ' => 'sperrung',
-                    'restriction_id' => (int) $restriction['id'],
-                    'start' => str_replace(' ', 'T', (string) $restriction['von']),
-                    'ende' => str_replace(' ', 'T', (string) $restriction['bis']),
-                    'titel' => ((string) $restriction['art'] === 'gesperrt' ? 'Gesperrt: ' : 'Eingeschränkt: ')
-                        . (string) $restriction['grund'],
-                    'art' => (string) $restriction['art'],
-                    'grund' => (string) $restriction['grund'],
-                    'team_id' => null,
-                    'team_farbe' => '#000000',
-                    'venue_id' => $venueId,
-                    'venue_farbe' => $venueId !== null
-                        ? (string) ($venues[$venueId]['farbe'] ?? $auswaertsFarbe)
-                        : $auswaertsFarbe,
-                    'pitch_id' => (int) $restriction['pitch_id'],
-                    'pitch_name' => $pitch !== null ? (string) $pitch['name'] : null,
-                    'pitch_kuerzel' => $pitch !== null ? (string) $pitch['kuerzel'] : null,
-                    'pitch_farbe' => $pitch !== null ? (string) $pitch['farbe'] : null,
-                    'pitch_adresse' => $pitch !== null && $pitch['adresse'] !== null ? (string) $pitch['adresse'] : null,
-                    'venue_adresse' => $venueId !== null && isset($venues[$venueId]) ? (string) $venues[$venueId]['adresse'] : null,
-                ];
+                $events[] = $event;
             }
         }
 
         if ($typ === '' || $typ === 'spiel' || $typ === 'belegung') {
             foreach ($this->matches->findInRange($von . ' 00:00:00', $bis . ' 23:59:59') as $match) {
-                $teamId = (int) $match['team_id'];
-                $team = $teams[$teamId] ?? null;
-                if ($team === null || !$matchesTeams([$teamId])) {
+                $event = $serializer->spiel($match);
+                if ($event === null || !$matchesTeams([$event['team_id']]) || !$matchesVenue($event['venue_id'])) {
                     continue;
                 }
-
-                $pitchId = $match['pitch_id'] !== null ? (int) $match['pitch_id'] : null;
-                $pitch = $pitchId !== null ? ($pitches[$pitchId] ?? null) : null;
-
-                // display-time venue resolution (retroactive keywords); a
-                // match occupying a pitch is by definition at that pitch's
-                // venue, so this is the fallback when ort_text matches no
-                // begriff (e.g. an empty ort_text on a manual match)
-                $venueId = $this->venueMatcher->match((string) $match['ort_text'])
-                    ?? ($pitch !== null ? (int) $pitch['venue_id'] : null);
-                if (!$matchesVenue($venueId)) {
-                    continue;
-                }
-
-                $start = new \DateTimeImmutable((string) $match['anstoss']);
-                $ende = $match['ende'] !== null ? (string) $match['ende'] : null;
 
                 // occupancy view: only matches actually occupying a pitch
                 // (same semantics as AvailabilityService)
-                if ($typ === 'belegung' && ($pitchId === null || (string) $match['status'] === 'abgesagt')) {
+                if ($typ === 'belegung' && ($event['pitch_id'] === null || $event['status'] === 'abgesagt')) {
                     continue;
                 }
 
-                $events[] = [
-                    'id' => 'match-' . (int) $match['id'],
-                    'typ' => 'spiel',
-                    'match_id' => (int) $match['id'],
-                    'manuell' => $match['import_source_id'] === null,
-                    'start' => $start->format('Y-m-d\TH:i:s'),
-                    'ende' => MatchDuration::effectiveEnd((string) $match['anstoss'], $ende)->format('Y-m-d\TH:i:s'),
-                    'titel' => (string) $team['kuerzel'] . ' – ' . (string) $match['gegner'],
-                    'team_id' => $teamId,
-                    'team_name' => (string) $team['name'],
-                    'team_kuerzel' => (string) $team['kuerzel'],
-                    'team_farbe' => (string) $team['farbe'],
-                    'venue_id' => $venueId,
-                    'venue_name' => $venueId !== null ? (string) ($venues[$venueId]['name'] ?? '') : null,
-                    'venue_farbe' => $venueId !== null
-                        ? (string) ($venues[$venueId]['farbe'] ?? $auswaertsFarbe)
-                        : $auswaertsFarbe,
-                    'pitch_id' => $pitchId,
-                    'pitch_name' => $pitchId !== null ? (string) ($pitches[$pitchId]['name'] ?? '') : null,
-                    'pitch_kuerzel' => $pitch !== null ? (string) $pitch['kuerzel'] : null,
-                    'pitch_farbe' => $pitch !== null ? (string) $pitch['farbe'] : null,
-                    'pitch_adresse' => $pitch !== null && $pitch['adresse'] !== null ? (string) $pitch['adresse'] : null,
-                    'venue_adresse' => $venueId !== null && isset($venues[$venueId]) ? (string) $venues[$venueId]['adresse'] : null,
-                    'gegner' => (string) $match['gegner'],
-                    'heimspiel' => (int) $match['heimspiel'] === 1,
-                    'ort_text' => (string) $match['ort_text'],
-                    'status' => (string) $match['status'],
-                ];
+                $events[] = $event;
             }
         }
 
