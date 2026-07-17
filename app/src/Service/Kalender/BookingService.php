@@ -32,9 +32,6 @@ use App\Service\ValidationException;
  */
 final readonly class BookingService
 {
-    /** Assumed duration of a match incl. buffer, kickoff to end. */
-    private const string MATCH_DURATION = '+2 hours';
-
     /** Upper bound for a slot's validity span (keeps expansion bounded). */
     private const int MAX_VALIDITY_DAYS = 400;
 
@@ -63,6 +60,129 @@ final readonly class BookingService
         $plan = $this->plan($input, $slotId);
 
         return $this->checkPayload($plan['payload'], $plan['ignore_slot_id'], $plan['extra_exceptions']);
+    }
+
+    /**
+     * Conflict check for a single match interval on a pitch (issue #12):
+     * overlapping slots and other matches are warnings (a pitch legitimately
+     * hosts games alongside training), a 'gesperrt' restriction blocks,
+     * 'eingeschraenkt' warns. No pitch (away, or an open home assignment)
+     * means nothing to check.
+     */
+    public function checkMatch(?int $pitchId, \DateTimeImmutable $start, \DateTimeImmutable $end, ?int $ignoreMatchId = null): ConflictCheckResult
+    {
+        if ($pitchId === null) {
+            return new ConflictCheckResult([], []);
+        }
+
+        $datum = $start->format('Y-m-d');
+        $conflicts = [];
+        $warnings = [];
+        $details = [];
+
+        $teamNames = [];
+        foreach ($this->teams->findAll() as $team) {
+            $teamNames[(int) $team['id']] = (string) $team['name'];
+        }
+        $namesOf = static fn(array $teamIds): string => implode(' + ', array_map(
+            static fn(int $teamId): string => $teamNames[$teamId] ?? ('Team #' . $teamId),
+            $teamIds,
+        ));
+
+        $slotRows = $this->slots->findOverlapping($datum, $datum, $pitchId);
+        $occurrences = SlotExpander::expand(
+            $slotRows,
+            $this->exceptions->findForSlots(array_map(static fn(array $s): int => (int) $s['id'], $slotRows)),
+            $datum,
+            $datum,
+        );
+        foreach ($occurrences as $occurrence) {
+            if (!self::overlaps($start, $end, $occurrence->start, $occurrence->end)) {
+                continue;
+            }
+            $message = sprintf(
+                'Kollidiert am %s mit der Belegung von %s (%s–%s Uhr).',
+                self::germanDate($datum),
+                $namesOf($occurrence->teamIds),
+                $occurrence->start->format('H:i'),
+                $occurrence->end->format('H:i'),
+            );
+            $warnings[] = $message;
+            $details[] = new Conflict(
+                'slot',
+                $occurrence->slotId,
+                $namesOf($occurrence->teamIds),
+                $datum,
+                $occurrence->start->format('H:i'),
+                $occurrence->end->format('H:i'),
+                true,
+                $message,
+            );
+        }
+
+        foreach ($this->matches->findInRange($datum . ' 00:00:00', $datum . ' 23:59:59', $pitchId) as $match) {
+            if ((int) $match['id'] === $ignoreMatchId || (string) $match['status'] === 'abgesagt') {
+                continue;
+            }
+            $matchStart = new \DateTimeImmutable((string) $match['anstoss']);
+            $matchEnd = MatchDuration::effectiveEnd(
+                (string) $match['anstoss'],
+                $match['ende'] !== null ? (string) $match['ende'] : null,
+            );
+            if (!self::overlaps($start, $end, $matchStart, $matchEnd)) {
+                continue;
+            }
+            $message = sprintf(
+                'Kollidiert am %s mit dem Spiel gegen %s (Anstoß %s Uhr).',
+                self::germanDate($datum),
+                (string) $match['gegner'],
+                $matchStart->format('H:i'),
+            );
+            $warnings[] = $message;
+            $details[] = new Conflict(
+                'match',
+                (int) $match['id'],
+                'Spiel gegen ' . (string) $match['gegner'],
+                $datum,
+                $matchStart->format('H:i'),
+                $matchEnd->format('H:i'),
+                true,
+                $message,
+            );
+        }
+
+        foreach ($this->restrictions->findOverlapping($datum . ' 00:00:00', $datum . ' 23:59:59', $pitchId) as $restriction) {
+            $restrictionStart = new \DateTimeImmutable((string) $restriction['von']);
+            $restrictionEnd = new \DateTimeImmutable((string) $restriction['bis']);
+            if (!self::overlaps($start, $end, $restrictionStart, $restrictionEnd)) {
+                continue;
+            }
+            $istWarnung = (string) $restriction['art'] !== RestrictionArt::Gesperrt->value;
+            $message = $istWarnung
+                ? sprintf('Platz ist am %s eingeschränkt nutzbar: %s', self::germanDate($datum), (string) $restriction['grund'])
+                : sprintf('Platz ist am %s gesperrt: %s', self::germanDate($datum), (string) $restriction['grund']);
+            if ($istWarnung) {
+                $warnings[] = $message;
+            } else {
+                $conflicts[] = $message;
+            }
+            $details[] = new Conflict(
+                'restriktion',
+                (int) $restriction['id'],
+                (string) $restriction['grund'],
+                $datum,
+                $start->format('H:i'),
+                $end->format('H:i'),
+                $istWarnung,
+                $message,
+            );
+        }
+
+        return new ConflictCheckResult(
+            array_values(array_unique($conflicts)),
+            array_values(array_unique($warnings)),
+            $details,
+        );
     }
 
     /**
@@ -418,7 +538,7 @@ final readonly class BookingService
                     continue;
                 }
                 $matchStart = new \DateTimeImmutable((string) $match['anstoss']);
-                $matchEnd = $matchStart->modify(self::MATCH_DURATION);
+                $matchEnd = MatchDuration::effectiveEnd((string) $match['anstoss'], $match['ende'] !== null ? (string) $match['ende'] : null);
                 if (self::overlaps($occurrence->start, $occurrence->end, $matchStart, $matchEnd)) {
                     $message = sprintf(
                         'Kollidiert am %s mit dem Spiel gegen %s (Anstoß %s Uhr).',

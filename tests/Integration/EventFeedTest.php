@@ -219,6 +219,69 @@ final class EventFeedTest extends DatabaseTestCase
         self::assertCount(4, $alleMatches, 'all four matches show up in the unfiltered feed, exactly once each');
     }
 
+    public function testManuellFlagDistinguishesManualFromImportedMatches(): void
+    {
+        $this->createMatch($this->teamId, ['anstoss' => '2026-08-08 15:00:00']);
+        $sourceId = $this->createImportSource($this->teamId);
+        $this->createMatch($this->teamId, [
+            'anstoss' => '2026-08-08 17:00:00',
+            'import_source_id' => $sourceId,
+            'ics_uid' => 'u1',
+        ]);
+
+        $events = $this->eventFeedService()->events([
+            'von' => '2026-08-08',
+            'bis' => '2026-08-08',
+            'typ' => 'spiel',
+        ]);
+
+        self::assertCount(2, $events);
+        self::assertTrue($events[0]['manuell'], 'import_source_id NULL means manual');
+        self::assertFalse($events[1]['manuell']);
+    }
+
+    public function testExplicitEndeReplacesTwoHourFallback(): void
+    {
+        $this->createMatch($this->teamId, [
+            'anstoss' => '2026-08-08 10:00:00',
+            'ende' => '2026-08-08 16:00:00',
+            'gegner' => 'Turnier',
+        ]);
+        $this->createMatch($this->teamId, ['anstoss' => '2026-08-08 18:00:00']);
+
+        $events = $this->eventFeedService()->events([
+            'von' => '2026-08-08',
+            'bis' => '2026-08-08',
+            'typ' => 'spiel',
+        ]);
+
+        self::assertSame('2026-08-08T16:00:00', $events[0]['ende'], 'explicit end wins');
+        self::assertSame('2026-08-08T20:00:00', $events[1]['ende'], 'kickoff + 2h fallback');
+    }
+
+    public function testPitchVenueFallbackResolvesVenueWhenOrtTextMatchesNothing(): void
+    {
+        // manual home match: pitch chosen, ort_text empty - no keyword hit,
+        // but the pitch's venue is authoritative (venue=heim must match)
+        $this->createMatch($this->teamId, [
+            'anstoss' => '2026-08-08 15:00:00',
+            'heimspiel' => true,
+            'ort_text' => '',
+            'pitch_id' => $this->pitchId,
+            'pitch_manuell' => true,
+        ]);
+
+        $range = ['von' => '2026-08-08', 'bis' => '2026-08-08', 'typ' => 'spiel'];
+        $events = $this->eventFeedService()->events($range);
+
+        self::assertCount(1, $events);
+        self::assertSame($this->venueId, $events[0]['venue_id'], 'venue from the assigned pitch');
+        self::assertSame('#1a7f37', $events[0]['venue_farbe']);
+
+        self::assertCount(1, $this->eventFeedService()->events([...$range, 'venue' => 'heim']));
+        self::assertCount(0, $this->eventFeedService()->events([...$range, 'venue' => 'auswaerts']));
+    }
+
     public function testRestrictionAppearsAsSperrungEvent(): void
     {
         $this->restrictionService()->create([

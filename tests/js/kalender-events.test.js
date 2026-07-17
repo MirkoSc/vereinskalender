@@ -6,7 +6,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { baueEventsParams, istListenAnsicht, istBelegungsRelevant } = require('../../public/js/kalender-events.js');
+const {
+    baueEventsParams, istListenAnsicht, istBelegungsRelevant, manuellFilterAnwenden,
+} = require('../../public/js/kalender-events.js');
 
 test('istListenAnsicht braucht nur den View-Typ, kein fetchInfo.view (Issue #19)', () => {
     // Nachbau von FullCalendars echtem fetchInfo-Objekt: start/end/startStr/
@@ -46,4 +48,49 @@ test('istBelegungsRelevant: Heimspiele mit Platz gehören zur Platzbelegung (Iss
     assert.equal(istBelegungsRelevant({ typ: 'spiel', pitch_id: 3, status: 'geplant' }), true);
     assert.equal(istBelegungsRelevant({ typ: 'spiel', pitch_id: null, status: 'geplant' }), false, 'kein Platz zugeordnet');
     assert.equal(istBelegungsRelevant({ typ: 'spiel', pitch_id: 3, status: 'abgesagt' }), false, 'abgesagt');
+});
+
+// Issue #12: Filter "manuelle Termine" (dreistufig, rein clientseitig)
+
+test('baueEventsParams lässt manuell weg (Issue #12: clientseitiger Filter)', () => {
+    const params = baueEventsParams('spielplan', { team: '5', bereich: '', venue: '', pitch: '', manuell: 'ohne' });
+    assert.equal(params.toString(), 'typ=spiel&team=5');
+});
+
+test('manuellFilterAnwenden: leerer Wert zeigt alles', () => {
+    const events = [
+        { typ: 'spiel', manuell: true },
+        { typ: 'spiel', manuell: false },
+        { typ: 'belegung' },
+    ];
+    assert.deepEqual(manuellFilterAnwenden(events, ''), events);
+});
+
+test('manuellFilterAnwenden: "ohne" entfernt nur manuelle Spiele', () => {
+    const importSpiel = { typ: 'spiel', manuell: false };
+    const belegung = { typ: 'belegung' };
+    const sperrung = { typ: 'sperrung' };
+    const manuellesSpiel = { typ: 'spiel', manuell: true };
+
+    assert.deepEqual(
+        manuellFilterAnwenden([importSpiel, belegung, sperrung, manuellesSpiel], 'ohne'),
+        [importSpiel, belegung, sperrung],
+    );
+});
+
+test('manuellFilterAnwenden: "nur" behält ausschließlich manuelle Spiele', () => {
+    const importSpiel = { typ: 'spiel', manuell: false };
+    const belegung = { typ: 'belegung' };
+    const manuellesSpiel = { typ: 'spiel', manuell: true };
+
+    assert.deepEqual(
+        manuellFilterAnwenden([importSpiel, belegung, manuellesSpiel], 'nur'),
+        [manuellesSpiel],
+    );
+});
+
+test('manuellFilterAnwenden: Events ohne manuell-Feld (z.B. altes Offline-Bundle) gelten als importiert', () => {
+    const altesSpiel = { typ: 'spiel' };
+    assert.deepEqual(manuellFilterAnwenden([altesSpiel], 'ohne'), [altesSpiel]);
+    assert.deepEqual(manuellFilterAnwenden([altesSpiel], 'nur'), []);
 });

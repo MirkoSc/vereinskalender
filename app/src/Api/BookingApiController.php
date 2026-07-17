@@ -183,6 +183,66 @@ final readonly class BookingApiController
         }
     }
 
+    public function checkMatch(Request $request): Response
+    {
+        try {
+            $result = $this->matches->check(
+                $request->post,
+                ($request->post['match_id'] ?? '') !== '' ? (int) $request->post['match_id'] : null,
+            );
+
+            return Response::json([
+                'konflikte' => ConflictGrouper::group(self::onlyConflicts($result->details)),
+                'warnungen' => ConflictGrouper::group(self::onlyWarnings($result->details)),
+            ]);
+        } catch (ValidationException $e) {
+            return Response::json(['fehler' => $e->getErrors()], 422);
+        }
+    }
+
+    public function createMatch(Request $request): Response
+    {
+        try {
+            $result = $this->matches->createMatch($request->post, $this->context($request));
+
+            return Response::json(['id' => $result['id'], 'warnungen' => $result['warnings']], 201);
+        } catch (ValidationException $e) {
+            return Response::json(['fehler' => $e->getErrors()], 422);
+        } catch (ConflictException $e) {
+            return Response::json(['konflikte' => ConflictGrouper::group(self::onlyConflicts($e->getDetails()))], 409);
+        }
+    }
+
+    /**
+     * @param array<string, string> $params
+     */
+    public function updateMatch(Request $request, array $params): Response
+    {
+        try {
+            $result = $this->matches->updateMatch((int) $params['id'], $request->post, $this->context($request));
+
+            return Response::json(['warnungen' => $result['warnings']]);
+        } catch (ValidationException $e) {
+            return Response::json(['fehler' => $e->getErrors()], 422);
+        } catch (ConflictException $e) {
+            return Response::json(['konflikte' => ConflictGrouper::group(self::onlyConflicts($e->getDetails()))], 409);
+        }
+    }
+
+    /**
+     * @param array<string, string> $params
+     */
+    public function deleteMatch(Request $request, array $params): Response
+    {
+        try {
+            $this->matches->deleteMatch((int) $params['id'], $this->context($request));
+
+            return Response::json(['ok' => true]);
+        } catch (ValidationException $e) {
+            return Response::json(['fehler' => $e->getErrors()], 422);
+        }
+    }
+
     private function context(Request $request): EventContext
     {
         return new EventContext(

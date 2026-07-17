@@ -182,6 +182,67 @@ final class AvailabilityServiceTest extends DatabaseTestCase
         self::assertSame('FC Gegner', $hinweise[0]['gegner']);
     }
 
+    public function testManualMatchBlocksPitchUntilExplicitEnde(): void
+    {
+        // tournament 10:00-16:00: with only the +2h fallback the pitch would
+        // wrongly show frei from 12:00 (Issue #12: optional explicit end)
+        $this->createMatch($this->teamId, [
+            'anstoss' => '2026-08-04 10:00:00',
+            'ende' => '2026-08-04 16:00:00',
+            'gegner' => 'Turnier',
+            'heimspiel' => true,
+            'pitch_id' => $this->pitchId,
+        ]);
+
+        $intervals = $this->dayIntervals(
+            $this->availabilityService()->compute('2026-08-04', '2026-08-04'),
+            '2026-08-04',
+        );
+
+        self::assertSame([
+            ['von' => '08:00', 'bis' => '10:00', 'zustand' => 'frei'],
+            ['von' => '10:00', 'bis' => '16:00', 'zustand' => 'belegt', 'label' => 'Spiel E1 – Turnier'],
+            ['von' => '16:00', 'bis' => '22:00', 'zustand' => 'frei'],
+        ], $intervals);
+    }
+
+    public function testCancelledManualMatchFreesThePitch(): void
+    {
+        $matchId = $this->createMatch($this->teamId, [
+            'anstoss' => '2026-08-04 15:00:00',
+            'heimspiel' => true,
+            'pitch_id' => $this->pitchId,
+        ]);
+        $this->eventStore()->append(
+            \App\Domain\AggregateType::Match,
+            $matchId,
+            \App\Domain\EventType::Updated,
+            [
+                'team_id' => $this->teamId,
+                'anstoss' => '2026-08-04 15:00:00',
+                'ende' => null,
+                'gegner' => 'FC Gegner',
+                'heimspiel' => true,
+                'ort_text' => 'Stadion Gegnerhausen',
+                'pitch_id' => $this->pitchId,
+                'pitch_manuell' => true,
+                'status' => 'abgesagt',
+                'import_source_id' => null,
+                'ics_uid' => '',
+                'ics_sequence' => 1,
+                'sync_hash' => '',
+            ],
+            $this->context(),
+        );
+
+        $intervals = $this->dayIntervals(
+            $this->availabilityService()->compute('2026-08-04', '2026-08-04'),
+            '2026-08-04',
+        );
+
+        self::assertSame([['von' => '08:00', 'bis' => '22:00', 'zustand' => 'frei']], $intervals);
+    }
+
     public function testImportedHomeMatchOnRulePitchBlocksAvailability(): void
     {
         $this->createBegriff($this->venueId, 'Musterstadt');
