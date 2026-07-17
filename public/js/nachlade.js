@@ -11,6 +11,20 @@
         return `${jahr}-${monat}-${tag}`;
     };
 
+    // Wochenbeginn (Montag, 00:00 Uhr - firstDay:1 in kalender.js) der Woche
+    // von `heute` (Issue #26): die Terminliste ist auf Mobilgeräten die
+    // DEFAULT-Ansicht von Platzbelegung/Spielplan (nicht nur ein optionaler
+    // Modus), ihre untere Grenze bestimmt deshalb auch, ob "diese Woche"
+    // vollständig erscheint. Ein Start bei "heute" statt Wochenbeginn ließ
+    // bereits vergangene Tage der laufenden Woche unsichtbar wirken.
+    const wochenStart = (heute) => {
+        const start = new Date(heute);
+        start.setHours(0, 0, 0, 0);
+        const diffZuMontag = (start.getDay() + 6) % 7; // So=0 -> 6, Mo=1 -> 0, ...
+        start.setDate(start.getDate() - diffZuMontag);
+        return start;
+    };
+
     // "mindestens der komplette nächste Monat" (Issue #4, Akzeptanzkriterium 1):
     // der letzte Tag des Kalendermonats nach dem Monat von `heute`, unabhängig
     // vom Tag im aktuellen Monat (am 1. reicht das ~2 Monate weit, am
@@ -45,7 +59,7 @@
     };
 
     const api = {
-        toIsoDate, naechsterMonatEnde, naechsteBatchGrenze, istErschoepft, mergeEvents,
+        toIsoDate, wochenStart, naechsterMonatEnde, naechsteBatchGrenze, istErschoepft, mergeEvents,
     };
 
     if (typeof module !== 'undefined' && module.exports) {
