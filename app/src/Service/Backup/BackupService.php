@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Service\Backup;
 
+use App\Service\Wappen\WappenService;
+
 /**
- * Backup ZIPs (dump.sql + config.php + manifest.json) in
+ * Backup ZIPs (dump.sql + config.php + manifest.json + wappen/*.png) in
  * shared/var/backups/ with rotation (keep the newest 10). Created before
  * every update and manually via the admin button (CLAUDE.md section 10).
  * Restore happens through the installer on a fresh instance.
@@ -19,6 +21,7 @@ final readonly class BackupService
         private string $backupDir,
         private string $configFile,
         private string $appVersion,
+        private ?WappenService $wappen = null,
     ) {
     }
 
@@ -57,6 +60,9 @@ final readonly class BackupService
         $zip->addFile($dumpFile, 'dump.sql');
         if (is_file($this->configFile)) {
             $zip->addFile($this->configFile, 'config.php');
+        }
+        foreach ($this->wappen?->filesForBackup() ?? [] as $path) {
+            $zip->addFile($path, 'wappen/' . basename($path));
         }
         $zip->addFromString('manifest.json', json_encode([
             'app_version' => $this->appVersion,
