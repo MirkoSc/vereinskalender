@@ -171,6 +171,7 @@ abstract class DatabaseTestCase extends TestCase
             [
                 'team_id' => $teamId,
                 'anstoss' => '2026-08-08 15:00:00',
+                'ende' => null,
                 'gegner' => 'FC Gegner',
                 'heimspiel' => false,
                 'ort_text' => 'Stadion Gegnerhausen',
@@ -245,6 +246,20 @@ abstract class DatabaseTestCase extends TestCase
             new \App\Repository\MatchRepository($pdo),
             new \App\Repository\TeamRepository($pdo),
             new \App\Repository\PitchRepository($pdo),
+        );
+    }
+
+    protected function matchService(): \App\Service\Kalender\MatchService
+    {
+        $pdo = $this->pdo();
+
+        return new \App\Service\Kalender\MatchService(
+            $this->eventStore(),
+            new \App\Repository\MatchRepository($pdo),
+            new \App\Repository\PitchRepository($pdo),
+            new \App\Repository\TeamRepository($pdo),
+            \App\Service\Kalender\VenueMatcher::fromDatabase($pdo),
+            $this->bookingService(),
         );
     }
 

@@ -24,7 +24,6 @@ use App\Service\ValidationException;
  */
 final readonly class AvailabilityService
 {
-    private const string MATCH_DURATION = '+2 hours';
     private const int MAX_RANGE_DAYS = 31;
 
     public function __construct(
@@ -87,9 +86,10 @@ final readonly class AvailabilityService
                 continue;
             }
             $start = new \DateTimeImmutable((string) $match['anstoss']);
+            $ende = $match['ende'] !== null ? (string) $match['ende'] : null;
             $belegtByPitch[(int) $match['pitch_id']][] = [
                 'von' => $start,
-                'bis' => $start->modify(self::MATCH_DURATION),
+                'bis' => MatchDuration::effectiveEnd((string) $match['anstoss'], $ende),
                 'label' => 'Spiel ' . ($teamKuerzel[(int) $match['team_id']] ?? '') . ' – ' . (string) $match['gegner'],
             ];
         }

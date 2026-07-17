@@ -15,6 +15,10 @@
             <button type="button" id="new-booking" class="button">Belegung eintragen</button>
         <?php endif; ?>
 
+        <?php if ($ansicht === 'spielplan'): ?>
+            <button type="button" id="new-match" class="button">Spiel eintragen</button>
+        <?php endif; ?>
+
         <button type="button" id="push-bell" class="linklike bell" title="Push-Benachrichtigungen">🔔</button>
     </div>
 
@@ -54,6 +58,18 @@
         Platz
         <select id="filter-pitch">
             <option value="">Alle Plätze</option>
+        </select>
+    </label>
+
+    <!-- Issue #12: manuell erfasste Spiele (Freundschaftsspiele, Turniere)
+         ein-/ausblenden bzw. isoliert anzeigen; rein clientseitig wie der
+         Platzfilter, das API-Feld "manuell" trägt das Kalenderteam. -->
+    <label class="filter">
+        Manuelle Termine
+        <select id="filter-manuell">
+            <option value="">Alle Termine</option>
+            <option value="ohne">Ohne manuelle</option>
+            <option value="nur">Nur manuelle</option>
         </select>
     </label>
 
@@ -139,6 +155,50 @@
         </form>
     </dialog>
 <?php endif; ?>
+
+<!-- Issue #12: manuell erfasste Spiele. Existiert außerhalb des Belegung-
+     only-Blocks, weil ein manuelles Spiel mit Platz auch in der
+     Platzbelegung erscheint (typ=belegung) und dort bearbeitbar sein muss;
+     der "Spiel eintragen"-Button in der Toolbar steht nur im Spielplan. -->
+<dialog id="match-dialog" class="sheet">
+    <h3 id="match-title">Spiel eintragen</h3>
+    <form id="match-form">
+        <input type="hidden" name="match_id">
+        <label>Team
+            <select name="team_id" required id="match-team"></select>
+        </label>
+        <div class="field-row">
+            <label>Datum <input type="date" name="datum" required></label>
+            <label>Anstoß <input type="time" name="anstoss" required></label>
+        </div>
+        <label>Ende (optional)
+            <input type="time" name="ende">
+        </label>
+        <p class="field-hint">Leer lassen für Anstoß + 2 Stunden.</p>
+        <label>Gegner / Titel
+            <input type="text" name="gegner" required maxlength="150">
+        </label>
+        <label>Platz
+            <select name="pitch_id" id="match-pitch">
+                <option value="">Kein Platz / Auswärts</option>
+            </select>
+        </label>
+        <label>Ort (bei Auswärtsspiel oder Turnier)
+            <input type="text" name="ort_text" maxlength="255">
+        </label>
+        <label id="match-status-feld" hidden>Status
+            <select name="status">
+                <option value="geplant">Geplant</option>
+                <option value="abgesagt">Abgesagt</option>
+            </select>
+        </label>
+        <div id="match-feedback" aria-live="polite"></div>
+        <div class="dialog-actions">
+            <button type="submit" class="button">Speichern</button>
+            <button type="button" class="linklike" id="match-cancel">Abbrechen</button>
+        </div>
+    </form>
+</dialog>
 
 <dialog id="name-dialog" class="sheet">
     <h3>Wie heißt du?</h3>

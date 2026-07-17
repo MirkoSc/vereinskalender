@@ -211,6 +211,37 @@ final class BookingServiceTest extends DatabaseTestCase
         }
     }
 
+    public function testMatchWithExplicitEndeShortensAndExtendsConflictWindow(): void
+    {
+        // Saturday tournament 10:00-16:00 (Issue #12): the conflict window
+        // must follow the explicit ende, not the +2h fallback
+        $this->createMatch($this->teamId, [
+            'anstoss' => '2026-08-08 10:00:00',
+            'ende' => '2026-08-08 16:00:00',
+            'gegner' => 'Turnier',
+            'heimspiel' => true,
+            'pitch_id' => $this->pitchId,
+        ]);
+
+        // 13:00-14:30 lies past the +2h fallback but inside the explicit end
+        try {
+            $this->bookingService()->createSlot(
+                $this->slotInput(['wochentage' => [6], 'beginn' => '13:00', 'ende' => '14:30']),
+                $this->context(),
+            );
+            self::fail('Expected a conflict');
+        } catch (ConflictException $e) {
+            self::assertStringContainsString('Spiel gegen Turnier', $e->getConflicts()[0]);
+        }
+
+        // 16:00-17:30 starts exactly at the explicit end: free
+        $result = $this->bookingService()->createSlot(
+            $this->slotInput(['wochentage' => [6], 'beginn' => '16:00', 'ende' => '17:30']),
+            $this->context(),
+        );
+        self::assertSame([], $result['warnings']);
+    }
+
     public function testConflictIgnoresOccurrencesRemovedByException(): void
     {
         $booking = $this->bookingService();

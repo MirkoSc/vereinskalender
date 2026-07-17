@@ -3,16 +3,31 @@
 // nachlade.js/filter.js/konflikte.js).
 (() => {
     // /api/events-Query aus Ansicht + aktiven Filtern (Issue #4/#8). 'pitch'
-    // filtert nur clientseitig (applyPitchFilter in kalender.js, Spielplan
-    // und Platzbelegung, Issue #6/#11), /api/events kennt es nicht.
+    // und 'manuell' filtern nur clientseitig (applyPitchFilter/
+    // manuellFilterAnwenden in kalender.js, Issue #6/#11/#12), /api/events
+    // kennt beide nicht.
     const baueEventsParams = (ansicht, filters) => {
         const params = new URLSearchParams({ typ: ansicht === 'belegung' ? 'belegung' : 'spiel' });
         for (const [key, value] of Object.entries(filters)) {
-            if (value !== '' && key !== 'pitch') {
+            if (value !== '' && key !== 'pitch' && key !== 'manuell') {
                 params.set(key, value);
             }
         }
         return params;
+    };
+
+    // Dreistufiger Filter "manuelle Termine" (Issue #12): '' zeigt alles,
+    // 'ohne' blendet manuell erfasste Spiele aus, 'nur' zeigt ausschließlich
+    // sie (in der Platzbelegung dann auch ohne Trainings/Sperrungen - das
+    // Label sagt "Nur manuelle Termine").
+    const manuellFilterAnwenden = (events, wert) => {
+        if (wert === '') {
+            return events;
+        }
+        const istManuellesSpiel = (e) => e.typ === 'spiel' && e.manuell === true;
+        return wert === 'nur'
+            ? events.filter(istManuellesSpiel)
+            : events.filter((e) => !istManuellesSpiel(e));
     };
 
     // FullCalendars 'events'-Callback bekommt ein fetchInfo-Objekt OHNE eine
@@ -28,7 +43,7 @@
     const istBelegungsRelevant = (e) => e.typ === 'belegung' || e.typ === 'sperrung'
         || (e.typ === 'spiel' && e.pitch_id !== null && e.status !== 'abgesagt');
 
-    const api = { baueEventsParams, istListenAnsicht, istBelegungsRelevant };
+    const api = { baueEventsParams, istListenAnsicht, istBelegungsRelevant, manuellFilterAnwenden };
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = api;
     } else {

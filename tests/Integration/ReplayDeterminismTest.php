@@ -224,15 +224,16 @@ final class ReplayDeterminismTest extends DatabaseTestCase
     }
 
     /**
-     * Issue #10: match events written before pitch_manuell existed carry no
-     * flag. The upcast to false (CLAUDE.md section 5) must be deterministic,
-     * both on the initial write and on replay.
+     * Issue #10/#12: match events written before pitch_manuell or ende
+     * existed carry no such keys. The upcasts (pitch_manuell -> false,
+     * ende -> NULL, CLAUDE.md section 5) must be deterministic, both on the
+     * initial write and on replay.
      */
-    public function testLegacyMatchEventWithoutPitchManuellUpcastsToFalseOnReplay(): void
+    public function testLegacyMatchEventWithoutPitchManuellOrEndeUpcastsOnReplay(): void
     {
         $teamId = $this->createTeam();
 
-        // events written before pitch_manuell existed carry no such key at all
+        // events written before pitch_manuell/ende existed carry neither key
         $this->eventStore()->append(\App\Domain\AggregateType::Match, null, EventType::Created, [
             'team_id' => $teamId,
             'anstoss' => '2099-08-08 15:00:00',
@@ -249,10 +250,53 @@ final class ReplayDeterminismTest extends DatabaseTestCase
 
         $match = $this->dumpTable('match')[0];
         self::assertSame(0, (int) $match['pitch_manuell']);
+        self::assertNull($match['ende']);
 
         $state = $this->runRebuildToCompletion($this->rebuildService());
         self::assertSame([], $state->skipped);
         self::assertSame($match, $this->dumpTable('match')[0]);
+    }
+
+    /**
+     * Issue #12: a manual match with an explicit ende replays identically,
+     * and a Deleted event keeps the row gone after a rebuild.
+     */
+    public function testManualMatchWithEndeAndDeletionReplayDeterministically(): void
+    {
+        $teamId = $this->createTeam();
+
+        $this->createMatch($teamId, [
+            'anstoss' => '2099-08-08 10:00:00',
+            'ende' => '2099-08-08 16:00:00',
+            'gegner' => 'Turnier',
+        ]);
+        $deletedId = $this->createMatch($teamId, [
+            'anstoss' => '2099-08-15 15:00:00',
+            'gegner' => 'FC Wird-Gelöscht',
+        ]);
+        $this->eventStore()->append(\App\Domain\AggregateType::Match, $deletedId, EventType::Deleted, [
+            'team_id' => $teamId,
+            'anstoss' => '2099-08-15 15:00:00',
+            'ende' => null,
+            'gegner' => 'FC Wird-Gelöscht',
+            'heimspiel' => false,
+            'ort_text' => 'Stadion Gegnerhausen',
+            'pitch_id' => null,
+            'pitch_manuell' => false,
+            'status' => 'geplant',
+            'import_source_id' => null,
+            'ics_uid' => '',
+            'ics_sequence' => 0,
+            'sync_hash' => '',
+        ], $this->context());
+
+        $before = $this->dumpTable('match');
+        self::assertCount(1, $before, 'deleted match row is gone');
+        self::assertSame('2099-08-08 16:00:00', $before[0]['ende']);
+
+        $state = $this->runRebuildToCompletion($this->rebuildService());
+        self::assertSame([], $state->skipped);
+        self::assertSame($before, $this->dumpTable('match'), 'replay reproduces ende and the deletion');
     }
 
     public function testRebuildRunsInSmallBatches(): void

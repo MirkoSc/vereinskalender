@@ -72,13 +72,28 @@ sind KEINE Projektionen.
   art ('gesperrt'|'eingeschraenkt'), grund (Pflicht). 'gesperrt' →
   Konfliktprüfung lehnt neue Belegungen ab; 'eingeschraenkt' → Belegen
   erlaubt, Buchungsdialog warnt mit Grund, Termine tragen Markierung.
-- **match**: team_id FK, anstoss, gegner, heimspiel, ort_text (ICS-LOCATION
-  roh), pitch_id NULL (nur Heimspiele), pitch_manuell (true = manuelle
-  Platz-Zuordnung, der Import fasst pitch_id dann nie an; Alt-Events ohne
-  Feld werden beim Replay deterministisch auf false gehoben, Upcasting
-  analog pitch.farbe), status ('geplant'|'abgesagt'), import_source_id
-  NULL, ics_uid, ics_sequence, sync_hash. **UNIQUE(import_source_id,
-  ics_uid)**.
+- **match**: team_id FK, anstoss, ende NULL (nur bei manuellen Spielen
+  gesetzt; der Import schreibt immer NULL; Anzeige, Konfliktprüfung,
+  Verfügbarkeit und ICS-Export nutzen ende, sonst Fallback Anstoß + 2 Std.
+  – zentral in `MatchDuration`; Alt-Events ohne Feld werden beim Replay
+  deterministisch auf NULL gehoben), gegner, heimspiel, ort_text
+  (ICS-LOCATION roh), pitch_id NULL (nur Heimspiele), pitch_manuell (true =
+  manuelle Platz-Zuordnung, der Import fasst pitch_id dann nie an;
+  Alt-Events ohne Feld werden beim Replay deterministisch auf false
+  gehoben, Upcasting analog pitch.farbe), status ('geplant'|'abgesagt'),
+  import_source_id NULL, ics_uid, ics_sequence, sync_hash.
+  **UNIQUE(import_source_id, ics_uid)**.
+  **Manuelle Spiele** (Freundschaftsspiele, Turniere): Kennzeichnung
+  `import_source_id IS NULL` (ics_uid ''), API-Feld `manuell`. Anlegen/
+  Bearbeiten/Löschen öffentlich (Ebene 2) als Events, Löschen =
+  delete-Event; nur manuelle Spiele sind so editierbar, importierte lehnt
+  der Server ab (Platz-Zuordnung über die eigene Route bleibt). Pflicht:
+  Team, Anstoß, Gegner/Titel; Platz ODER ort_text (Platz gewählt →
+  heimspiel + pitch_manuell; sonst heimspiel per VenueMatcher wie beim
+  Import). Konfliktprüfung beim Schreiben: 'gesperrt' blockiert,
+  Slot-/Spiel-Überlappung und 'eingeschraenkt' warnen mit Bestätigung.
+  Bearbeiten erhöht ics_sequence (Kalender-Abos erkennen die Verlegung);
+  Verlegung/Absage lösen Push aus wie bei Import-Spielen, Löschen nicht.
 - **team_home_pitch**: team_id FK, pitch_id FK, gueltig_ab, gueltig_bis
   (beide INKLUSIVE, wie training_slot). Je Team überlappungsfrei (auch ein
   gemeinsamer Grenztag zählt als Überlappung). Pflege eingebettet im
@@ -172,6 +187,10 @@ Kopiervorlage).
   bekannt + sync_hash geändert → UPDATE (Verlegung: UID bleibt,
   DTSTART/SEQUENCE ändern sich); unverändert → skip. Nachlauf: im Feed
   fehlende UIDs → `status='abgesagt'`, NIEMALS hart löschen.
+- Der Sync arbeitet ausschließlich auf `WHERE import_source_id = ?`
+  (Kandidaten-Lookup UND Absage-Nachlauf) – **manuelle Spiele
+  (`import_source_id IS NULL`) sind für ihn unsichtbar**: kein Update,
+  keine Absage, kein Platz-Reflow (Regressionstest in IcsImportTest).
 - `sync_hash` über anstoss + ort_text + gegner + summary-relevante Felder
   (NICHT pitch_id).
 - Heimspiel-Erkennung via `VenueMatcher`; Platz steht NICHT im ICS →
@@ -196,7 +215,9 @@ Kopiervorlage).
   liefern Platzfarbe und -kürzel mit. Moduswechsel ist reines Frontend ohne
   neuen Request. `typ=belegung` liefert zusätzlich Heimspiele mit
   zugeordnetem Platz (Status ≠ abgesagt); sie erscheinen in der
-  Platzbelegung auf ihrem Platz.
+  Platzbelegung auf ihrem Platz. Spiele tragen `manuell` (true =
+  `import_source_id IS NULL`) und ein effektives `ende` (explizite Spalte,
+  sonst Anstoß + 2 Std.).
 - Platzfilter (`filter-pitch`, clientseitig, `/api/events` kennt ihn nicht):
   in der Platzbelegung unterhalb der Desktop-Sidebar-Schwelle (~1100 px)
   ersetzt er die Platz-Spalten; im Spielplan gilt er unabhängig von der
@@ -205,10 +226,17 @@ Kopiervorlage).
   Platz-Kürzel (Fallback Platzname) als Text-Präfix vor dem Titel;
   Auswärtsspiele (nie eine `pitch_id`) bilden dabei die eigene Gruppe
   „Auswärts" mit der globalen Auswärtsfarbe.
+- Filter „manuelle Termine" (`filter-manuell`, dreistufig: Alle / Ohne
+  manuelle / Nur manuelle): clientseitig wie der Platzfilter, `/api/events`
+  kennt ihn nicht; er wirkt auf das `manuell`-Flag im Event-Payload und
+  funktioniert dadurch offline identisch. „Nur manuelle" blendet in der
+  Platzbelegung auch Trainings/Sperrungen aus (Label macht das klar).
 - Spielstätten-Auflösung zur **Anzeigezeit** im einen `VenueMatcher`-Service
   (Anzeige UND Import): erster `venue_begriff` nach sortierung,
-  case-insensitive in `ort_text` → venue + Farbe; kein Treffer → auswärts
-  (Setting-Farbe).
+  case-insensitive in `ort_text` → venue + Farbe; kein Treffer, aber Platz
+  zugeordnet → Venue des Platzes (ein Spiel auf einem Platz ist per
+  Definition an dessen Spielstätte, z. B. manuelles Spiel mit leerem
+  ort_text); sonst → auswärts (Setting-Farbe).
 - Filter: `team=<id>`, `bereich=<…>`, `venue=<id>`, `venue=heim`,
   `venue=auswaerts`. Mehr-Team-Slots matchen, wenn EIN Team den Filter
   erfüllt; API liefert `team_ids` zusätzlich zu `team_id` (= erstes Team,
@@ -337,7 +365,12 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   Bootstrap-Admin-Regel; Heimspielstätten-Regeln (Zuordnungs-Priorität
   manuell > Regel > Standard, Grenztag-Anstöße inklusive, Reflow nur für
   zukünftige nicht manuell zugeordnete Spiele, pitch_manuell-Upcasting
-  beim Replay).
+  beim Replay); manuelle Spiele (Schreibpfad create/update/delete inkl.
+  Guards gegen Import-Spiele, Konfliktprüfung beim Spiel-Anlegen: gesperrt
+  blockiert / Überlappung + eingeschraenkt warnen, **„Import ignoriert
+  manuelle Spiele"-Regression**, ende-Fallback in Konfliktprüfung/
+  Verfügbarkeit/Feed/Export, ende-NULL-Upcasting beim Replay, Push bei
+  Verlegung/Absage manueller Spiele, kein Push bei Löschung).
 - Konfliktprüfung im `BookingService`; DIESELBE Expansionslogik speist die
   Verfügbarkeitsansicht.
 - **Zeitzonen**: durchgängig `Europe/Berlin` (zentral im Bootstrap gesetzt,
