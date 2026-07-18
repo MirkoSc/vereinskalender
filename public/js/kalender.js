@@ -1,11 +1,10 @@
 // Public calendars (Platzbelegung + Spielplan) built on FullCalendar.
-// The mode switch (team vs. venue colors) is pure frontend: the API always
-// delivers both color fields, switching just re-colors loaded events.
+// Team- and venue color render simultaneously as two dots on every event
+// (Issue #39) - pure frontend, the API always delivers both color fields.
 
 (() => {
     const appData = JSON.parse(document.querySelector('#app-data').textContent);
     const ansicht = appData.ansicht; // 'belegung' | 'spielplan'
-    let modus = 'team';
 
     const activeTeams = appData.teams.filter((t) => t.aktiv);
     // Bereich-Name je Team (Issue #27: appData.bereiche statt appData.teams[].bereich)
@@ -182,23 +181,15 @@
     }
     const pitchGruppierungAktiv = () => window.VKKalenderPitch.pitchGruppierungAktiv(ansicht, isWideBelegung, filters.pitch);
 
-    for (const button of document.querySelectorAll('.segmented button')) {
-        button.addEventListener('click', () => {
-            document.querySelector('.segmented .active')?.classList.remove('active');
-            button.classList.add('active');
-            modus = button.dataset.modus;
-            beacon('moduswechsel');
-            recolor();
-        });
-    }
-
     // ---- calendar ----
 
-    // Issue #40: die Terminliste (listNachlade) ist kein Ressourcen-View-
-    // Ersatz wie die Grid-Ansichten (Issue #6/#11) - dort soll der Team/
-    // Spielstätte-Umschalter die Farbe bestimmen, unabhängig von der
-    // "Alle Plätze"-Gruppierung. Der Platz-Kürzel-Präfix in eventTitle()
-    // bleibt davon unberührt.
+    // Der Termin-HINTERGRUND: Sperrungen behalten ihre Art-Farbe
+    // (gesperrt/eingeschränkt); die "Alle Plätze"-Gruppierung in Grid-
+    // Ansichten (Ersatz für fehlende Ressourcen-Spalten, Issue #6/#11,
+    // außerhalb der Terminliste - Issue #40) faerbt weiterhin nach Platz.
+    // Der frühere Team/Spielstätte-Umschalter ist mit Issue #39 entfallen:
+    // beide Farben sind jetzt gleichzeitig als zwei Punkte am Termin
+    // sichtbar (s. eventContent), der Hintergrund bleibt sonst neutral.
     const eventColor = (props) => {
         if (props.typ === 'sperrung') {
             // same CSS custom properties as app.css, not a second literal (Issue #1)
@@ -207,7 +198,7 @@
         if (window.VKKalenderPitch.pitchFarbeAktiv(pitchGruppierungAktiv(), calendar.view.type === 'listNachlade')) {
             return window.VKKalenderPitch.pitchEventFarbe(props);
         }
-        return modus === 'team' ? props.team_farbe : props.venue_farbe;
+        return null;
     };
 
     // "Alle Plätze" (Issue #6/#11): Farbe allein reicht nicht (Farbe nie
@@ -220,13 +211,93 @@
         return praefix ? `${praefix}: ${props.titel}` : props.titel;
     };
 
+    // Spielstätten-Name für den Titel/Tooltip des zweiten Farbpunkts (Issue
+    // #39): Spiele tragen venue_name bereits im Payload; Belegungen nicht
+    // (dort ist die Spielstätte immer eine eigene, per venue_id bekannte
+    // Heimspielstätte) - Fallback über appData.venues. Ohne venue_id (nie
+    // bei Belegungen, nur bei Auswärtsspielen) greift die Auswärtsfarbe
+    // bereits serverseitig (EventSerializer); hier nur noch das Label dazu.
+    const venueName = (props) => {
+        if (props.venue_id === null) {
+            return 'Auswärts';
+        }
+        return props.venue_name ?? appData.venues.find((v) => v.id === props.venue_id)?.name ?? 'Spielstätte';
+    };
+
+    // Zwei Farbpunkte (Team + Spielstätte) statt des früheren Umschalters
+    // (Issue #39): fest in dieser Reihenfolge, an jedem Termin gleichzeitig
+    // sichtbar, unabhängig von Ansicht/Breite - auch in der Terminliste
+    // (Issue #40 galt nur für den alten Ein-Farbe-Modus). Sperrungen haben
+    // kein Team (indikatorFarben liefert dafür null) und bleiben unverändert
+    // bei ihrer Art-Farbe. Reihenfolge ist an die künftige Legende (Issue
+    // #34) gebunden - hier nicht ändern, ohne dort mitzuziehen.
+    const eventPunkte = (props) => {
+        const farben = window.VKKalenderFarbe.indikatorFarben(props);
+        if (!farben) {
+            return null;
+        }
+        const punkte = document.createElement('span');
+        punkte.className = 'ev-punkte';
+
+        const teamPunkt = document.createElement('span');
+        teamPunkt.className = 'ev-punkt ev-punkt-team';
+        teamPunkt.style.backgroundColor = farben.team;
+        teamPunkt.setAttribute('role', 'img');
+        teamPunkt.setAttribute('aria-label', `Team: ${props.team_name ?? ''}`);
+        teamPunkt.title = `Team: ${props.team_name ?? ''}`;
+
+        const venuePunkt = document.createElement('span');
+        venuePunkt.className = 'ev-punkt ev-punkt-venue';
+        venuePunkt.style.backgroundColor = farben.venue;
+        venuePunkt.setAttribute('role', 'img');
+        venuePunkt.setAttribute('aria-label', `Spielstätte: ${venueName(props)}`);
+        venuePunkt.title = `Spielstätte: ${venueName(props)}`;
+
+        punkte.append(teamPunkt, venuePunkt);
+        return punkte;
+    };
+
+    // Eigener eventContent statt der FullCalendar-Standarddarstellung: nur
+    // so lassen sich die zwei Farbpunkte VOR den Titel setzen, in Grid- UND
+    // Listenansichten gleichermaßen (Issue #39). Titel/Zeit behalten
+    // FullCalendars eigene Klassennamen (fc-event-time/fc-event-title) statt
+    // eigener - so greifen bestehende Theme-Regeln unverändert weiter (z. B.
+    // die kursive Sperrungs-Beschriftung auf Hintergrund-Events). arg.timeText
+    // kommt bereits fertig formatiert von FullCalendar (leer bei Sperrungen/
+    // Background-Events); in der Terminliste zeigt FullCalendar die Uhrzeit
+    // schon in einer eigenen Spalte, daher hier ausgelassen.
+    const eventContent = (arg) => {
+        const props = arg.event.extendedProps;
+        const wrapper = document.createElement('div');
+        wrapper.className = 'ev-inhalt fc-event-main-frame';
+
+        if (arg.timeText && arg.view.type !== 'listNachlade') {
+            const zeit = document.createElement('div');
+            zeit.className = 'fc-event-time';
+            zeit.textContent = arg.timeText;
+            wrapper.append(zeit);
+        }
+
+        const punkte = eventPunkte(props);
+        if (punkte) {
+            wrapper.append(punkte);
+        }
+
+        const titel = document.createElement('span');
+        titel.className = 'fc-event-title ev-titel';
+        titel.textContent = arg.event.title || ' ';
+        wrapper.append(titel);
+
+        return { domNodes: [wrapper] };
+    };
+
     const toFcEvent = (e) => ({
         id: e.id,
         title: eventTitle(e),
         start: e.start,
         end: e.ende,
         resourceId: e.pitch_id !== null ? String(e.pitch_id) : undefined,
-        color: eventColor(e),
+        color: eventColor(e) ?? undefined,
         display: e.typ === 'sperrung' ? 'background' : 'auto',
         classNames: [`ev-${e.typ}`, e.status === 'abgesagt' ? 'ev-abgesagt' : ''].filter(Boolean),
         extendedProps: e,
@@ -248,12 +319,6 @@
     // Beide clientseitigen Filter zusammen anwenden (auch im Offline-Pfad,
     // da fetchEventsRange auch dort schon fertige Event-Objekte liefert).
     const applyClientFilters = (events) => window.VKKalenderEvents.manuellFilterAnwenden(applyPitchFilter(events), filters.manuell);
-
-    const recolor = () => {
-        for (const event of calendar.getEvents()) {
-            event.setProp('color', eventColor(event.extendedProps));
-        }
-    };
 
     // Ein Bereich [von, bis) laden - per Fetch oder, offline, aus dem
     // IndexedDB-Bundle mit dem kompletten Datenbestand (CLAUDE.md Abschnitt 8,
@@ -605,6 +670,7 @@
                 failure(error);
             }
         },
+        eventContent,
         eventClick: (info) => showDetail(info.event.extendedProps),
         // FullCalendar's buttonHints only sets the hover title, not
         // aria-label; the icon-only "Heute" button (Issue #3) needs an
