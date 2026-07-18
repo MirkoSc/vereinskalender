@@ -216,6 +216,7 @@ final readonly class PublicController
                 '/js/nachlade.js',
                 '/js/kalender-events.js',
                 '/js/kalender-pitch.js',
+                '/js/kalender-farbe.js',
                 '/js/kalender.js',
             ],
         ]));

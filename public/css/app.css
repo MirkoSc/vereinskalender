@@ -227,26 +227,6 @@ main {
     font-size: 0.9rem;
 }
 
-.segmented {
-    display: inline-flex;
-    border: 1px solid var(--color-accent);
-    border-radius: 6px;
-    overflow: hidden;
-}
-
-.segmented button {
-    background: var(--color-bg);
-    color: var(--color-accent);
-    border-radius: 0;
-    padding: 0.45rem 0.9rem;
-    min-height: 44px;
-}
-
-.segmented button.active {
-    background: var(--color-accent-bg);
-    color: var(--color-on-accent);
-}
-
 dialog.sheet {
     border: none;
     border-radius: 12px;
@@ -318,6 +298,61 @@ dialog.sheet::backdrop {
 .ev-abgesagt {
     text-decoration: line-through;
     opacity: 0.6;
+}
+
+/* Team- und Spielstättenfarbe gleichzeitig statt Umschalter (Issue #39):
+   eigener eventContent in kalender.js liefert diese Struktur für jeden
+   Termin. Die Punkte nutzen zwei Ringe statt eines einzelnen Rahmens -
+   ein Ring in --color-bg trennt die (mitunter helle) Punktfarbe optisch
+   vom Untergrund, ein zweiter Ring in currentColor sorgt für Kontrast
+   sowohl im farbigen Termin-Block (dort ist currentColor die weiße
+   Event-Textfarbe) als auch in der Listen-/Monatsansicht (dort die normale
+   Textfarbe) - unabhängig davon, wie hell oder dunkel Team-/Spielstätten-
+   farbe selbst ausfallen. Team = Kreis, Spielstätte = Quadrat: auch ohne
+   Farbunterscheidung (Farbfehlsichtigkeit) klar auseinanderzuhalten.
+   Sperrungen haben kein Team und bekommen keine Punkte (eventPunkte()
+   liefert dafür null), sie bleiben bei ihrer Art-Farbe (gesperrt/
+   eingeschränkt) - nur für sie bleibt FullCalendars eigener Listen-/
+   Monats-Punkt sichtbar. */
+.ev-inhalt {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-width: 0;
+}
+
+.ev-punkte {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-shrink: 0;
+}
+
+.ev-punkt {
+    width: 0.6rem;
+    height: 0.6rem;
+    flex-shrink: 0;
+    box-shadow:
+        0 0 0 1px var(--color-bg),
+        0 0 0 2px color-mix(in srgb, currentColor 55%, transparent);
+}
+
+.ev-punkt-team {
+    border-radius: 50%;
+}
+
+.ev-punkt-venue {
+    border-radius: 2px;
+}
+
+.ev-titel {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.ev-belegung .fc-list-event-dot,
+.ev-spiel .fc-list-event-dot {
+    display: none;
 }
 
 /* Maps-Link im Termindetail (Issue #5): Icon + Text, nie Farbe allein */

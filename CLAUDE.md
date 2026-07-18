@@ -230,25 +230,32 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   Farbfelder (`team_farbe`, `venue_farbe`) + `venue_id`, zusätzlich
   `pitch_farbe` und `pitch_kuerzel` (beide NULL ohne zugeordneten Platz,
   z. B. Auswärtsspiel). Auch `/api/verfuegbarkeit` und das Offline-Bundle
-  liefern Platzfarbe und -kürzel mit. Moduswechsel ist reines Frontend ohne
-  neuen Request. `typ=belegung` liefert zusätzlich Heimspiele mit
-  zugeordnetem Platz (Status ≠ abgesagt); sie erscheinen in der
-  Platzbelegung auf ihrem Platz. Spiele tragen `manuell` (true =
-  `import_source_id IS NULL`) und ein effektives `ende` (explizite Spalte,
-  sonst Anstoß + 2 Std.).
+  liefern Platzfarbe und -kürzel mit. **Jeder Termin (außer Sperrungen)
+  zeigt Team- UND Spielstättenfarbe gleichzeitig als zwei Farbpunkte** vor
+  dem Titel, in jeder Ansicht und Breite inkl. Terminliste (Issue #39,
+  ersetzt den früheren Team/Spielstätte-Umschalter; kein neuer Request, da
+  beide Farbfelder bereits im Event-Payload liegen) – bei Auswärtsspielen
+  liefert `venue_farbe` bereits die Auswärtsfarbe, kein Sonderfall im
+  Frontend nötig. Sperrungen haben kein Team und bleiben bei ihrer
+  bestehenden Art-Farbe (gesperrt/eingeschränkt). `typ=belegung` liefert
+  zusätzlich Heimspiele mit zugeordnetem Platz (Status ≠ abgesagt); sie
+  erscheinen in der Platzbelegung auf ihrem Platz. Spiele tragen `manuell`
+  (true = `import_source_id IS NULL`) und ein effektives `ende` (explizite
+  Spalte, sonst Anstoß + 2 Std.).
 - Platzfilter (`filter-pitch`, clientseitig, `/api/events` kennt ihn nicht):
   in der Platzbelegung unterhalb der Desktop-Sidebar-Schwelle (~1100 px)
   ersetzt er die Platz-Spalten; im Spielplan gilt er unabhängig von der
   Bildschirmbreite (kein Ressourcen-View dort). Ein gewählter Einzelplatz
   zeigt nur dessen Termine; „Alle Plätze" färbt in den Grid-Ansichten (Ersatz
-  für die fehlenden Ressourcen-Spalten) nach Platzfarbe mit Platz-Kürzel
-  (Fallback Platzname) als Text-Präfix vor dem Titel; Auswärtsspiele (nie
-  eine `pitch_id`) bilden dabei die eigene Gruppe „Auswärts" mit der
-  globalen Auswärtsfarbe. Die Terminliste (`listNachlade`, mobiler Default
-  für Belegung UND Spielplan) ist kein Ressourcen-Ersatz, sondern ein
-  chronologischer Feed: dort bestimmt immer der Team/Spielstätte-Umschalter
-  die Farbe, auch bei „Alle Plätze" (Issue #40) – der Platz-Kürzel-Präfix
-  im Titel bleibt davon unberührt.
+  für die fehlenden Ressourcen-Spalten) den Termin-HINTERGRUND nach
+  Platzfarbe mit Platz-Kürzel (Fallback Platzname) als Text-Präfix vor dem
+  Titel; Auswärtsspiele (nie eine `pitch_id`) bilden dabei die eigene Gruppe
+  „Auswärts" mit der globalen Auswärtsfarbe. Die Terminliste (`listNachlade`,
+  mobiler Default für Belegung UND Spielplan) ist kein Ressourcen-Ersatz,
+  sondern ein chronologischer Feed: dort bleibt der Hintergrund neutral
+  (Issue #40) – die Team-/Spielstättenfarbe zeigen dort wie überall die zwei
+  Farbpunkte, unabhängig von „Alle Plätze"; der Platz-Kürzel-Präfix im Titel
+  bleibt davon unberührt.
 - Filter „manuelle Termine" (`filter-manuell`, dreistufig: Alle / Ohne
   manuelle / Nur manuelle): clientseitig wie der Platzfilter, `/api/events`
   kennt ihn nicht; er wirkt auf das `manuell`-Flag im Event-Payload und
