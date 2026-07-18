@@ -35,9 +35,12 @@ final class EventStoreTest extends DatabaseTestCase
             $this->context(),
         );
 
-        self::assertSame(1, $event->aggregateId, 'first id from the aggregate sequence');
+        // Issue #27: migration 013 seeds bereich events first, so the id
+        // comes from a sequence already advanced past those - just assert
+        // it's a real (positive) sequence value, not a fixed number.
+        self::assertGreaterThan(0, $event->aggregateId, 'id comes from the aggregate sequence');
 
-        $eventRows = $this->dumpTable('event');
+        $eventRows = $this->pdo()->query("SELECT * FROM event WHERE aggregat_typ = 'team' ORDER BY id")->fetchAll();
         self::assertCount(1, $eventRows);
         self::assertSame('team', $eventRows[0]['aggregat_typ']);
         self::assertSame('created', $eventRows[0]['event_typ']);
@@ -67,7 +70,12 @@ final class EventStoreTest extends DatabaseTestCase
         $store->append(AggregateType::Team, $id, EventType::Deleted, self::teamPayload('E2 neu'), $context);
 
         self::assertSame([], $this->dumpTable('team'), 'delete event removes the projection row');
-        self::assertCount(3, $this->dumpTable('event'), 'history is fully preserved');
+        // scoped to 'team' events: migration 013 seeds bereich events too
+        self::assertCount(
+            3,
+            $this->pdo()->query("SELECT * FROM event WHERE aggregat_typ = 'team'")->fetchAll(),
+            'history is fully preserved',
+        );
     }
 
     public function testFailedProjectionRollsBackTheEvent(): void
@@ -82,7 +90,12 @@ final class EventStoreTest extends DatabaseTestCase
             // expected
         }
 
-        self::assertSame([], $this->dumpTable('event'), 'event must not survive a failed projection');
+        // scoped to 'team' events: migration 013 seeds bereich events too
+        self::assertSame(
+            [],
+            $this->pdo()->query("SELECT * FROM event WHERE aggregat_typ = 'team'")->fetchAll(),
+            'event must not survive a failed projection',
+        );
         self::assertSame([], $this->dumpTable('team'));
     }
 

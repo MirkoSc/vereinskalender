@@ -54,21 +54,35 @@ final class FeinschliffTest extends DatabaseTestCase
     public function testIpAnonymisationOnlyAffectsOldEvents(): void
     {
         $this->createTeam('E1'); // fresh event with IP
-        $this->pdo()->exec(
-            "UPDATE event SET erstellt_am = '2020-01-01 12:00:00' WHERE id = 1",
-        );
+        // Issue #27: migration 013 seeds system events before any test event,
+        // so id=1 is no longer necessarily the team event - target it by
+        // aggregat_typ instead of assuming a fixed id.
+        $oldEventId = (int) $this->pdo()
+            ->query("SELECT id FROM event WHERE aggregat_typ = 'team' ORDER BY id ASC LIMIT 1")
+            ->fetchColumn();
+        $this->pdo()->exec(sprintf(
+            "UPDATE event SET erstellt_am = '2020-01-01 12:00:00' WHERE id = %d",
+            $oldEventId,
+        ));
         $this->createTeam('E2'); // recent event
 
         $anonymisiert = new EventHistoryRepository($this->pdo())->anonymizeOldIps(90);
 
         self::assertSame(1, $anonymisiert);
-        $events = $this->dumpTable('event');
+        $events = $this->pdo()
+            ->query("SELECT * FROM event WHERE aggregat_typ = 'team' ORDER BY id")
+            ->fetchAll();
         self::assertSame('', $events[0]['ip'], 'old event anonymised');
         self::assertNotSame('', $events[1]['ip'], 'recent event untouched');
     }
 
     public function testEventHistoryFilters(): void
     {
+        $history = new EventHistoryRepository($this->pdo());
+        // Issue #27: migration 013 seeds system events, so the unfiltered
+        // total is no longer just this test's own events - compare a delta.
+        $gesamtVorher = $history->search([])['gesamt'];
+
         $this->createTeam('A');
         $this->createVenue();
         $store = $this->eventStore();
@@ -80,9 +94,7 @@ final class FeinschliffTest extends DatabaseTestCase
             new \App\Domain\EventContext('Fremder', '198.51.100.1', \App\Domain\EventSource::Web),
         );
 
-        $history = new EventHistoryRepository($this->pdo());
-
-        self::assertSame(3, $history->search([])['gesamt']);
+        self::assertSame($gesamtVorher + 3, $history->search([])['gesamt']);
         self::assertSame(2, $history->search(['aggregat_typ' => 'team'])['gesamt']);
         self::assertSame(1, $history->search(['ip' => '198.51.100.1'])['gesamt']);
         self::assertSame(1, $history->search(['editor' => 'Fremder'])['gesamt']);
@@ -155,9 +167,10 @@ final class FeinschliffTest extends DatabaseTestCase
             new \App\Repository\VenueRepository($pdo),
             new SettingRepository($pdo),
             \App\Service\Kalender\VenueMatcher::fromDatabase($pdo),
+            new \App\Repository\BereichRepository($pdo),
         )->build();
 
-        self::assertSame(2, $bundle['format']);
+        self::assertSame(3, $bundle['format']);
         self::assertCount(2, $bundle['spiele'], 'the complete dataset: past AND future matches, no date window');
         self::assertArrayHasKey('team_farbe', $bundle['spiele'][0], 'both color modes work offline');
         self::assertArrayHasKey('venue_farbe', $bundle['spiele'][0]);
@@ -167,6 +180,7 @@ final class FeinschliffTest extends DatabaseTestCase
         self::assertSame([], $bundle['ausnahmen']);
         self::assertSame([], $bundle['sperrungen']);
         self::assertNotSame([], $bundle['teams']);
+        self::assertNotSame([], $bundle['bereiche'], 'Issue #27: dynamic bereiche list instead of the fixed enum');
         self::assertSame('#0969da', $bundle['pitches'][0]['farbe']);
         self::assertNull($bundle['pitches'][0]['adresse']);
         self::assertSame('#57606a', $bundle['settings']['auswaerts_farbe']);

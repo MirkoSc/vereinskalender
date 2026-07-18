@@ -139,10 +139,30 @@ final class EventFeedTest extends DatabaseTestCase
         $range = ['von' => '2026-08-03', 'bis' => '2026-08-09'];
 
         self::assertCount(1, $feed->events([...$range, 'team' => (string) $this->teamId]));
-        self::assertCount(1, $feed->events([...$range, 'bereich' => 'E']));
+        self::assertCount(1, $feed->events([...$range, 'bereich' => 'E']), 'transitional: legacy enum string still works');
         self::assertCount(1, $feed->events([...$range, 'bereich' => 'Herren']));
         self::assertCount(1, $feed->events([...$range, 'venue' => 'auswaerts']), 'away match only');
         self::assertCount(1, $feed->events([...$range, 'venue' => (string) $this->venueId]), 'occupancy at own venue');
+    }
+
+    /**
+     * Issue #27: `bereich=` filters by the bereich aggregate's numeric id
+     * going forward, not just the transitional legacy enum string.
+     */
+    public function testFiltersByBereichId(): void
+    {
+        $otherTeam = $this->createTeam('Herren 1', 'Herren');
+        $this->createMatch($otherTeam, ['anstoss' => '2026-08-08 15:00:00']);
+
+        $eBereichId = $this->findSeededBereich('E')['id'];
+        $herrenBereichId = $this->findSeededBereich('Herren')['id'];
+
+        $feed = $this->eventFeedService();
+        $range = ['von' => '2026-08-03', 'bis' => '2026-08-09'];
+
+        self::assertCount(1, $feed->events([...$range, 'bereich' => (string) $eBereichId]));
+        self::assertCount(1, $feed->events([...$range, 'bereich' => (string) $herrenBereichId]));
+        self::assertCount(0, $feed->events([...$range, 'bereich' => '999999']), 'unknown bereich id matches nothing');
     }
 
     public function testJointTrainingCarriesAllTeamsAndMatchesEitherFilter(): void

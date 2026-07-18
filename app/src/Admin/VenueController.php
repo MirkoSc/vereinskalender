@@ -8,8 +8,10 @@ use App\Http\Request;
 use App\Http\Response;
 use App\Http\ResponseInterface;
 use App\Http\Session;
+use App\Domain\AggregateType;
 use App\Repository\PitchRepository;
 use App\Repository\VenueRepository;
+use App\Service\Stammdaten\SortierungService;
 use App\Service\Stammdaten\VenueService;
 use App\Service\ValidationException;
 use App\View\View;
@@ -22,6 +24,7 @@ final class VenueController extends AdminController
         private readonly VenueRepository $venues,
         private readonly PitchRepository $pitches,
         private readonly VenueService $service,
+        private readonly SortierungService $sortierung,
     ) {
         parent::__construct($view, $session);
     }
@@ -162,6 +165,19 @@ final class VenueController extends AdminController
         }
 
         return Response::redirect($backTo);
+    }
+
+    public function sortierung(Request $request): ResponseInterface
+    {
+        $ids = array_map(intval(...), (array) ($request->post['ids'] ?? []));
+
+        try {
+            $this->sortierung->reorder(AggregateType::Venue, $ids, $this->context($request));
+        } catch (ValidationException $e) {
+            return Response::json(['fehler' => $e->getErrors()], 422);
+        }
+
+        return Response::json(['ok' => true]);
     }
 
     /**

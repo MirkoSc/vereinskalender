@@ -761,6 +761,26 @@ th, td {
     border: 1px solid color-mix(in srgb, var(--color-text) 30%, transparent);
 }
 
+/* Drag&Drop-Sortierung (Issue #27): Handle-Spalte in Bereiche-/Teams-/
+   Plätze-/Spielstätten-Listen; Touch-Ziel >=44px (CLAUDE.md Abschnitt 8). */
+.drag-handle {
+    width: 2.75rem;
+    min-width: 2.75rem;
+    height: 2.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    touch-action: none;
+    font-size: 1.25rem;
+    color: color-mix(in srgb, var(--color-text) 50%, transparent);
+    user-select: none;
+}
+
+tr.dragging {
+    opacity: 0.5;
+}
+
 .palette {
     display: flex;
     flex-wrap: wrap;

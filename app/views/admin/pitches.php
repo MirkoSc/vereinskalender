@@ -4,13 +4,14 @@
     <?php if ($pitches === []): ?>
         <p>Noch keine Plätze angelegt. Lege zuerst eine <a href="/admin/spielstaetten">Spielstätte</a> an.</p>
     <?php else: ?>
-        <table>
+        <table data-sortable data-reorder-url="/admin/plaetze/sortierung">
             <thead>
-                <tr><th>Farbe</th><th>Name</th><th>Kürzel</th><th>Spielstätte</th><th>Typ</th><th>Flutlicht</th><th>Sortierung</th><th></th></tr>
+                <tr><th></th><th>Farbe</th><th>Name</th><th>Kürzel</th><th>Spielstätte</th><th>Typ</th><th>Flutlicht</th><th>Sortierung</th><th></th></tr>
             </thead>
             <tbody>
             <?php foreach ($pitches as $pitch): ?>
-                <tr>
+                <tr data-id="<?= e($pitch['id']) ?>">
+                    <td><span class="drag-handle" aria-hidden="true">⠿</span></td>
                     <td><span class="swatch" style="background: <?= e($pitch['farbe']) ?>"></span></td>
                     <td><a href="/admin/plaetze/<?= e($pitch['id']) ?>"><?= e($pitch['name']) ?></a></td>
                     <td><?= e($pitch['kuerzel']) ?></td>

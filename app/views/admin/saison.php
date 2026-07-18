@@ -1,8 +1,16 @@
 <section>
     <h2>Saison-Assistent</h2>
-    <p>Geführter Ablauf zum Saisonwechsel in vier Schritten:</p>
+    <p>Geführter Ablauf zum Saisonwechsel in fünf Schritten:</p>
 
-    <h3>1. Teams anpassen</h3>
+    <h3>1. Bereiche prüfen (Aufstieg)</h3>
+    <p>
+        Beim Aufstieg wechseln Teams den Bereich (z. B. G→F, F→E). Neue Bereiche wie
+        A-/B-Jugend zuerst in der <a href="/admin/bereiche">Bereichs-Verwaltung</a> anlegen,
+        falls sie fehlen; danach je Team im <a href="/admin/teams">Team-Formular</a> den
+        neuen Bereich zuweisen (Schritt 2).
+    </p>
+
+    <h3>2. Teams anpassen</h3>
     <p>
         Teams umbenennen (z. B. „E1" → „D2"), nicht mehr gemeldete Teams deaktivieren,
         neue Teams <a href="/admin/teams/neu">anlegen</a>. Inaktive Teams verschwinden aus
@@ -11,13 +19,13 @@
     <ul>
         <?php foreach ($teams as $team): ?>
             <li>
-                <a href="/admin/teams/<?= e($team['id']) ?>"><?= e($team['name']) ?> (<?= e($team['bereich']) ?>)</a>
+                <a href="/admin/teams/<?= e($team['id']) ?>"><?= e($team['name']) ?> (<?= e($bereiche[(int) ($team['bereich_id'] ?? 0)]['name'] ?? $team['bereich']) ?>)</a>
                 <?= (int) $team['aktiv'] === 1 ? '' : '– inaktiv' ?>
             </li>
         <?php endforeach; ?>
     </ul>
 
-    <h3>2. Import-URLs erneuern</h3>
+    <h3>3. Import-URLs erneuern</h3>
     <p>
         fussball.de vergibt pro Saison neue ICS-URLs. Alle Quellen prüfen und die URLs
         <a href="/admin/import-quellen">aktualisieren</a>:
@@ -31,7 +39,7 @@
         <?php endforeach; ?>
     </ul>
 
-    <h3>3. Trainingsslots übernehmen</h3>
+    <h3>4. Trainingsslots übernehmen</h3>
     <?php if ($slots === []): ?>
         <p>Keine Trainingsslots vorhanden.</p>
     <?php else: ?>
@@ -64,7 +72,7 @@
         </form>
     <?php endif; ?>
 
-    <h3>4. Heimspielstätten-Regeln übernehmen</h3>
+    <h3>5. Heimspielstätten-Regeln übernehmen</h3>
     <?php if ($homePitchRules === []): ?>
         <p>Keine Heimspielstätten-Regeln vorhanden.</p>
     <?php else: ?>

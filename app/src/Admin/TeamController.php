@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace App\Admin;
 
+use App\Domain\AggregateType;
 use App\Http\Request;
 use App\Http\Response;
 use App\Http\ResponseInterface;
 use App\Http\Session;
+use App\Repository\BereichRepository;
 use App\Repository\PitchRepository;
 use App\Repository\TeamHomePitchRepository;
 use App\Repository\TeamRepository;
+use App\Service\Stammdaten\SortierungService;
 use App\Service\Stammdaten\TeamHomePitchService;
 use App\Service\Stammdaten\TeamService;
 use App\Service\ValidationException;
@@ -26,6 +29,8 @@ final class TeamController extends AdminController
         private readonly TeamHomePitchRepository $homePitchRules,
         private readonly TeamHomePitchService $homePitchService,
         private readonly PitchRepository $pitches,
+        private readonly BereichRepository $bereiche,
+        private readonly SortierungService $sortierung,
     ) {
         parent::__construct($view, $session);
     }
@@ -35,6 +40,7 @@ final class TeamController extends AdminController
         return $this->render('admin/teams', [
             'title' => 'Teams',
             'teams' => $this->teams->findAll(),
+            'bereiche' => $this->bereicheById(),
         ]);
     }
 
@@ -47,6 +53,7 @@ final class TeamController extends AdminController
             'errors' => [],
             'homePitchRules' => null,
             'pitches' => [],
+            'bereiche' => $this->bereiche->findAktive(),
         ]);
     }
 
@@ -62,6 +69,7 @@ final class TeamController extends AdminController
                 'errors' => $e->getErrors(),
                 'homePitchRules' => null,
                 'pitches' => [],
+                'bereiche' => $this->bereiche->findAktive(),
             ], 422);
         }
 
@@ -88,6 +96,7 @@ final class TeamController extends AdminController
             'errors' => [],
             'homePitchRules' => $this->homePitchRules->findByTeamWithPitchNames($id),
             'pitches' => $this->pitches->findAll(),
+            'bereiche' => $this->bereicheForForm($team),
             'teamId' => $id,
         ]);
     }
@@ -102,6 +111,8 @@ final class TeamController extends AdminController
         try {
             $this->service->update($id, $request->post, $this->context($request));
         } catch (ValidationException $e) {
+            $team = $this->teams->find($id);
+
             return $this->render('admin/team_form', [
                 'title' => 'Team bearbeiten',
                 'action' => '/admin/teams/' . $id,
@@ -109,6 +120,7 @@ final class TeamController extends AdminController
                 'errors' => $e->getErrors(),
                 'homePitchRules' => $this->homePitchRules->findByTeamWithPitchNames($id),
                 'pitches' => $this->pitches->findAll(),
+                'bereiche' => $team !== null ? $this->bereicheForForm($team) : $this->bereiche->findAktive(),
                 'teamId' => $id,
             ], 422);
         }
@@ -116,6 +128,19 @@ final class TeamController extends AdminController
         $this->session->flash('Team gespeichert.');
 
         return Response::redirect('/admin/teams');
+    }
+
+    public function sortierung(Request $request): ResponseInterface
+    {
+        $ids = array_map(intval(...), (array) ($request->post['ids'] ?? []));
+
+        try {
+            $this->sortierung->reorder(AggregateType::Team, $ids, $this->context($request));
+        } catch (ValidationException $e) {
+            return Response::json(['fehler' => $e->getErrors()], 422);
+        }
+
+        return Response::json(['ok' => true]);
     }
 
     /**
@@ -166,5 +191,41 @@ final class TeamController extends AdminController
         }
 
         return Response::redirect($backTo);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>> bereich rows keyed by id, for
+     *         resolving the display name in admin/teams.php
+     */
+    private function bereicheById(): array
+    {
+        $byId = [];
+        foreach ($this->bereiche->findAll() as $bereich) {
+            $byId[(int) $bereich['id']] = $bereich;
+        }
+
+        return $byId;
+    }
+
+    /**
+     * Active bereiche plus the team's current one even if it was since
+     * deactivated (so the select still shows/keeps it, CLAUDE.md section 3).
+     *
+     * @param array<string, mixed> $team
+     * @return list<array<string, mixed>>
+     */
+    private function bereicheForForm(array $team): array
+    {
+        $bereiche = $this->bereiche->findAktive();
+        $currentId = $team['bereich_id'] !== null ? (int) $team['bereich_id'] : null;
+        $aktiveIds = array_map(intval(...), array_column($bereiche, 'id'));
+        if ($currentId !== null && !in_array($currentId, $aktiveIds, true)) {
+            $current = $this->bereiche->find($currentId);
+            if ($current !== null) {
+                $bereiche[] = $current;
+            }
+        }
+
+        return $bereiche;
     }
 }
