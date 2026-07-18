@@ -31,16 +31,16 @@ final class FeinschliffTest extends DatabaseTestCase
     public function testUsageStatIncrementsAndAggregates(): void
     {
         $stats = new UsageStatRepository($this->pdo());
-        $stats->increment('seite', '/belegung');
-        $stats->increment('seite', '/belegung');
-        $stats->increment('seite', '/spielplan');
+        $stats->increment('seite', '/kalender');
+        $stats->increment('seite', '/kalender');
+        $stats->increment('seite', '/verfuegbarkeit');
 
         $summary = $stats->summary('seite');
         self::assertSame(3, $summary['heute']);
         self::assertSame(3, $summary['tage30']);
 
         $top = $stats->topDimensions('seite');
-        self::assertSame('/belegung', $top[0]['dimension']);
+        self::assertSame('/kalender', $top[0]['dimension']);
         self::assertSame(2, $top[0]['anzahl']);
 
         // no IPs, no user agents anywhere in the table

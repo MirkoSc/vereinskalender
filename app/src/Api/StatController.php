@@ -14,7 +14,11 @@ use App\Repository\UsageStatRepository;
  */
 final readonly class StatController
 {
-    private const array METRIKEN = ['filternutzung', 'push_abo_dialog', 'pwa_installation', 'platzauswahl'];
+    private const array METRIKEN = [
+        'filternutzung', 'push_abo_dialog', 'pwa_installation', 'platzauswahl',
+        // Issue #37: je Kalender-Darstellung gezählt (kalender-ansicht.js statMetrik())
+        'ansicht_tag', 'ansicht_woche', 'ansicht_monat', 'ansicht_liste',
+    ];
 
     public function __construct(private UsageStatRepository $stats)
     {

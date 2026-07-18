@@ -71,18 +71,55 @@ final readonly class PublicController
         ]));
     }
 
+    /**
+     * Issue #37: Spielplan + Platzbelegung sind eine Seite geworden - alte
+     * geteilte Links leiten (mit Query-String, damit Filter erhalten
+     * bleiben) auf /kalender um, statt selbst zu zählen (die Landung auf
+     * /kalender zählt bereits, ein zweiter Increment wäre doppelt).
+     */
     public function belegung(Request $request): Response
     {
-        $this->stats->increment('seite', '/belegung');
-
-        return $this->calendarPage('belegung', 'Platzbelegung');
+        return Response::redirect($this->kalenderZiel($request), 301);
     }
 
     public function spielplan(Request $request): Response
     {
-        $this->stats->increment('seite', '/spielplan');
+        return Response::redirect($this->kalenderZiel($request), 301);
+    }
 
-        return $this->calendarPage('spielplan', 'Spielplan');
+    /**
+     * Eine Kalenderseite mit vier Darstellungen (Tag/Woche/Monat/Liste,
+     * Issue #37) statt der früheren getrennten Platzbelegung/Spielplan-
+     * Seiten - beide teilten ohnehin schon Template und Skript.
+     */
+    public function kalender(Request $request): Response
+    {
+        $this->stats->increment('seite', '/kalender');
+        [$appData, $colorCss] = $this->stammdaten();
+
+        return Response::html($this->view->render('kalender', [
+            'title' => 'Kalender',
+            'appData' => $appData,
+            'colorCss' => $colorCss,
+            'scripts' => [
+                '/js/vendor/fullcalendar-scheduler.global.min.js',
+                '/js/vendor/fullcalendar-locale-de.global.min.js',
+                '/js/konflikte.js',
+                '/js/filter.js',
+                '/js/schreiben.js',
+                '/js/offline.js',
+                '/js/push.js',
+                '/js/offline-events.js',
+                '/js/legende-gruppierung.js',
+                '/js/legende.js',
+                '/js/nachlade.js',
+                '/js/kalender-events.js',
+                '/js/kalender-pitch.js',
+                '/js/kalender-farbe.js',
+                '/js/kalender-ansicht.js',
+                '/js/kalender.js',
+            ],
+        ]));
     }
 
     public function verfuegbarkeit(Request $request): Response
@@ -180,8 +217,8 @@ final readonly class PublicController
         $manifest = [
             'name' => 'Vereinskalender',
             'short_name' => 'Kalender',
-            'description' => 'Platzbelegung und Spielplan des Vereins',
-            'start_url' => '/belegung',
+            'description' => 'Alle Termine des Vereins: Training, Spiele und Platzsperrungen',
+            'start_url' => '/kalender',
             'display' => 'standalone',
             'background_color' => '#f4f6f4',
             'theme_color' => '#328551',
@@ -219,34 +256,13 @@ final readonly class PublicController
         ], $bytes);
     }
 
-    private function calendarPage(string $ansicht, string $title): Response
+    /**
+     * Issue #37: Ziel für die 301-Redirects der Alt-Routen /belegung und
+     * /spielplan - der Query-String (Filter) wandert unverändert mit.
+     */
+    private function kalenderZiel(Request $request): string
     {
-        [$appData, $colorCss] = $this->stammdaten();
-        $appData['ansicht'] = $ansicht;
-
-        return Response::html($this->view->render('kalender', [
-            'title' => $title,
-            'ansicht' => $ansicht,
-            'appData' => $appData,
-            'colorCss' => $colorCss,
-            'scripts' => [
-                '/js/vendor/fullcalendar-scheduler.global.min.js',
-                '/js/vendor/fullcalendar-locale-de.global.min.js',
-                '/js/konflikte.js',
-                '/js/filter.js',
-                '/js/schreiben.js',
-                '/js/offline.js',
-                '/js/push.js',
-                '/js/offline-events.js',
-                '/js/legende-gruppierung.js',
-                '/js/legende.js',
-                '/js/nachlade.js',
-                '/js/kalender-events.js',
-                '/js/kalender-pitch.js',
-                '/js/kalender-farbe.js',
-                '/js/kalender.js',
-            ],
-        ]));
+        return '/kalender' . ($request->query !== [] ? '?' . http_build_query($request->query) : '');
     }
 
     /**

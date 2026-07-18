@@ -13,6 +13,10 @@ return static function (Router $router, Container $c): void {
     // ---- public pages (reading never starts a session) ----
 
     $router->get('/', static fn(Request $r, array $p): Response => $c->publicController()->home($r));
+    $router->get('/kalender', static fn(Request $r, array $p): Response => $c->publicController()->kalender($r));
+    // Issue #37: Spielplan + Platzbelegung zusammengeführt - Alt-Routen
+    // leiten (mit Query-String) auf /kalender um, damit geteilte Links
+    // funktionsfähig bleiben.
     $router->get('/belegung', static fn(Request $r, array $p): Response => $c->publicController()->belegung($r));
     $router->get('/spielplan', static fn(Request $r, array $p): Response => $c->publicController()->spielplan($r));
     $router->get('/verfuegbarkeit', static fn(Request $r, array $p): Response => $c->publicController()->verfuegbarkeit($r));
