@@ -1,10 +1,11 @@
-// Public calendars (Platzbelegung + Spielplan) built on FullCalendar.
-// Team- and venue color render simultaneously as two dots on every event
-// (Issue #39) - pure frontend, the API always delivers both color fields.
+// Public calendar (Issue #37: merged Platzbelegung + Spielplan) built on
+// FullCalendar. Four Darstellungen (Tag/Woche/Monat/Liste) via
+// VKKalenderAnsicht; team- and venue color render simultaneously as two dots
+// on every event (Issue #39) - pure frontend, the API always delivers both
+// color fields.
 
 (() => {
     const appData = JSON.parse(document.querySelector('#app-data').textContent);
-    const ansicht = appData.ansicht; // 'belegung' | 'spielplan'
 
     const activeTeams = appData.teams.filter((t) => t.aktiv);
     // Bereich-Name je Team (Issue #27: appData.bereiche statt appData.teams[].bereich)
@@ -40,8 +41,9 @@
     };
     const pitchLabel = (id) => appData.pitches.find((p) => String(p.id) === id)?.name ?? `Platz #${id}`;
 
-    // Platzfilter gilt in beiden Ansichten (Issue #6: Platzbelegung,
-    // Issue #11: Spielplan) - beide teilen dieses Skript.
+    // Platzfilter gilt in jeder Ansicht (Issue #6/#11/#37) - in den
+    // Ressourcen-Views (Tag/Woche, breit) reduziert er die Platz-Spalten,
+    // sonst filtert er die Termine direkt (applyPitchFilter).
     const filterDefinitionen = [
         { key: 'team', default: '', label: (wert) => `Team: ${activeTeams.find((t) => String(t.id) === wert)?.name ?? wert}` },
         { key: 'bereich', default: '', label: (wert) => `Bereich: ${bereichLabel(wert)}` },
@@ -60,10 +62,13 @@
         const legacy = appData.bereiche.find((b) => b.kuerzel === filters.bereich);
         filters.bereich = legacy ? String(legacy.id) : '';
     }
-    if (ansicht === 'belegung' && !urlParams.has('pitch')) {
+    if (!urlParams.has('pitch')) {
         // vor Issue #8 wurde der Platzfilter nur in localStorage gehalten;
-        // ohne URL-Wert bleibt das bisherige Verhalten erhalten
-        filters.pitch = localStorage.getItem('belegung_platz') ?? '';
+        // ohne URL-Wert bleibt das bisherige Verhalten erhalten. Issue #37:
+        // neuer Key `kalender_platz` statt des seitenspezifischen
+        // `belegung_platz` - der Alt-Key bleibt eine Version als Lesefallback
+        // bestehen (Migrationskonvention, CLAUDE.md Abschnitt 9).
+        filters.pitch = localStorage.getItem('kalender_platz') ?? localStorage.getItem('belegung_platz') ?? '';
     }
 
     const filterDialog = document.querySelector('#filter-dialog');
@@ -99,11 +104,12 @@
 
     const onFilterChange = () => {
         beacon('filternutzung');
-        if (ansicht === 'belegung') {
-            localStorage.setItem('belegung_platz', filters.pitch);
-        }
+        localStorage.setItem('kalender_platz', filters.pitch);
         renderFilterUi();
-        if (calendar.view.type === 'listNachlade') {
+        if (isWide) {
+            calendar.refetchResources();
+        }
+        if (modus === 'liste') {
             listeFilterGeaendert();
             return;
         }
@@ -145,25 +151,22 @@
 
     renderFilterUi();
 
-    // ---- pitch selector (Issue #6: Platzbelegung, schmale Bildschirme;
-    // Issue #11: Spielplan, alle Breiten) ----
-    // In der Platzbelegung geben unterhalb der Desktop-Sidebar-Schwelle die
-    // Platz-Spalten einer Dropdown-Auswahl nach: "Alle Plätze" (eine
-    // gemeinsame Woche, gefärbt nach Platzfarbe, Kürzel als Text) oder ein
-    // Einzelplatz (normale Woche, nur dieser Platz). Der Spielplan hat nie
-    // Platz-Spalten (kein Ressourcen-View), daher gilt dieselbe Auswahl dort
-    // unabhängig von der Bildschirmbreite. Client-side only: /api/events hat
-    // keinen Platzfilter, jedes Event trägt pitch_id/pitch_farbe/pitch_name/
-    // pitch_kuerzel bereits im Events-Feed.
-    // Snapshot once, like the existing isMobile check below: the dropdown's
-    // visibility is driven from this same flag (not a live CSS media query),
-    // so it can never disagree with the filtering/coloring logic it drives.
-    const isWideBelegung = window.matchMedia('(min-width: 1100px)').matches;
+    // ---- pitch selector (Issue #6/#11/#37: immer sichtbar, unabhängig von
+    // Ansicht/Breite) ----
+    // Ab der Desktop-Sidebar-Schwelle (~1100px) zeigen Tag/Woche eigene
+    // Platz-Spalten (Ressourcen-Views) - dort reduziert eine Einzelplatz-Wahl
+    // die Spalten (s. aktuelleRessourcen() weiter unten) statt die Termine zu
+    // filtern. In jeder anderen Kombination (Monat, Liste, schmale Tag/
+    // Woche) ersetzt "Alle Plätze" (Hintergrundfarbe+Kürzel-Präfix) bzw. ein
+    // gefilterter Einzelplatz die fehlenden Spalten. Client-side only:
+    // /api/events hat keinen Platzfilter, jedes Event trägt pitch_id/
+    // pitch_farbe/pitch_name/pitch_kuerzel bereits im Events-Feed.
+    // Snapshot once, like the existing isMobile check below: nichts hier
+    // reagiert live auf eine Fenstergrößenänderung - ein Reload wendet die
+    // neue Breite an.
+    const isWide = window.matchMedia('(min-width: 1100px)').matches;
     const pitchSelect = document.querySelector('#filter-pitch');
     if (pitchSelect) {
-        if (ansicht === 'belegung') {
-            pitchSelect.closest('.filter-narrow')?.classList.toggle('filter-narrow-hidden', isWideBelegung);
-        }
         for (const pitch of appData.pitches) {
             pitchSelect.add(new Option(`${pitch.name} (${pitch.venue_name})`, String(pitch.id)));
         }
@@ -179,7 +182,16 @@
             setzeFilter('pitch', pitchSelect.value);
         });
     }
-    const pitchGruppierungAktiv = () => window.VKKalenderPitch.pitchGruppierungAktiv(ansicht, isWideBelegung, filters.pitch);
+    const pitchGruppierungAktiv = () => window.VKKalenderPitch.pitchGruppierungAktiv(
+        window.VKKalenderAnsicht.hatResourceSpalten(modus, isWide),
+        filters.pitch,
+    );
+
+    // Synthetische Ressourcen-Spalte für Spiele ohne pitch_id (Issue #37:
+    // Auswärtsspiele, seltene Heimspiele mit offenem Platz) - geteilte
+    // Konstante zwischen aktuelleRessourcen() und toFcEvent(), da Events ohne
+    // bekannte resourceId in Ressourcen-Views sonst lautlos verschwinden.
+    const RESOURCE_AUSWAERTS_ID = 'auswaerts';
 
     // ---- calendar ----
 
@@ -195,7 +207,7 @@
             // same CSS custom properties as app.css, not a second literal (Issue #1)
             return props.art === 'gesperrt' ? 'var(--color-danger)' : 'var(--color-warning)';
         }
-        if (window.VKKalenderPitch.pitchFarbeAktiv(pitchGruppierungAktiv(), calendar.view.type === 'listNachlade')) {
+        if (window.VKKalenderPitch.pitchFarbeAktiv(pitchGruppierungAktiv(), modus === 'liste')) {
             return window.VKKalenderPitch.pitchEventFarbe(props);
         }
         return null;
@@ -291,27 +303,30 @@
         return { domNodes: [wrapper] };
     };
 
+    // Ressourcen-Spalte je Event: der zugeordnete Platz, sonst die
+    // synthetische "Auswärts"-Spalte (Issue #37) - ohne bekannte resourceId
+    // würde FullCalendar das Event in Ressourcen-Views lautlos verwerfen.
     const toFcEvent = (e) => ({
         id: e.id,
         title: eventTitle(e),
         start: e.start,
         end: e.ende,
-        resourceId: e.pitch_id !== null ? String(e.pitch_id) : undefined,
+        resourceId: e.pitch_id !== null ? String(e.pitch_id) : RESOURCE_AUSWAERTS_ID,
         color: eventColor(e) ?? undefined,
         display: e.typ === 'sperrung' ? 'background' : 'auto',
         classNames: [`ev-${e.typ}`, e.status === 'abgesagt' ? 'ev-abgesagt' : ''].filter(Boolean),
         extendedProps: e,
     });
 
-    // Einzelplatz (Issue #6/#11): in der Platzbelegung nur auf schmalen
-    // Bildschirmen (ab der Breiten-Schwelle bleibt der Filter wirkungslos,
-    // auch wenn ein alter Wert aus localStorage noch gesetzt ist - dort
-    // zeigen die Spalten immer alle Plätze); im Spielplan immer, unabhängig
-    // von der Breite (kein Ressourcen-View dort). Filtert Belegungen,
-    // Sperrungen und Spiele auf genau diesen Platz - Auswärtsspiele haben
-    // nie eine pitch_id und fallen dabei automatisch heraus.
+    // Einzelplatz (Issue #6/#11/#37): in den Ressourcen-Views (Tag/Woche,
+    // breit) reduziert aktuelleRessourcen() bereits die SPALTEN auf den
+    // gewählten Platz - ein zusätzlicher Event-Filter wäre dort wirkungslos.
+    // In jeder anderen Ansicht (Monat, Liste, schmale Tag/Woche) filtert er
+    // die Termine direkt. Filtert Belegungen, Sperrungen und Spiele auf genau
+    // diesen Platz - Auswärtsspiele haben nie eine pitch_id und fallen dabei
+    // automatisch heraus.
     const applyPitchFilter = (events) => (
-        (ansicht === 'spielplan' || (ansicht === 'belegung' && !isWideBelegung)) && filters.pitch !== ''
+        !window.VKKalenderAnsicht.hatResourceSpalten(modus, isWide) && filters.pitch !== ''
             ? events.filter((e) => String(e.pitch_id) === filters.pitch)
             : events
     );
@@ -341,11 +356,9 @@
                 throw error;
             }
             window.VKOffline.showBanner(bundle);
-            const typFilter = ansicht === 'belegung'
-                ? window.VKKalenderEvents.istBelegungsRelevant
-                : (e) => e.typ === 'spiel';
+            // Issue #37: kein typ-Filter mehr nötig - das Bundle liefert
+            // bereits alle Termintypen, wie der Online-Feed (typ='').
             const bundleEvents = window.VKOfflineEvents.eventsAusBundle(bundle, von, bis)
-                .filter(typFilter)
                 .filter((e) => {
                     if (filters.team === '') {
                         return true;
@@ -422,12 +435,12 @@
     // Laden) auf einen bereits verworfenen Cache weiterschreiben würde.
     let listeGeneration = 0;
 
-    // Wochenbeginn statt "heute" (Issue #26): die Terminliste ist auf
-    // Mobilgeräten die DEFAULT-Ansicht von Platzbelegung/Spielplan (s.
-    // initialViewTyp weiter unten), ihre untere Grenze bestimmt deshalb auch,
-    // ob "diese Woche" beim Öffnen vollständig erscheint - ein Start bei
-    // "heute" ließ bereits vergangene Tage der laufenden Woche fehlen.
-    // Details/Test bei wochenStart() in nachlade.js.
+    // Wochenbeginn statt "heute" (Issue #26): unabhängig davon, welcher
+    // Modus initial aktiv ist (Issue #37: mobil "Tag", sonst "Woche" - s.
+    // `modus` weiter unten), zeigt die Liste beim Wechsel dorthin immer den
+    // Wochenanfang, nicht "heute" - sonst fehlten beim ersten Öffnen bereits
+    // vergangene Tage der laufenden Woche. Details/Test bei wochenStart() in
+    // nachlade.js.
     const listeStart = () => window.VKNachlade.wochenStart(new Date());
 
     const listeHorizontEnde = () => {
@@ -463,7 +476,13 @@
     const listeTitelAktualisieren = () => {
         requestAnimationFrame(() => {
             const titleEl = document.querySelector('.fc-toolbar-title');
-            if (!titleEl || !listeAktiv) {
+            // Issue #37: mit dem jederzeit erreichbaren Umschalter kann ein
+            // noch laufender Hintergrund-Batch (listeLadeKette) erst NACH
+            // einem Wechsel weg von der Liste auflösen - `listeAktiv` allein
+            // reicht als Schutz nicht (wird teils erst im selben Tick wie
+            // dieses rAF gesetzt); die tatsächliche FC-View ist zum Zeitpunkt
+            // des rAF-Feuerns bereits verlässlich aktuell.
+            if (!titleEl || !listeAktiv || calendar.view.type !== 'listNachlade') {
                 return;
             }
             const von = new Date(`${window.VKNachlade.toIsoDate(listeStart())}T00:00:00`);
@@ -554,7 +573,7 @@
         if (!listeAktiv || calendar.view.type !== 'listNachlade' || listeErschoepft || listeLaedt) {
             return;
         }
-        const params = window.VKKalenderEvents.baueEventsParams(ansicht, filters);
+        const params = window.VKKalenderEvents.baueEventsParams(filters);
         try {
             await ladeEinenBatch(params, listeNaechsteGrenze());
             listeNeuRendern();
@@ -569,7 +588,7 @@
     const listeFilterGeaendert = () => {
         listeZuruecksetzen();
         listeNeuRendern();
-        listeLadeKette(window.VKKalenderEvents.baueEventsParams(ansicht, filters));
+        listeLadeKette(window.VKKalenderEvents.baueEventsParams(filters));
     };
 
     // IntersectionObserver statt Scroll-Event-Heuristik (Issue #24): ein
@@ -587,9 +606,60 @@
     }
 
     const isMobile = window.matchMedia('(max-width: 767px)').matches;
-    const initialViewTyp = ansicht === 'belegung'
-        ? (isWideBelegung ? 'resourceTimeGridWeek' : (isMobile ? 'listNachlade' : 'timeGridWeek'))
-        : (isMobile ? 'listNachlade' : 'dayGridMonth');
+    // Issue #37: vier Darstellungen statt zweier Seiten - zuletzt gewählte
+    // Ansicht wird gemerkt (localStorage), Default Woche (mobil: Tag, da eine
+    // 7-Spalten-Woche auf schmalen Displays praktisch unlesbar ist - Liste
+    // bleibt einen Tap entfernt, im PR begründet). Ungültige/veraltete Werte
+    // fallen auf den Default zurück (normalisiereModus).
+    let modus = window.VKKalenderAnsicht.normalisiereModus(
+        localStorage.getItem('kalender_ansicht'),
+        isMobile ? 'tag' : 'woche',
+    );
+
+    // Alle Plätze + eine synthetische "Auswärts"-Spalte für Spiele ohne
+    // pitch_id (Issue #37); bei gewähltem Einzelplatz nur dessen Spalte (bzw.
+    // die Auswärts-Spalte, falls "Auswärts" selbst gewählt wäre - aktuell
+    // nicht wählbar, das Dropdown listet nur echte Plätze). Nur relevant in
+    // den Ressourcen-Views (Tag/Woche, breit) - sonst leer.
+    const aktuelleRessourcen = () => {
+        if (!isWide) {
+            return [];
+        }
+        const alle = [
+            ...appData.pitches.map((p) => ({ id: String(p.id), title: `${p.name} (${p.venue_name})` })),
+            { id: RESOURCE_AUSWAERTS_ID, title: 'Auswärts' },
+        ];
+        return filters.pitch !== '' ? alle.filter((r) => r.id === filters.pitch) : alle;
+    };
+
+    // Aktiv-Markierung der vier Umschalter-Buttons: customButtons bekommen
+    // sie nicht automatisch wie FullCalendars eigene View-Buttons.
+    const aktualisiereModusButtons = () => {
+        for (const m of window.VKKalenderAnsicht.MODI) {
+            document.querySelector(`.fc-ansicht${m}-button`)?.classList.toggle('fc-button-active', m === modus);
+        }
+    };
+
+    // Modus wechseln (Issue #37): eigener State statt FullCalendars
+    // view.type - der `events`-Callback feuert für eine neu aktivierte View,
+    // BEVOR calendar.view.type den Wechsel widerspiegelt (s. Kommentar bei
+    // `events` weiter unten); Rendering-Logik (Gruppierung, Farbe, Titel)
+    // darf sich darauf also nie verlassen und liest stattdessen `modus`.
+    // Persistiert die Wahl, zählt sie in usage_stat und wechselt erst danach
+    // die FullCalendar-View.
+    const setzeModus = (neu) => {
+        if (neu === modus) {
+            return;
+        }
+        modus = neu;
+        localStorage.setItem('kalender_ansicht', modus);
+        beacon(window.VKKalenderAnsicht.statMetrik(modus));
+        aktualisiereModusButtons();
+        calendar.changeView(window.VKKalenderAnsicht.fcViewName(modus, isWide));
+    };
+
+    const ansichtButton = (m, text) => ({ text, hint: text, click: () => setzeModus(m) });
+
     const calendar = new FullCalendar.Calendar(document.querySelector('#kalender'), {
         schedulerLicenseKey: 'GPL-My-Project-Is-Open-Source',
         locale: 'de',
@@ -599,22 +669,24 @@
         slotMinTime: '07:00:00',
         slotMaxTime: '23:00:00',
         nowIndicator: true,
-        // Issue #6: Platz-Spalten (resourceTimeGridWeek) nur ab der Desktop-
-        // Sidebar-Schwelle (~1100px); darunter ersetzt die Platz-Auswahl
-        // (Dropdown) die Spalten durch eine gemeinsame Wochenansicht.
-        initialView: initialViewTyp,
+        // Issue #6/#37: Platz-Spalten (Ressourcen-Views) nur ab der Desktop-
+        // Sidebar-Schwelle (~1100px) in Tag/Woche; darunter bzw. in Monat/
+        // Liste ersetzt die Platz-Auswahl (Dropdown) die Spalten.
+        initialView: window.VKKalenderAnsicht.fcViewName(modus, isWide),
+        customButtons: {
+            ansichttag: ansichtButton('tag', 'Tag'),
+            ansichtwoche: ansichtButton('woche', 'Woche'),
+            ansichtmonat: ansichtButton('monat', 'Monat'),
+            ansichtliste: ansichtButton('liste', 'Liste'),
+        },
         headerToolbar: {
             left: 'prev,next today',
             center: 'title',
-            right: ansicht === 'belegung'
-                ? (isWideBelegung ? 'resourceTimeGridWeek,listNachlade' : 'timeGridWeek,listNachlade')
-                : 'dayGridMonth,timeGridWeek,listNachlade',
+            right: 'ansichttag,ansichtwoche,ansichtmonat,ansichtliste',
         },
         // Issue #3: "Heute" als Icon/Kurzform ohne Schriftzug, aber weiterhin
         // mit vollem Text für Hover-Titel und Screenreader (buttonHints).
-        // "listNachlade" ist in der de-Locale "Terminübersicht" (zu lang für
-        // 360-430px); "Liste" ist gleichwertig kurz zu "Woche"/"Monat".
-        buttonText: { today: '●', listNachlade: 'Liste' },
+        buttonText: { today: '●' },
         buttonHints: { today: 'Heute' },
         // Issue #4/#31: eigene View statt "listWeek" - das sichtbare Fenster
         // ist absichtlich EINMALIG auf einen großzügigen Horizont fixiert
@@ -628,9 +700,7 @@
                 visibleRange: { start: listeStart(), end: `${listeHorizontEnde()}T00:00:00` },
             },
         },
-        resources: ansicht === 'belegung' && isWideBelegung
-            ? appData.pitches.map((p) => ({ id: String(p.id), title: `${p.name} (${p.venue_name})` }))
-            : [],
+        resources: (info, success) => success(aktuelleRessourcen()),
         // Issue #31, Desktop-Ursache: `events` feuert für eine neu aktivierte
         // View, BEVOR `datesSet`/`calendar.view.type` den Wechsel
         // widerspiegeln - eine frühere Version, die anhand eines separat
@@ -646,7 +716,7 @@
         // und die Listen-Range (heute..LISTE_HORIZONT_JAHRE) ist so
         // großzügig, dass keine Grid-Ansicht sie je zufällig anfragt.
         events: async (info, success, failure) => {
-            const params = window.VKKalenderEvents.baueEventsParams(ansicht, filters);
+            const params = window.VKKalenderEvents.baueEventsParams(filters);
             const istListenFetch = info.startStr.slice(0, 10) === window.VKNachlade.toIsoDate(listeStart())
                 && info.endStr.slice(0, 10) === listeHorizontEnde();
 
@@ -675,12 +745,16 @@
         // FullCalendar's buttonHints only sets the hover title, not
         // aria-label; the icon-only "Heute" button (Issue #3) needs an
         // explicit one. datesSet fires on every toolbar re-render (nav,
-        // view switch), so re-apply it there too.
+        // view switch), so re-apply it there too - auch die Aktiv-Markierung
+        // der vier Ansichts-Buttons lebt hier aus demselben Grund.
         datesSet: () => {
             document.querySelector('.fc-today-button')?.setAttribute('aria-label', 'Heute');
+            aktualisiereModusButtons();
         },
     });
     calendar.render();
+    aktualisiereModusButtons();
+    beacon(window.VKKalenderAnsicht.statMetrik(modus));
 
     // ---- detail dialog ----
 
@@ -886,7 +960,7 @@
     };
 
     // ---- Konflikt-Anzeige (Issue #9, Issue #12: von Booking- UND
-    // Match-Formular genutzt, daher oberhalb der Belegung-only-Guard) ----
+    // Match-Formular genutzt) ----
     // Eine Serie (oder ein anderer wiederholter Verursacher) wird als eine
     // Zeile mit Anzahl + nächstem Termin dargestellt, aufklappbar für die
     // Einzeltermine; initial max. 5 Gruppen, Rest per "weitere anzeigen".
@@ -960,11 +1034,10 @@
     };
 
     // ---- match dialog (Issue #12: manuell erfasste Spiele) ----
-    // Das Dialog-Markup liegt außerhalb des Belegung-only-Blocks (Issue #6/
-    // #11): das Bearbeiten/Löschen eines manuellen Spiels mit Platz wird
-    // auch aus der Platzbelegung heraus angeboten (dort erscheint es dank
-    // typ=belegung ebenfalls). Der "Spiel eintragen"-Button existiert nur
-    // im Spielplan (kalender.php).
+    // Das Bearbeiten/Löschen eines manuellen Spiels mit Platz wird auch aus
+    // der Platz-Detailansicht heraus angeboten. Das Anlegen läuft seit
+    // Issue #37 über das gemeinsame "+ Eintragen"-Sheet (#entry-dialog, s.
+    // unten) statt eines eigenen Toolbar-Buttons.
     const matchDialog = document.querySelector('#match-dialog');
     const matchForm = document.querySelector('#match-form');
     const matchFeedback = document.querySelector('#match-feedback');
@@ -1009,7 +1082,6 @@
         matchDialog.showModal();
     };
 
-    document.querySelector('#new-match')?.addEventListener('click', () => openMatchDialog(null));
     document.querySelector('#match-cancel').addEventListener('click', () => matchDialog.close());
 
     matchForm.addEventListener('submit', async (event) => {
@@ -1055,11 +1127,10 @@
         }
     });
 
-    // ---- booking + exception dialogs (occupancy view only) ----
-
-    if (ansicht !== 'belegung') {
-        return;
-    }
+    // ---- booking + exception dialogs ----
+    // Issue #37: nicht mehr nur in der Platzbelegung - showDetail() öffnet
+    // openEdit()/openAusfallDialog() für jedes Belegungs-Event, unabhängig
+    // von der Ansicht, daher müssen diese Dialoge immer verdrahtet sein.
 
     const bookingDialog = document.querySelector('#booking-dialog');
     const bookingForm = document.querySelector('#booking-form');
@@ -1136,7 +1207,6 @@
         bookingDialog.showModal();
     };
 
-    document.querySelector('#new-booking').addEventListener('click', () => openBookingDialog('', null, null, {}));
     document.querySelector('#booking-cancel').addEventListener('click', () => bookingDialog.close());
 
     // ---- edit scope choice (alle / nachfolgende / einzeln) ----
@@ -1262,5 +1332,22 @@
         } catch {
             // name dialog cancelled
         }
+    });
+
+    // ---- "+ Eintragen"-Sheet (Issue #37) ----
+    // Ein gemeinsamer Toolbar-Button statt der früheren zwei ("Belegung
+    // eintragen" / "Spiel eintragen") öffnet ein kleines Auswahl-Sheet, das
+    // die bestehenden Dialoge öffnet - erst hier verdrahtet, weil sowohl
+    // openBookingDialog als auch openMatchDialog erst oben definiert werden.
+    const entryDialog = document.querySelector('#entry-dialog');
+    document.querySelector('#new-entry').addEventListener('click', () => entryDialog.showModal());
+    document.querySelector('#entry-cancel').addEventListener('click', () => entryDialog.close());
+    document.querySelector('#entry-booking').addEventListener('click', () => {
+        entryDialog.close();
+        openBookingDialog('', null, null, {});
+    });
+    document.querySelector('#entry-match').addEventListener('click', () => {
+        entryDialog.close();
+        openMatchDialog(null);
     });
 })();

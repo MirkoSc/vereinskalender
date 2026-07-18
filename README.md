@@ -5,11 +5,12 @@ Spielplan mit automatischem Import von fussball.de. Läuft auf all-inkl
 Shared Hosting (PHP 8.5 + MySQL/MariaDB) – ohne SSH, ohne Composer auf dem
 Server. Architektur und Konventionen: siehe [CLAUDE.md](CLAUDE.md).
 
-**Funktionen:** Platzbelegung als Wochenraster (wiederkehrende Trainingsslots
-mit Ausnahmen und Platzsperrungen), Spielplan mit ICS-Import, öffentliche
+**Funktionen:** eine Kalenderseite mit vier Darstellungen (Tag/Woche/Monat/
+Liste) für Platzbelegung (wiederkehrende Trainingsslots mit Ausnahmen und
+Platzsperrungen) und Spielplan (ICS-Import) gemeinsam, öffentliche
 Verfügbarkeitsansicht, Kalender-Abos (ICS-Feeds), Web-Push bei Sperrungen und
-Spielverlegungen, PWA mit Offline-Fenster, Event-Historie mit Rückroll-Funktion,
-Self-Update, Backups, Saison-Assistent.
+Spielverlegungen, PWA mit Offline-Unterstützung, Event-Historie mit
+Rückroll-Funktion, Self-Update, Backups, Saison-Assistent.
 
 ## Installation auf all-inkl (KAS)
 

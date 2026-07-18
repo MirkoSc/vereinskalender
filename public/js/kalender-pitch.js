@@ -1,15 +1,15 @@
 // Pure helpers für die "nach Platz"-Gruppierung/-Filterung: Farbe + Text je
 // Platz, Auswärtsspiele als eigene "Auswärts"-Gruppe (Issue #11, Spielplan;
-// Issue #6, schmale Platzbelegung). Extrahiert für Testbarkeit mit
-// `node --test tests/js` (analog kalender-events.js/filter.js).
+// Issue #6, schmale Platzbelegung; Issue #37: eine gemeinsame Kalenderseite).
+// Extrahiert für Testbarkeit mit `node --test tests/js` (analog
+// kalender-events.js/filter.js).
 (() => {
     // Ob "Alle Plätze" (Hintergrundfarbe+Text statt Ressourcen-Spalten) aktiv
-    // ist: im Spielplan immer (kein Ressourcen-View dort), in der
-    // Platzbelegung nur unterhalb der Desktop-Sidebar-Schwelle ohne
-    // Einzelplatz-Auswahl.
-    const pitchGruppierungAktiv = (ansicht, isWideBelegung, pitchFilter) => (
-        (pitchFilter ?? '') === ''
-        && (ansicht === 'spielplan' || (ansicht === 'belegung' && !isWideBelegung))
+    // ist: in jeder Grid-Ansicht OHNE Ressourcen-Spalten (Monat immer, Tag/
+    // Woche unterhalb der Desktop-Sidebar-Schwelle - kalender-ansicht.js
+    // hatResourceSpalten()) und ohne Einzelplatz-Auswahl.
+    const pitchGruppierungAktiv = (hatResourceSpalten, pitchFilter) => (
+        (pitchFilter ?? '') === '' && !hatResourceSpalten
     );
 
     // Auswärtsspiele haben keinen Platz (CLAUDE.md Abschnitt 3: pitch_id NUR

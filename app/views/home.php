@@ -1,13 +1,9 @@
 <section>
     <h2>Willkommen beim Vereinskalender</h2>
     <div class="card-grid">
-        <a class="card" href="/belegung">
-            <h3>Platzbelegung</h3>
-            <p>Wochenraster: Welches Team trainiert wann auf welchem Platz.</p>
-        </a>
-        <a class="card" href="/spielplan">
-            <h3>Spielplan</h3>
-            <p>Alle Spiele unserer Teams – Heim und Auswärts.</p>
+        <a class="card" href="/kalender">
+            <h3>Kalender</h3>
+            <p>Alle Termine in einer Ansicht: Training, Spiele – Heim und Auswärts – und Platzsperrungen.</p>
         </a>
         <a class="card" href="/verfuegbarkeit">
             <h3>Verfügbarkeit</h3>

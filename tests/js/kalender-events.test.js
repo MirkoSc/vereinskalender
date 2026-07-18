@@ -1,41 +1,33 @@
 // Pure helpers for FullCalendars 'events'-Callback in kalender.js (Query-
-// Aufbau, Offline-Relevanzfilter, "manuelle Termine"-Filter). Plain Node
-// test runner (`node --test tests/js`).
+// Aufbau, "manuelle Termine"-Filter). Plain Node test runner
+// (`node --test tests/js`).
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-    baueEventsParams, istBelegungsRelevant, manuellFilterAnwenden,
+    baueEventsParams, manuellFilterAnwenden,
 } = require('../../public/js/kalender-events.js');
 
-test('baueEventsParams liefert nur den typ-Parameter ohne aktive Filter', () => {
-    const params = baueEventsParams('spielplan', { team: '', bereich: '', venue: '' });
-    assert.equal(params.toString(), 'typ=spiel');
+test('baueEventsParams liefert eine leere Query ohne aktive Filter (Issue #37: kein typ mehr, EventFeedService liefert alles)', () => {
+    const params = baueEventsParams({ team: '', bereich: '', venue: '' });
+    assert.equal(params.toString(), '');
 });
 
 test('baueEventsParams übernimmt aktive Filter, aber nicht pitch (clientseitig)', () => {
-    const params = baueEventsParams('belegung', { team: '5', bereich: '', venue: 'heim', pitch: '3' });
-    assert.equal(params.toString(), 'typ=belegung&team=5&venue=heim');
+    const params = baueEventsParams({ team: '5', bereich: '', venue: 'heim', pitch: '3' });
+    assert.equal(params.toString(), 'team=5&venue=heim');
 });
 
-test('baueEventsParams lässt pitch auch im Spielplan weg (Issue #11: clientseitiger Filter)', () => {
-    const params = baueEventsParams('spielplan', { team: '', bereich: '', venue: '', pitch: '3' });
-    assert.equal(params.toString(), 'typ=spiel');
-});
-
-test('istBelegungsRelevant: Heimspiele mit Platz gehören zur Platzbelegung (Issue #10)', () => {
-    assert.equal(istBelegungsRelevant({ typ: 'belegung' }), true);
-    assert.equal(istBelegungsRelevant({ typ: 'sperrung' }), true);
-    assert.equal(istBelegungsRelevant({ typ: 'spiel', pitch_id: 3, status: 'geplant' }), true);
-    assert.equal(istBelegungsRelevant({ typ: 'spiel', pitch_id: null, status: 'geplant' }), false, 'kein Platz zugeordnet');
-    assert.equal(istBelegungsRelevant({ typ: 'spiel', pitch_id: 3, status: 'abgesagt' }), false, 'abgesagt');
+test('baueEventsParams lässt pitch immer weg (Issue #6/#11: clientseitiger Filter)', () => {
+    const params = baueEventsParams({ team: '', bereich: '', venue: '', pitch: '3' });
+    assert.equal(params.toString(), '');
 });
 
 // Issue #12: Filter "manuelle Termine" (dreistufig, rein clientseitig)
 
 test('baueEventsParams lässt manuell weg (Issue #12: clientseitiger Filter)', () => {
-    const params = baueEventsParams('spielplan', { team: '5', bereich: '', venue: '', pitch: '', manuell: 'ohne' });
-    assert.equal(params.toString(), 'typ=spiel&team=5');
+    const params = baueEventsParams({ team: '5', bereich: '', venue: '', pitch: '', manuell: 'ohne' });
+    assert.equal(params.toString(), 'team=5');
 });
 
 test('manuellFilterAnwenden: leerer Wert zeigt alles', () => {
