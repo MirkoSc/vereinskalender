@@ -43,8 +43,32 @@ final readonly class PublicController
     public function home(Request $request): Response
     {
         $this->stats->increment('seite', '/');
+        [$appData, $colorCss] = $this->stammdaten();
 
-        return Response::html($this->view->render('home', ['title' => 'Vereinskalender']));
+        return Response::html($this->view->render('home', [
+            'title' => 'Vereinskalender',
+            'appData' => $appData,
+            'colorCss' => $colorCss,
+            'scripts' => ['/js/legende-gruppierung.js', '/js/legende.js'],
+        ]));
+    }
+
+    /**
+     * Eigene, teilbare Seite (Issue #38) mit derselben Legende-Komponente
+     * wie die Startseite (einklappbar) und der Overlay im Kalender - alle
+     * drei füllen [data-legende] aus derselben appData (public/js/legende.js).
+     */
+    public function legende(Request $request): Response
+    {
+        $this->stats->increment('seite', '/legende');
+        [$appData, $colorCss] = $this->stammdaten();
+
+        return Response::html($this->view->render('legende', [
+            'title' => 'Legende',
+            'appData' => $appData,
+            'colorCss' => $colorCss,
+            'scripts' => ['/js/legende-gruppierung.js', '/js/legende.js'],
+        ]));
     }
 
     public function belegung(Request $request): Response
@@ -73,7 +97,8 @@ final readonly class PublicController
             'colorCss' => $colorCss,
             'scripts' => [
                 '/js/konflikte.js', '/js/filter.js', '/js/schreiben.js', '/js/offline.js', '/js/push.js',
-                '/js/offline-events.js', '/js/offline-verfuegbarkeit.js', '/js/verfuegbarkeit.js',
+                '/js/offline-events.js', '/js/offline-verfuegbarkeit.js', '/js/legende-gruppierung.js',
+                '/js/legende.js', '/js/verfuegbarkeit.js',
             ],
         ]));
     }
@@ -213,6 +238,8 @@ final readonly class PublicController
                 '/js/offline.js',
                 '/js/push.js',
                 '/js/offline-events.js',
+                '/js/legende-gruppierung.js',
+                '/js/legende.js',
                 '/js/nachlade.js',
                 '/js/kalender-events.js',
                 '/js/kalender-pitch.js',
