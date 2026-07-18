@@ -14,6 +14,7 @@
     <?php if ($showNav ?? false): ?>
         <nav class="admin-nav">
             <a href="/admin">Übersicht</a>
+            <a href="/admin/bereiche">Bereiche</a>
             <a href="/admin/teams">Teams</a>
             <a href="/admin/plaetze">Plätze</a>
             <a href="/admin/spielstaetten">Spielstätten</a>

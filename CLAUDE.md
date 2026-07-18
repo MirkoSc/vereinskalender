@@ -44,10 +44,25 @@ kein Soft-Delete-Feld. Technische Tabellen (admin, schema_version, rate_limit,
 usage_stat, push_subscription, notification_queue, import_source-Laufstatus)
 sind KEINE Projektionen.
 
-- **team**: bereich ('G'|'F'|'E'|'D'|'C'|'Herren'), name (z. B. "E2"),
-  kuerzel, farbe (aus vordefinierter Palette), aktiv, sortierung. Mehrere
-  Mannschaften je Bereich; je Mannschaft eine import_source. Inaktive Teams
-  verschwinden aus Filtern/Neuanlagen, Historie bleibt.
+- **bereich**: name, kuerzel, sortierung, aktiv. Eigenes Event-Aggregat
+  (Issue #27) statt festem Enum: anlegen, umbenennen, sortieren,
+  deaktivieren. Migration 013 seedet die acht bisherigen Werte (G-/F-/E-/D-/
+  C-/B-/A-Jugend, Herren) als System-Events (quelle='system', kuerzel =
+  ehemaliger Enum-Wert); B-/A-Jugend fehlten im alten Enum und sind damit
+  neu. Löschen nur ohne referenzierende Teams (sonst deaktivieren – Historie
+  bleibt, wie bei team.aktiv).
+- **team**: bereich_id FK auf bereich, name (z. B. "E2"), kuerzel, farbe
+  (aus vordefinierter Palette), aktiv, sortierung. Übergangsweise (eine
+  Version, für Rollback) bleibt die Alt-Spalte bereich (String-Enum-Wert)
+  bestehen und wird beim Schreiben mit dem Kürzel des gewählten Bereichs
+  mitgeführt. Alt-Events mit nur dieser String-Payload werden beim Replay
+  deterministisch auf die passende bereich_id gehoben – aufgelöst über die
+  unveränderlichen System-Seed-Events im Event-Log (nicht über die
+  umbenennbare bereich-Projektion, damit eine spätere Umbenennung alte
+  Replays nicht verändert); bewusst kein references()-Eintrag, damit die
+  Replay-Reihenfolge relativ zu den Bereich-Seed-Events keine Rolle spielt.
+  Mehrere Mannschaften je Bereich; je Mannschaft eine import_source.
+  Inaktive Teams verschwinden aus Filtern/Neuanlagen, Historie bleibt.
 - **pitch**: venue_id FK (Heimverein), name, kuerzel (Pflichtfeld, max. 10
   Zeichen, für die Text-Beschriftung bei der Platz-Gruppierung im
   Spielplan), farbe (aus vordefinierter Palette), typ, flutlicht, adresse
@@ -155,11 +170,14 @@ jederzeit per Replay rekonstruierbar.
 
 CSRF-Token für alle Schreibrouten. Passwörter nie loggen.
 
-Admin-Funktionen: Teams/Plätze/Spielstätten-CRUD (Teams inkl. eingebetteter
-Heimspielstätten-Regeln, Abschnitt 3), Import-Quellen, Event-Historie
-(Filter: IP/Name/Typ/Quelle/Zeitraum; Einzel- und Massen-Ausschluss,
-Korrektur, Ausschluss aufheben, Rebuild mit Fortschritt), Backup
-erstellen/herunterladen, Update einspielen, Saison-Assistent (Teams
+Admin-Funktionen: Bereiche/Teams/Plätze/Spielstätten-CRUD (Teams inkl.
+eingebetteter Heimspielstätten-Regeln, Abschnitt 3; Sortierung in allen vier
+Listen per Drag&Drop – Pointer Events, Touch-Ziel ≥ 44 px –, das Zahlenfeld
+bleibt als Fallback), Import-Quellen, Event-Historie (Filter:
+IP/Name/Typ/Quelle/Zeitraum; Einzel- und Massen-Ausschluss, Korrektur,
+Ausschluss aufheben, Rebuild mit Fortschritt), Backup
+erstellen/herunterladen, Update einspielen, Saison-Assistent (Hinweis auf
+die Bereichs-Pflege beim Aufstieg mit Link in die Bereichs-Verwaltung, Teams
 umbenennen/deaktivieren/anlegen, Import-URLs erneuern – fussball.de vergibt
 pro Saison neue –, Slots und Heimspielstätten-Regeln der Vorsaison als
 Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
@@ -237,10 +255,12 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   zugeordnet → Venue des Platzes (ein Spiel auf einem Platz ist per
   Definition an dessen Spielstätte, z. B. manuelles Spiel mit leerem
   ort_text); sonst → auswärts (Setting-Farbe).
-- Filter: `team=<id>`, `bereich=<…>`, `venue=<id>`, `venue=heim`,
-  `venue=auswaerts`. Mehr-Team-Slots matchen, wenn EIN Team den Filter
-  erfüllt; API liefert `team_ids` zusätzlich zu `team_id` (= erstes Team,
-  bestimmt Farbe).
+- Filter: `team=<id>`, `bereich=<id>` (numerische Bereichs-ID; alte geteilte
+  Links mit dem früheren Enum-String G/F/E/D/C/Herren funktionieren
+  übergangsweise weiter – aufgelöst über `bereich.kuerzel`, Issue #27),
+  `venue=<id>`, `venue=heim`, `venue=auswaerts`. Mehr-Team-Slots matchen,
+  wenn EIN Team den Filter erfüllt; API liefert `team_ids` zusätzlich zu
+  `team_id` (= erstes Team, bestimmt Farbe).
 - Vereinssicht „Bei uns" = voreingestellte Filterkombination (Heimspiele +
   Belegungen + Restriktionen je Verein), keine eigene Datenlogik.
 - Teamfarben als CSS-Variablen aus der DB (`:root { --team-<id>: … }`).
@@ -268,11 +288,13 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
 - Mobile-Patterns: Bottom-Sheets, Chip-Filter, Segmented Control,
   Touch-Ziele ≥ 44 px.
 - **PWA/Offline**: Service Worker cached App-Shell; `GET /api/offline-bundle`
-  (format-versioniert, aktuell 2) liefert den **kompletten Datenbestand**
+  (format-versioniert, aktuell 3 – Issue #27 hat eine `bereiche`-Liste sowie
+  `team.bereich_id` ergänzt) liefert den **kompletten Datenbestand**
   (Issue #25): alle Spiele und Sperrungen bereits serialisiert (Feed-Shape,
   inkl. Platz-/Vereinszuordnung über `VenueMatcher`/`MatchDuration`),
   Trainings-Slots dagegen als **Regeln** (nicht expandiert) plus ihre
-  Ausnahmen, dazu Teams/Spielstätten/Plätze/Farben/Settings. Alle vier
+  Ausnahmen, dazu Teams (mit bereich_id)/Bereiche/Spielstätten/Plätze/
+  Farben/Settings. Alle vier
   öffentlichen Ansichten – Spielplan, Platzbelegung, Terminliste UND
   Verfügbarkeit – müssen offline vollständig funktionieren, nicht nur für
   ein Zeitfenster: `public/js/offline-events.js` expandiert Slots
@@ -406,7 +428,16 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   blockiert / Überlappung + eingeschraenkt warnen, **„Import ignoriert
   manuelle Spiele"-Regression**, ende-Fallback in Konfliktprüfung/
   Verfügbarkeit/Feed/Export, ende-NULL-Upcasting beim Replay, Push bei
-  Verlegung/Absage manueller Spiele, kein Push bei Löschung); **Offline-
+  Verlegung/Absage manueller Spiele, kein Push bei Löschung); **Bereich-
+  Upcasting** (Issue #27: Alt-Team-Event mit nur dem Enum-String → über die
+  System-Seed-Events im Event-Log auf die passende bereich_id gehoben,
+  deterministisch unabhängig von der Replay-Reihenfolge relativ zu den
+  Seed-Events, unverändert auch nach Umbenennung des Bereichs); Bereiche-
+  CRUD (Delete-Guard bei referenzierenden Teams, Deaktivieren statt Löschen,
+  ein bereits zugewiesener – nun inaktiver – Bereich bleibt für das eigene
+  Team gültig, neue Zuweisungen an ihn werden abgelehnt); Drag&Drop-
+  Sortierung (nur tatsächlich verschobene Zeilen erhalten ein Updated-Event,
+  eine Transaktion); **Offline-
   Paritätstests** (Issue #25): goldene Fixtures
   (`tests/fixtures/parity/bundle.json` + `cases.json`, inkl. beider
   DST-Wochenenden, überlappender Slots, mehrtägiger vor dem Zeitraum

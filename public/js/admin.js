@@ -176,4 +176,73 @@ if (startButton) {
     });
 }
 
+// ---- Drag&Drop-Sortierung (Issue #27): Bereiche, Teams, Plätze,
+// Spielstätten. Pointer Events statt HTML5-Drag&Drop, damit Maus und Touch
+// identisch funktionieren (Handle-Spalte, Touch-Ziel >=44px, CLAUDE.md
+// Abschnitt 8). Das Zahlenfeld "Sortierung" im jeweiligen Formular bleibt
+// als Fallback bestehen - hier wird nur die per Drag geänderte Reihenfolge
+// persistiert (ein Updated-Event je tatsächlich verschobener Zeile,
+// SortierungService).
+
+for (const table of document.querySelectorAll('table[data-sortable]')) {
+    const tbody = table.querySelector('tbody');
+    const reorderUrl = table.dataset.reorderUrl;
+    if (!tbody || !reorderUrl) {
+        continue;
+    }
+    const csrf = document.querySelector('meta[name="csrf-token"]').content;
+
+    const rows = () => [...tbody.querySelectorAll('tr[data-id]')];
+    let draggingRow = null;
+
+    const onPointerMove = (event) => {
+        if (!draggingRow) {
+            return;
+        }
+        const afterRow = rows().find((row) => {
+            if (row === draggingRow) {
+                return false;
+            }
+            const rect = row.getBoundingClientRect();
+            return event.clientY < rect.top + rect.height / 2;
+        });
+        tbody.insertBefore(draggingRow, afterRow ?? null);
+    };
+
+    const onPointerUp = async () => {
+        if (!draggingRow) {
+            return;
+        }
+        draggingRow.classList.remove('dragging');
+        document.removeEventListener('pointermove', onPointerMove);
+        document.removeEventListener('pointerup', onPointerUp);
+        draggingRow = null;
+
+        const ids = rows().map((row) => Number(row.dataset.id));
+        try {
+            const response = await fetch(reorderUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+                body: JSON.stringify({ ids }),
+            });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+        } catch (error) {
+            console.error('Sortierung: Speichern fehlgeschlagen', error);
+            alert('Sortierung konnte nicht gespeichert werden. Bitte Seite neu laden und erneut versuchen.');
+        }
+    };
+
+    for (const handle of tbody.querySelectorAll('.drag-handle')) {
+        handle.addEventListener('pointerdown', (event) => {
+            event.preventDefault();
+            draggingRow = handle.closest('tr');
+            draggingRow.classList.add('dragging');
+            document.addEventListener('pointermove', onPointerMove);
+            document.addEventListener('pointerup', onPointerUp);
+        });
+    }
+}
+
 export {};

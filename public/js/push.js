@@ -18,8 +18,9 @@
 
     const teamSelect = document.querySelector('#push-teams');
     if (teamSelect) {
+        const bereichName = (bereichId) => (appData.bereiche ?? []).find((b) => b.id === bereichId)?.name ?? '';
         for (const team of (appData.teams ?? []).filter((t) => t.aktiv)) {
-            teamSelect.add(new Option(`${team.name} (${team.bereich})`, String(team.id)));
+            teamSelect.add(new Option(`${team.name} (${bereichName(team.bereich_id)})`, String(team.id)));
         }
     }
 
