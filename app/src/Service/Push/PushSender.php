@@ -124,7 +124,7 @@ final class PushSender
                 return [
                     'titel' => 'Spiel abgesagt: ' . $teamName,
                     'text' => $gegner . ' (' . self::germanDateTime((string) ($payload['alter_anstoss'] ?? '')) . ') fällt aus.',
-                    'url' => '/spielplan',
+                    'url' => '/kalender',
                 ];
             }
 
@@ -136,7 +136,7 @@ final class PushSender
                     self::germanDateTime((string) ($payload['neuer_anstoss'] ?? '')),
                     self::germanDateTime((string) ($payload['alter_anstoss'] ?? '')),
                 ),
-                'url' => '/spielplan',
+                'url' => '/kalender',
             ];
         }
 

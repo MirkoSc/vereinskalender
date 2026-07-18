@@ -1,6 +1,7 @@
 // Tests für die "nach Platz"-Gruppierung (Issue #11: Spielplan; Issue #6:
-// schmale Platzbelegung) - reine Logik aus public/js/kalender-pitch.js.
-// Plain Node test runner (`node --test tests/js`).
+// schmale Platzbelegung; Issue #37: gemeinsame Kalenderseite) - reine Logik
+// aus public/js/kalender-pitch.js. Plain Node test runner
+// (`node --test tests/js`).
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -8,18 +9,17 @@ const {
     pitchGruppierungAktiv, pitchEventFarbe, pitchEventPraefix, pitchFarbeAktiv,
 } = require('../../public/js/kalender-pitch.js');
 
-test('pitchGruppierungAktiv ist im Spielplan unabhängig von der Bildschirmbreite aktiv', () => {
-    assert.equal(pitchGruppierungAktiv('spielplan', true, ''), true);
-    assert.equal(pitchGruppierungAktiv('spielplan', false, ''), true);
+test('pitchGruppierungAktiv ist ohne Ressourcen-Spalten aktiv (Monat, oder Tag/Woche unter der Breiten-Schwelle)', () => {
+    assert.equal(pitchGruppierungAktiv(false, ''), true);
 });
 
-test('pitchGruppierungAktiv ist mit gewähltem Einzelplatz inaktiv', () => {
-    assert.equal(pitchGruppierungAktiv('spielplan', false, '3'), false);
+test('pitchGruppierungAktiv ist mit Ressourcen-Spalten (Tag/Woche, breit) inaktiv', () => {
+    assert.equal(pitchGruppierungAktiv(true, ''), false);
 });
 
-test('pitchGruppierungAktiv ist in der Platzbelegung nur unterhalb der Desktop-Schwelle aktiv (Issue #6)', () => {
-    assert.equal(pitchGruppierungAktiv('belegung', false, ''), true);
-    assert.equal(pitchGruppierungAktiv('belegung', true, ''), false);
+test('pitchGruppierungAktiv ist mit gewähltem Einzelplatz immer inaktiv', () => {
+    assert.equal(pitchGruppierungAktiv(false, '3'), false);
+    assert.equal(pitchGruppierungAktiv(true, '3'), false);
 });
 
 test('pitchEventFarbe: Auswärtsspiele bekommen die Auswärtsfarbe statt der (fehlenden) Platzfarbe', () => {
