@@ -8,6 +8,9 @@
     let modus = 'team';
 
     const activeTeams = appData.teams.filter((t) => t.aktiv);
+    // Bereich-Name je Team (Issue #27: appData.bereiche statt appData.teams[].bereich)
+    const bereichName = (bereichId) => appData.bereiche.find((b) => b.id === bereichId)?.name ?? `Bereich #${bereichId}`;
+    const teamBereichName = (team) => (team.bereich_id !== null ? bereichName(team.bereich_id) : '–');
 
     const beacon = (metrik) => navigator.sendBeacon?.(
         '/api/stat',
@@ -19,18 +22,18 @@
 
     const teamSelect = document.querySelector('#filter-team');
     for (const team of activeTeams) {
-        teamSelect.add(new Option(`${team.name} (${team.bereich})`, String(team.id)));
+        teamSelect.add(new Option(`${team.name} (${teamBereichName(team)})`, String(team.id)));
     }
     const bereichSelect = document.querySelector('#filter-bereich');
-    for (const bereich of [...new Set(appData.teams.map((t) => t.bereich))]) {
-        bereichSelect.add(new Option(bereich === 'Herren' ? 'Herren' : `${bereich}-Jugend`, bereich));
+    for (const bereich of appData.bereiche) {
+        bereichSelect.add(new Option(bereich.name, String(bereich.id)));
     }
     const venueSelect = document.querySelector('#filter-venue');
     for (const venue of appData.venues) {
         venueSelect.add(new Option(venue.name, String(venue.id)));
     }
 
-    const bereichLabel = (bereich) => (bereich === 'Herren' ? 'Herren' : `${bereich}-Jugend`);
+    const bereichLabel = (bereichId) => bereichName(Number(bereichId));
     const venueLabel = (wert) => {
         if (wert === 'heim') return 'Nur Heim';
         if (wert === 'auswaerts') return 'Nur Auswärts';
@@ -50,6 +53,14 @@
 
     const urlParams = new URLSearchParams(window.location.search);
     const filters = window.VKFilter.leseFilterAusUrl(urlParams, filterDefinitionen);
+    // Issue #27: alte geteilte Links trugen den Bereich als Enum-String
+    // (G/F/E/D/C/Herren) statt der numerischen bereich_id - einmalig beim
+    // Laden auf die ID normalisieren, damit Filter-Select UND clientseitiger
+    // Offline-Filter (der die ID vergleicht) den Link weiter verstehen.
+    if (filters.bereich !== '' && !/^\d+$/.test(filters.bereich)) {
+        const legacy = appData.bereiche.find((b) => b.kuerzel === filters.bereich);
+        filters.bereich = legacy ? String(legacy.id) : '';
+    }
     if (ansicht === 'belegung' && !urlParams.has('pitch')) {
         // vor Issue #8 wurde der Platzfilter nur in localStorage gehalten;
         // ohne URL-Wert bleibt das bisherige Verhalten erhalten
@@ -277,7 +288,7 @@
                         return true;
                     }
                     return (e.team_ids ?? [e.team_id]).some(
-                        (id) => appData.teams.find((t) => t.id === id)?.bereich === filters.bereich,
+                        (id) => String(appData.teams.find((t) => t.id === id)?.bereich_id) === filters.bereich,
                     );
                 })
                 .filter((e) => {
@@ -892,7 +903,7 @@
 
     const matchTeamSelect = document.querySelector('#match-team');
     for (const team of activeTeams) {
-        matchTeamSelect.add(new Option(`${team.name} (${team.bereich})`, String(team.id)));
+        matchTeamSelect.add(new Option(`${team.name} (${teamBereichName(team)})`, String(team.id)));
     }
     const matchPitchSelect = document.querySelector('#match-pitch');
     for (const pitch of appData.pitches) {
@@ -997,7 +1008,7 @@
         box.type = 'checkbox';
         box.name = 'team_ids[]';
         box.value = String(team.id);
-        label.append(box, ` ${team.name} (${team.bereich})`);
+        label.append(box, ` ${team.name} (${teamBereichName(team)})`);
         bookingTeams.append(label);
     }
     const bookingPitchSelect = document.querySelector('#booking-pitch');

@@ -10,6 +10,7 @@ use App\Service\EventStore\EventStore;
 use App\Service\EventStore\RebuildService;
 use App\Service\EventStore\Replayer;
 use App\Service\Migration\Migrator;
+use App\Service\Projection\BereichProjector;
 use App\Service\Projection\ImportSourceProjector;
 use App\Service\Projection\MatchProjector;
 use App\Service\Projection\PitchProjector;
@@ -71,6 +72,7 @@ abstract class DatabaseTestCase extends TestCase
             new VenueProjector($this->pdo()),
             new VenueBegriffProjector($this->pdo()),
             new PitchProjector($this->pdo()),
+            new BereichProjector($this->pdo()),
             new TeamProjector($this->pdo()),
             new TrainingSlotProjector($this->pdo()),
             new SlotExceptionProjector($this->pdo()),
@@ -146,6 +148,29 @@ abstract class DatabaseTestCase extends TestCase
             ['bereich' => $bereich, 'name' => $name, 'kuerzel' => $name, 'farbe' => $farbe, 'aktiv' => true, 'sortierung' => 0],
             $this->context(),
         )->aggregateId;
+    }
+
+    protected function createBereich(string $name = 'Freizeit', string $kuerzel = 'FR', int $sortierung = 0): int
+    {
+        return $this->eventStore()->append(
+            \App\Domain\AggregateType::Bereich,
+            null,
+            \App\Domain\EventType::Created,
+            ['name' => $name, 'kuerzel' => $kuerzel, 'sortierung' => $sortierung, 'aktiv' => true],
+            $this->context(),
+        )->aggregateId;
+    }
+
+    /**
+     * @return array<string, mixed>|null the seeded bereich row matching a legacy kuerzel (G/F/E/D/C/B/A/Herren)
+     */
+    protected function findSeededBereich(string $kuerzel): ?array
+    {
+        $stmt = $this->pdo()->prepare('SELECT * FROM bereich WHERE kuerzel = ?');
+        $stmt->execute([$kuerzel]);
+        $row = $stmt->fetch();
+
+        return $row === false ? null : $row;
     }
 
     protected function createBegriff(int $venueId, string $begriff, int $sortierung = 0): int
@@ -317,6 +342,7 @@ abstract class DatabaseTestCase extends TestCase
             new \App\Repository\VenueRepository($pdo),
             new \App\Repository\SettingRepository($pdo),
             \App\Service\Kalender\VenueMatcher::fromDatabase($pdo),
+            new \App\Repository\BereichRepository($pdo),
         );
     }
 

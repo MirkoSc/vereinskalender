@@ -1,19 +1,19 @@
-<?php use App\Domain\Bereich; use App\Domain\Palette; ?>
+<?php use App\Domain\Palette; ?>
 <section class="narrow">
     <h2><?= e($title) ?></h2>
     <form method="post" action="<?= e($action) ?>">
         <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
         <label>
             Bereich
-            <select name="bereich" required>
+            <select name="bereich_id" required>
                 <option value="">– wählen –</option>
-                <?php foreach (Bereich::cases() as $bereich): ?>
-                    <option value="<?= e($bereich->value) ?>" <?= ($values['bereich'] ?? '') === $bereich->value ? 'selected' : '' ?>>
-                        <?= e($bereich->value === 'Herren' ? 'Herren' : $bereich->value . '-Jugend') ?>
+                <?php foreach ($bereiche as $bereich): ?>
+                    <option value="<?= e($bereich['id']) ?>" <?= (string) ($values['bereich_id'] ?? '') === (string) $bereich['id'] ? 'selected' : '' ?>>
+                        <?= e($bereich['name']) ?>
                     </option>
                 <?php endforeach; ?>
             </select>
-            <?php if (isset($errors['bereich'])): ?><span class="field-error"><?= e($errors['bereich']) ?></span><?php endif; ?>
+            <?php if (isset($errors['bereich_id'])): ?><span class="field-error"><?= e($errors['bereich_id']) ?></span><?php endif; ?>
         </label>
         <label>
             Name (z. B. „E2")

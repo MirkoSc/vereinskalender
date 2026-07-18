@@ -4,13 +4,14 @@
     <?php if ($venues === []): ?>
         <p>Noch keine Spielstätten angelegt.</p>
     <?php else: ?>
-        <table>
+        <table data-sortable data-reorder-url="/admin/spielstaetten/sortierung">
             <thead>
-                <tr><th>Farbe</th><th>Name</th><th>Adresse</th><th>Plätze</th><th>Begriffe</th><th>Sortierung</th><th></th></tr>
+                <tr><th></th><th>Farbe</th><th>Name</th><th>Adresse</th><th>Plätze</th><th>Begriffe</th><th>Sortierung</th><th></th></tr>
             </thead>
             <tbody>
             <?php foreach ($venues as $venue): ?>
-                <tr>
+                <tr data-id="<?= e($venue['id']) ?>">
+                    <td><span class="drag-handle" aria-hidden="true">⠿</span></td>
                     <td><span class="swatch" style="background: <?= e($venue['farbe']) ?>"></span></td>
                     <td><a href="/admin/spielstaetten/<?= e($venue['id']) ?>"><?= e($venue['name']) ?></a></td>
                     <td><?= e($venue['adresse']) ?></td>

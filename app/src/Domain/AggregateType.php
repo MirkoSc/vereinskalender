@@ -7,6 +7,7 @@ namespace App\Domain;
 enum AggregateType: string
 {
     case Team = 'team';
+    case Bereich = 'bereich';
     case Pitch = 'pitch';
     case Venue = 'venue';
     case VenueBegriff = 'venue_begriff';

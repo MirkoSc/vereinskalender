@@ -6,6 +6,7 @@ namespace App;
 
 use App\Admin\AuthController;
 use App\Admin\BackupController;
+use App\Admin\BereichController;
 use App\Admin\DashboardController;
 use App\Admin\EventHistoryController;
 use App\Admin\ImportSourceController;
@@ -29,6 +30,7 @@ use App\Database\ConnectionFactory;
 use App\Http\Session;
 use App\PublicPages\PublicController;
 use App\Repository\AdminRepository;
+use App\Repository\BereichRepository;
 use App\Repository\EventHistoryRepository;
 use App\Repository\ImportSourceRepository;
 use App\Repository\MatchRepository;
@@ -65,6 +67,7 @@ use App\Service\Push\PushSender;
 use App\Service\RateLimiter;
 use App\Service\Saison\SaisonService;
 use App\Service\Stats\AlarmMailer;
+use App\Service\Projection\BereichProjector;
 use App\Service\Projection\ImportSourceProjector;
 use App\Service\Projection\MatchProjector;
 use App\Service\Projection\PitchProjector;
@@ -77,7 +80,9 @@ use App\Service\Projection\TrainingSlotProjector;
 use App\Service\Projection\VenueBegriffProjector;
 use App\Service\Projection\VenueProjector;
 use App\Service\Migration\Migrator;
+use App\Service\Stammdaten\BereichService;
 use App\Service\Stammdaten\PitchService;
+use App\Service\Stammdaten\SortierungService;
 use App\Service\Stammdaten\TeamHomePitchService;
 use App\Service\Stammdaten\TeamService;
 use App\Service\Stammdaten\VenueService;
@@ -135,6 +140,7 @@ final class Container
             new VenueProjector($this->pdo()),
             new VenueBegriffProjector($this->pdo()),
             new PitchProjector($this->pdo()),
+            new BereichProjector($this->pdo()),
             new TeamProjector($this->pdo()),
             new TrainingSlotProjector($this->pdo()),
             new SlotExceptionProjector($this->pdo()),
@@ -231,6 +237,7 @@ final class Container
             $this->venueRepository(),
             $this->settingRepository(),
             $this->venueMatcher(),
+            $this->bereichRepository(),
         ));
     }
 
@@ -267,6 +274,11 @@ final class Container
     public function venueRepository(): VenueRepository
     {
         return $this->cached('venueRepository', fn(): VenueRepository => new VenueRepository($this->pdo()));
+    }
+
+    public function bereichRepository(): BereichRepository
+    {
+        return $this->cached('bereichRepository', fn(): BereichRepository => new BereichRepository($this->pdo()));
     }
 
     public function adminRepository(): AdminRepository
@@ -439,6 +451,7 @@ final class Container
             $this->saisonService(),
             $this->teamRepository(),
             $this->importSourceRepository(),
+            $this->bereichRepository(),
         ));
     }
 
@@ -538,6 +551,7 @@ final class Container
             $this->venueRepository(),
             $this->settingRepository(),
             $this->venueMatcher(),
+            $this->bereichRepository(),
         ));
     }
 
@@ -574,6 +588,7 @@ final class Container
             $this->version->value,
             $this->paths->publicDir(),
             $this->wappenService(),
+            $this->bereichRepository(),
         ));
     }
 
@@ -584,7 +599,11 @@ final class Container
 
     public function teamService(): TeamService
     {
-        return $this->cached('teamService', fn(): TeamService => new TeamService($this->eventStore(), $this->teamRepository()));
+        return $this->cached('teamService', fn(): TeamService => new TeamService(
+            $this->eventStore(),
+            $this->teamRepository(),
+            $this->bereichRepository(),
+        ));
     }
 
     public function pitchService(): PitchService
@@ -603,6 +622,23 @@ final class Container
             $this->eventStore(),
             $this->venueRepository(),
             $this->pitchRepository(),
+        ));
+    }
+
+    public function bereichService(): BereichService
+    {
+        return $this->cached('bereichService', fn(): BereichService => new BereichService(
+            $this->eventStore(),
+            $this->bereichRepository(),
+        ));
+    }
+
+    public function sortierungService(): SortierungService
+    {
+        return $this->cached('sortierungService', fn(): SortierungService => new SortierungService(
+            $this->pdo(),
+            $this->eventStore(),
+            $this->projectorRegistry(),
         ));
     }
 
@@ -641,6 +677,8 @@ final class Container
             $this->teamHomePitchRepository(),
             $this->teamHomePitchService(),
             $this->pitchRepository(),
+            $this->bereichRepository(),
+            $this->sortierungService(),
         ));
     }
 
@@ -652,6 +690,7 @@ final class Container
             $this->pitchRepository(),
             $this->venueRepository(),
             $this->pitchService(),
+            $this->sortierungService(),
         ));
     }
 
@@ -663,6 +702,18 @@ final class Container
             $this->venueRepository(),
             $this->pitchRepository(),
             $this->venueService(),
+            $this->sortierungService(),
+        ));
+    }
+
+    public function bereichController(): BereichController
+    {
+        return $this->cached('bereichController', fn(): BereichController => new BereichController(
+            $this->view(),
+            $this->session(),
+            $this->bereichRepository(),
+            $this->bereichService(),
+            $this->sortierungService(),
         ));
     }
 
