@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Service\Stammdaten;
 
 use App\Domain\AggregateType;
-use App\Domain\Bereich;
 use App\Domain\EventContext;
 use App\Domain\EventType;
 use App\Domain\Palette;
+use App\Repository\BereichRepository;
 use App\Repository\TeamRepository;
 use App\Service\EventStore\EventStore;
 use App\Service\ValidationException;
@@ -18,6 +18,7 @@ final readonly class TeamService
     public function __construct(
         private EventStore $eventStore,
         private TeamRepository $teams,
+        private BereichRepository $bereiche,
     ) {
     }
 
@@ -26,7 +27,7 @@ final readonly class TeamService
      */
     public function create(array $input, EventContext $context): int
     {
-        $payload = $this->validate($input);
+        $payload = $this->validate($input, null);
 
         return $this->eventStore
             ->append(AggregateType::Team, null, EventType::Created, $payload, $context)
@@ -38,11 +39,13 @@ final readonly class TeamService
      */
     public function update(int $id, array $input, EventContext $context): void
     {
-        if ($this->teams->find($id) === null) {
+        $team = $this->teams->find($id);
+        if ($team === null) {
             throw new ValidationException(['id' => 'Team nicht gefunden.']);
         }
 
-        $payload = $this->validate($input);
+        $currentBereichId = $team['bereich_id'] !== null ? (int) $team['bereich_id'] : null;
+        $payload = $this->validate($input, $currentBereichId);
         $this->eventStore->append(AggregateType::Team, $id, EventType::Updated, $payload, $context);
     }
 
@@ -56,6 +59,7 @@ final readonly class TeamService
         // full picture of the last state, useful for the event history
         $payload = [
             'bereich' => (string) $team['bereich'],
+            'bereich_id' => $team['bereich_id'] !== null ? (int) $team['bereich_id'] : null,
             'name' => (string) $team['name'],
             'kuerzel' => (string) $team['kuerzel'],
             'farbe' => (string) $team['farbe'],
@@ -67,15 +71,23 @@ final readonly class TeamService
 
     /**
      * @param array<string, mixed> $input
+     * @param int|null $currentBereichId the team's bereich before this write
+     *        (null for a new team): an inactive bereich stays valid for a
+     *        team that already has it (like team.aktiv - history keeps
+     *        working, only NEW assignments to an inactive bereich are
+     *        blocked)
      * @return array<string, mixed> validated full picture payload
      */
-    private function validate(array $input): array
+    private function validate(array $input, ?int $currentBereichId): array
     {
         $errors = [];
 
-        $bereich = Bereich::tryFrom(trim((string) ($input['bereich'] ?? '')));
+        $bereichId = (int) ($input['bereich_id'] ?? 0);
+        $bereich = $bereichId > 0 ? $this->bereiche->find($bereichId) : null;
         if ($bereich === null) {
-            $errors['bereich'] = 'Bitte einen gültigen Bereich wählen.';
+            $errors['bereich_id'] = 'Bitte einen gültigen Bereich wählen.';
+        } elseif ((int) $bereich['aktiv'] !== 1 && $bereichId !== $currentBereichId) {
+            $errors['bereich_id'] = 'Bitte einen aktiven Bereich wählen.';
         }
 
         $name = trim((string) ($input['name'] ?? ''));
@@ -98,7 +110,8 @@ final readonly class TeamService
         }
 
         return [
-            'bereich' => $bereich->value,
+            'bereich_id' => $bereichId,
+            'bereich' => (string) $bereich['kuerzel'],
             'name' => $name,
             'kuerzel' => $kuerzel,
             'farbe' => $farbe,

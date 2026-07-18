@@ -132,9 +132,18 @@ return static function (Router $router, Container $c): void {
 
     $router->get('/admin', $guard(fn(Request $r, array $p) => $c->dashboardController()->index($r)));
 
+    $router->get('/admin/bereiche', $guard(fn(Request $r, array $p) => $c->bereichController()->index($r)));
+    $router->get('/admin/bereiche/neu', $guard(fn(Request $r, array $p) => $c->bereichController()->createForm($r)));
+    $router->post('/admin/bereiche', $guard(fn(Request $r, array $p) => $c->bereichController()->create($r)));
+    $router->post('/admin/bereiche/sortierung', $guard(fn(Request $r, array $p) => $c->bereichController()->sortierung($r)));
+    $router->get('/admin/bereiche/{id:\d+}', $guard(fn(Request $r, array $p) => $c->bereichController()->editForm($r, $p)));
+    $router->post('/admin/bereiche/{id:\d+}', $guard(fn(Request $r, array $p) => $c->bereichController()->update($r, $p)));
+    $router->post('/admin/bereiche/{id:\d+}/loeschen', $guard(fn(Request $r, array $p) => $c->bereichController()->delete($r, $p)));
+
     $router->get('/admin/teams', $guard(fn(Request $r, array $p) => $c->teamController()->index($r)));
     $router->get('/admin/teams/neu', $guard(fn(Request $r, array $p) => $c->teamController()->createForm($r)));
     $router->post('/admin/teams', $guard(fn(Request $r, array $p) => $c->teamController()->create($r)));
+    $router->post('/admin/teams/sortierung', $guard(fn(Request $r, array $p) => $c->teamController()->sortierung($r)));
     $router->get('/admin/teams/{id:\d+}', $guard(fn(Request $r, array $p) => $c->teamController()->editForm($r, $p)));
     $router->post('/admin/teams/{id:\d+}', $guard(fn(Request $r, array $p) => $c->teamController()->update($r, $p)));
     $router->post('/admin/teams/{id:\d+}/loeschen', $guard(fn(Request $r, array $p) => $c->teamController()->delete($r, $p)));
@@ -144,6 +153,7 @@ return static function (Router $router, Container $c): void {
     $router->get('/admin/plaetze', $guard(fn(Request $r, array $p) => $c->pitchController()->index($r)));
     $router->get('/admin/plaetze/neu', $guard(fn(Request $r, array $p) => $c->pitchController()->createForm($r)));
     $router->post('/admin/plaetze', $guard(fn(Request $r, array $p) => $c->pitchController()->create($r)));
+    $router->post('/admin/plaetze/sortierung', $guard(fn(Request $r, array $p) => $c->pitchController()->sortierung($r)));
     $router->get('/admin/plaetze/{id:\d+}', $guard(fn(Request $r, array $p) => $c->pitchController()->editForm($r, $p)));
     $router->post('/admin/plaetze/{id:\d+}', $guard(fn(Request $r, array $p) => $c->pitchController()->update($r, $p)));
     $router->post('/admin/plaetze/{id:\d+}/loeschen', $guard(fn(Request $r, array $p) => $c->pitchController()->delete($r, $p)));
@@ -151,6 +161,7 @@ return static function (Router $router, Container $c): void {
     $router->get('/admin/spielstaetten', $guard(fn(Request $r, array $p) => $c->venueController()->index($r)));
     $router->get('/admin/spielstaetten/neu', $guard(fn(Request $r, array $p) => $c->venueController()->createForm($r)));
     $router->post('/admin/spielstaetten', $guard(fn(Request $r, array $p) => $c->venueController()->create($r)));
+    $router->post('/admin/spielstaetten/sortierung', $guard(fn(Request $r, array $p) => $c->venueController()->sortierung($r)));
     $router->get('/admin/spielstaetten/{id:\d+}', $guard(fn(Request $r, array $p) => $c->venueController()->editForm($r, $p)));
     $router->post('/admin/spielstaetten/{id:\d+}', $guard(fn(Request $r, array $p) => $c->venueController()->update($r, $p)));
     $router->post('/admin/spielstaetten/{id:\d+}/loeschen', $guard(fn(Request $r, array $p) => $c->venueController()->delete($r, $p)));

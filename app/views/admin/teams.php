@@ -4,15 +4,16 @@
     <?php if ($teams === []): ?>
         <p>Noch keine Teams angelegt.</p>
     <?php else: ?>
-        <table>
+        <table data-sortable data-reorder-url="/admin/teams/sortierung">
             <thead>
-                <tr><th>Farbe</th><th>Bereich</th><th>Name</th><th>Kürzel</th><th>Aktiv</th><th>Sortierung</th><th></th></tr>
+                <tr><th></th><th>Farbe</th><th>Bereich</th><th>Name</th><th>Kürzel</th><th>Aktiv</th><th>Sortierung</th><th></th></tr>
             </thead>
             <tbody>
             <?php foreach ($teams as $team): ?>
-                <tr>
+                <tr data-id="<?= e($team['id']) ?>">
+                    <td><span class="drag-handle" aria-hidden="true">⠿</span></td>
                     <td><span class="swatch" style="background: <?= e($team['farbe']) ?>"></span></td>
-                    <td><?= e($team['bereich']) ?></td>
+                    <td><?= e($bereiche[(int) ($team['bereich_id'] ?? 0)]['name'] ?? $team['bereich']) ?></td>
                     <td><a href="/admin/teams/<?= e($team['id']) ?>"><?= e($team['name']) ?></a></td>
                     <td><?= e($team['kuerzel']) ?></td>
                     <td><?= ((int) $team['aktiv'] === 1) ? 'ja' : 'nein' ?></td>

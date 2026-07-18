@@ -7,6 +7,7 @@ namespace App\PublicPages;
 use App\Http\Request;
 use App\Http\Response;
 use App\Http\ResponseInterface;
+use App\Repository\BereichRepository;
 use App\Repository\PageRepository;
 use App\Repository\PitchRepository;
 use App\Repository\SettingRepository;
@@ -35,6 +36,7 @@ final readonly class PublicController
         private string $version,
         private string $publicDir,
         private WappenService $wappen,
+        private BereichRepository $bereiche,
     ) {
     }
 
@@ -226,12 +228,19 @@ final readonly class PublicController
     {
         $teams = array_map(static fn(array $t): array => [
             'id' => (int) $t['id'],
-            'bereich' => (string) $t['bereich'],
+            'bereich_id' => $t['bereich_id'] !== null ? (int) $t['bereich_id'] : null,
             'name' => (string) $t['name'],
             'kuerzel' => (string) $t['kuerzel'],
             'farbe' => (string) $t['farbe'],
             'aktiv' => (int) $t['aktiv'] === 1,
         ], $this->teams->findAll());
+
+        $bereiche = array_map(static fn(array $b): array => [
+            'id' => (int) $b['id'],
+            'name' => (string) $b['name'],
+            'kuerzel' => (string) $b['kuerzel'],
+            'sortierung' => (int) $b['sortierung'],
+        ], $this->bereiche->findAktive());
 
         $venues = array_map(static fn(array $v): array => [
             'id' => (int) $v['id'],
@@ -262,6 +271,7 @@ final readonly class PublicController
         return [
             [
                 'teams' => $teams,
+                'bereiche' => $bereiche,
                 'venues' => $venues,
                 'pitches' => $pitches,
                 'auswaertsFarbe' => $auswaertsFarbe,

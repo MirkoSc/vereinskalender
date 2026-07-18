@@ -8,6 +8,7 @@ use App\Http\Request;
 use App\Http\Response;
 use App\Http\ResponseInterface;
 use App\Http\Session;
+use App\Repository\BereichRepository;
 use App\Repository\ImportSourceRepository;
 use App\Repository\TeamRepository;
 use App\Service\Saison\SaisonService;
@@ -21,15 +22,22 @@ final class SaisonController extends AdminController
         private readonly SaisonService $saison,
         private readonly TeamRepository $teams,
         private readonly ImportSourceRepository $sources,
+        private readonly BereichRepository $bereiche,
     ) {
         parent::__construct($view, $session);
     }
 
     public function page(Request $request): ResponseInterface
     {
+        $bereicheById = [];
+        foreach ($this->bereiche->findAll() as $bereich) {
+            $bereicheById[(int) $bereich['id']] = $bereich;
+        }
+
         return $this->render('admin/saison', [
             'title' => 'Saison-Assistent',
             'teams' => $this->teams->findAll(),
+            'bereiche' => $bereicheById,
             'sources' => $this->sources->findAll(),
             'slots' => $this->saison->copyCandidates(),
             'homePitchRules' => $this->saison->homePitchCandidates(),

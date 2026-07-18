@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service\Kalender;
 
+use App\Repository\BereichRepository;
 use App\Repository\MatchRepository;
 use App\Repository\PitchRepository;
 use App\Repository\PitchRestrictionRepository;
@@ -29,7 +30,11 @@ use App\Repository\VenueRepository;
  */
 final readonly class OfflineBundleService
 {
-    public const int FORMAT = 2;
+    // Issue #27: bumped to 3 - teams now carry bereich_id, and the bundle
+    // gained a `bereiche` list (the dynamic bereich aggregate instead of the
+    // former fixed enum); older cached bundles are treated as "no data"
+    // (VKOffline.load()) and get replaced on the next online visit.
+    public const int FORMAT = 3;
 
     public function __construct(
         private TrainingSlotRepository $slots,
@@ -41,6 +46,7 @@ final readonly class OfflineBundleService
         private VenueRepository $venues,
         private SettingRepository $settings,
         private VenueMatcher $venueMatcher,
+        private BereichRepository $bereiche,
     ) {
     }
 
@@ -97,12 +103,18 @@ final readonly class OfflineBundleService
             ], $this->exceptions->findAll()),
             'teams' => array_map(static fn(array $t): array => [
                 'id' => (int) $t['id'],
-                'bereich' => (string) $t['bereich'],
+                'bereich_id' => $t['bereich_id'] !== null ? (int) $t['bereich_id'] : null,
                 'name' => (string) $t['name'],
                 'kuerzel' => (string) $t['kuerzel'],
                 'farbe' => (string) $t['farbe'],
                 'aktiv' => (int) $t['aktiv'] === 1,
             ], $teams),
+            'bereiche' => array_map(static fn(array $b): array => [
+                'id' => (int) $b['id'],
+                'name' => (string) $b['name'],
+                'kuerzel' => (string) $b['kuerzel'],
+                'sortierung' => (int) $b['sortierung'],
+            ], $this->bereiche->findAktive()),
             'venues' => array_map(static fn(array $v): array => [
                 'id' => (int) $v['id'],
                 'name' => (string) $v['name'],

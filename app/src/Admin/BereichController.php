@@ -4,26 +4,24 @@ declare(strict_types=1);
 
 namespace App\Admin;
 
+use App\Domain\AggregateType;
 use App\Http\Request;
 use App\Http\Response;
 use App\Http\ResponseInterface;
 use App\Http\Session;
-use App\Domain\AggregateType;
-use App\Repository\PitchRepository;
-use App\Repository\VenueRepository;
-use App\Service\Stammdaten\PitchService;
+use App\Repository\BereichRepository;
+use App\Service\Stammdaten\BereichService;
 use App\Service\Stammdaten\SortierungService;
 use App\Service\ValidationException;
 use App\View\View;
 
-final class PitchController extends AdminController
+final class BereichController extends AdminController
 {
     public function __construct(
         View $view,
         Session $session,
-        private readonly PitchRepository $pitches,
-        private readonly VenueRepository $venues,
-        private readonly PitchService $service,
+        private readonly BereichRepository $bereiche,
+        private readonly BereichService $service,
         private readonly SortierungService $sortierung,
     ) {
         parent::__construct($view, $session);
@@ -31,19 +29,18 @@ final class PitchController extends AdminController
 
     public function index(Request $request): ResponseInterface
     {
-        return $this->render('admin/pitches', [
-            'title' => 'Plätze',
-            'pitches' => $this->pitches->findAll(),
+        return $this->render('admin/bereiche', [
+            'title' => 'Bereiche',
+            'bereiche' => $this->bereiche->findAll(),
         ]);
     }
 
     public function createForm(Request $request): ResponseInterface
     {
-        return $this->render('admin/pitch_form', [
-            'title' => 'Platz anlegen',
-            'action' => '/admin/plaetze',
-            'venues' => $this->venues->findAll(),
-            'values' => [],
+        return $this->render('admin/bereich_form', [
+            'title' => 'Bereich anlegen',
+            'action' => '/admin/bereiche',
+            'values' => ['aktiv' => '1'],
             'errors' => [],
         ]);
     }
@@ -53,18 +50,17 @@ final class PitchController extends AdminController
         try {
             $this->service->create($request->post, $this->context($request));
         } catch (ValidationException $e) {
-            return $this->render('admin/pitch_form', [
-                'title' => 'Platz anlegen',
-                'action' => '/admin/plaetze',
-                'venues' => $this->venues->findAll(),
+            return $this->render('admin/bereich_form', [
+                'title' => 'Bereich anlegen',
+                'action' => '/admin/bereiche',
                 'values' => $request->post,
                 'errors' => $e->getErrors(),
             ], 422);
         }
 
-        $this->session->flash('Platz angelegt.');
+        $this->session->flash('Bereich angelegt.');
 
-        return Response::redirect('/admin/plaetze');
+        return Response::redirect('/admin/bereiche');
     }
 
     /**
@@ -73,16 +69,15 @@ final class PitchController extends AdminController
     public function editForm(Request $request, array $params): ResponseInterface
     {
         $id = (int) $params['id'];
-        $pitch = $this->pitches->find($id);
-        if ($pitch === null) {
-            return Response::redirect('/admin/plaetze');
+        $bereich = $this->bereiche->find($id);
+        if ($bereich === null) {
+            return Response::redirect('/admin/bereiche');
         }
 
-        return $this->render('admin/pitch_form', [
-            'title' => 'Platz bearbeiten',
-            'action' => '/admin/plaetze/' . $id,
-            'venues' => $this->venues->findAll(),
-            'values' => [...$pitch, 'flutlicht' => ((int) $pitch['flutlicht'] === 1) ? '1' : ''],
+        return $this->render('admin/bereich_form', [
+            'title' => 'Bereich bearbeiten',
+            'action' => '/admin/bereiche/' . $id,
+            'values' => [...$bereich, 'aktiv' => ((int) $bereich['aktiv'] === 1) ? '1' : ''],
             'errors' => [],
         ]);
     }
@@ -97,18 +92,17 @@ final class PitchController extends AdminController
         try {
             $this->service->update($id, $request->post, $this->context($request));
         } catch (ValidationException $e) {
-            return $this->render('admin/pitch_form', [
-                'title' => 'Platz bearbeiten',
-                'action' => '/admin/plaetze/' . $id,
-                'venues' => $this->venues->findAll(),
+            return $this->render('admin/bereich_form', [
+                'title' => 'Bereich bearbeiten',
+                'action' => '/admin/bereiche/' . $id,
                 'values' => $request->post,
                 'errors' => $e->getErrors(),
             ], 422);
         }
 
-        $this->session->flash('Platz gespeichert.');
+        $this->session->flash('Bereich gespeichert.');
 
-        return Response::redirect('/admin/plaetze');
+        return Response::redirect('/admin/bereiche');
     }
 
     /**
@@ -118,12 +112,12 @@ final class PitchController extends AdminController
     {
         try {
             $this->service->delete((int) $params['id'], $this->context($request));
-            $this->session->flash('Platz gelöscht.');
+            $this->session->flash('Bereich gelöscht.');
         } catch (ValidationException $e) {
             $this->session->flash(implode(' ', $e->getErrors()));
         }
 
-        return Response::redirect('/admin/plaetze');
+        return Response::redirect('/admin/bereiche');
     }
 
     public function sortierung(Request $request): ResponseInterface
@@ -131,7 +125,7 @@ final class PitchController extends AdminController
         $ids = array_map(intval(...), (array) ($request->post['ids'] ?? []));
 
         try {
-            $this->sortierung->reorder(AggregateType::Pitch, $ids, $this->context($request));
+            $this->sortierung->reorder(AggregateType::Bereich, $ids, $this->context($request));
         } catch (ValidationException $e) {
             return Response::json(['fehler' => $e->getErrors()], 422);
         }

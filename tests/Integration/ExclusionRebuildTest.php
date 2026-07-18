@@ -58,8 +58,9 @@ final class ExclusionRebuildTest extends DatabaseTestCase
         self::assertSame($orphanedUpdate->id, $state->skipped[0]->eventId);
         self::assertStringContainsString('Aggregat fehlt', $state->skipped[0]->grund);
 
-        // events themselves are never deleted
-        self::assertCount(4, $this->dumpTable('event'));
+        // events themselves are never deleted (scoped to 'team': migration
+        // 013 seeds bereich events too)
+        self::assertCount(4, $this->pdo()->query("SELECT * FROM event WHERE aggregat_typ = 'team'")->fetchAll());
     }
 
     public function testUndoExcludeRestoresChangesOnNextRebuild(): void

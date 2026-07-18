@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Service\Kalender;
 
+use App\Repository\BereichRepository;
 use App\Repository\MatchRepository;
 use App\Repository\PitchRepository;
 use App\Repository\PitchRestrictionRepository;
@@ -39,6 +40,7 @@ final readonly class EventFeedService
         private VenueRepository $venues,
         private SettingRepository $settings,
         private VenueMatcher $venueMatcher,
+        private BereichRepository $bereiche,
     ) {
     }
 
@@ -61,7 +63,8 @@ final readonly class EventFeedService
 
         $typ = (string) ($query['typ'] ?? '');
         $teamFilter = ($query['team'] ?? '') !== '' ? (int) $query['team'] : null;
-        $bereichFilter = trim((string) ($query['bereich'] ?? ''));
+        $bereichFilterRaw = trim((string) ($query['bereich'] ?? ''));
+        $bereichIdFilter = $this->resolveBereichIdFilter($bereichFilterRaw);
         $venueFilter = trim((string) ($query['venue'] ?? ''));
 
         $teams = [];
@@ -80,13 +83,13 @@ final readonly class EventFeedService
         $serializer = new EventSerializer($teams, $pitches, $venues, $this->venueMatcher, $auswaertsFarbe);
 
         // a multi-team booking matches when ANY of its teams matches
-        $matchesTeams = function (array $teamIds) use ($teamFilter, $bereichFilter, $teams): bool {
+        $matchesTeams = function (array $teamIds) use ($teamFilter, $bereichIdFilter, $teams): bool {
             if ($teamFilter !== null && !in_array($teamFilter, $teamIds, true)) {
                 return false;
             }
-            if ($bereichFilter !== '') {
+            if ($bereichIdFilter !== null) {
                 foreach ($teamIds as $teamId) {
-                    if ((string) ($teams[$teamId]['bereich'] ?? '') === $bereichFilter) {
+                    if ((int) ($teams[$teamId]['bereich_id'] ?? 0) === $bereichIdFilter) {
                         return true;
                     }
                 }
@@ -131,7 +134,7 @@ final readonly class EventFeedService
             // restrictions as background layer of the occupancy view
             foreach ($this->restrictions->findOverlapping($von . ' 00:00:00', $bis . ' 23:59:59') as $restriction) {
                 $event = $serializer->sperrung($restriction);
-                if (!$matchesVenue($event['venue_id']) || ($teamFilter !== null || $bereichFilter !== '')) {
+                if (!$matchesVenue($event['venue_id']) || ($teamFilter !== null || $bereichIdFilter !== null)) {
                     // restrictions have no team; hide them under team filters
                     continue;
                 }
@@ -159,5 +162,26 @@ final readonly class EventFeedService
         usort($events, static fn(array $a, array $b): int => [$a['start'], $a['id']] <=> [$b['start'], $b['id']]);
 
         return $events;
+    }
+
+    /**
+     * `bereich=` is a numeric bereich id going forward; old shared filter
+     * links still carry the former enum string (G/F/E/D/C/Herren, CLAUDE.md
+     * section 7) - resolved via its kuerzel. An unresolvable non-empty value
+     * matches no team (returns an id no bereich can ever have) rather than
+     * silently ignoring the filter.
+     */
+    private function resolveBereichIdFilter(string $bereichFilterRaw): ?int
+    {
+        if ($bereichFilterRaw === '') {
+            return null;
+        }
+        if (ctype_digit($bereichFilterRaw)) {
+            return (int) $bereichFilterRaw;
+        }
+
+        $legacy = $this->bereiche->findByKuerzel($bereichFilterRaw);
+
+        return $legacy !== null ? (int) $legacy['id'] : -1;
     }
 }

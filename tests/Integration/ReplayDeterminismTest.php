@@ -299,10 +299,83 @@ final class ReplayDeterminismTest extends DatabaseTestCase
         self::assertSame($before, $this->dumpTable('match'), 'replay reproduces ende and the deletion');
     }
 
+    /**
+     * Issue #27: team events written before the bereich aggregate existed
+     * carry only the legacy string `bereich` (former enum G/F/E/D/C/Herren).
+     * The upcast to `bereich_id` (TeamProjector::normalizePayload) must
+     * deterministically resolve to the migration-seeded bereich, both live
+     * and on replay - even though the team event's id is lower than the
+     * seed events' ids in a real deployment, so the projector must resolve
+     * this from the event log, not from replay/id order.
+     */
+    public function testLegacyTeamEventWithOnlyBereichStringUpcastsToSeededBereichIdOnReplay(): void
+    {
+        $seededE = $this->findSeededBereich('E');
+        self::assertNotNull($seededE, 'migration 013 must seed the E-Jugend bereich');
+
+        // legacy payload shape: no bereich_id key at all
+        $this->eventStore()->append(\App\Domain\AggregateType::Team, null, EventType::Created, [
+            'bereich' => 'E',
+            'name' => 'E1',
+            'kuerzel' => 'E1',
+            'farbe' => '#0969da',
+            'aktiv' => true,
+            'sortierung' => 0,
+        ], $this->context());
+
+        $team = $this->dumpTable('team')[0];
+        self::assertSame((int) $seededE['id'], (int) $team['bereich_id']);
+
+        $state = $this->runRebuildToCompletion($this->rebuildService());
+        self::assertSame([], $state->skipped);
+        self::assertSame($team, $this->dumpTable('team')[0]);
+    }
+
+    /**
+     * Issue #27: a bereich rename after the fact must not change how an old
+     * (legacy-shape) team event upcasts - the mapping is keyed off the
+     * immutable CREATED payload of the system seed, not the live row.
+     */
+    public function testRenamingABereichDoesNotChangeLegacyTeamUpcastOnReplay(): void
+    {
+        $seededE = $this->findSeededBereich('E');
+        self::assertNotNull($seededE);
+
+        $this->eventStore()->append(\App\Domain\AggregateType::Team, null, EventType::Created, [
+            'bereich' => 'E',
+            'name' => 'E1',
+            'kuerzel' => 'E1',
+            'farbe' => '#0969da',
+            'aktiv' => true,
+            'sortierung' => 0,
+        ], $this->context());
+
+        // rename the bereich's kuerzel via a normal Updated event (as the
+        // admin CRUD would do) - the live bereich row now has kuerzel 'E2'
+        $this->eventStore()->append(\App\Domain\AggregateType::Bereich, (int) $seededE['id'], EventType::Updated, [
+            'name' => 'E-Jugend (neu)',
+            'kuerzel' => 'E2',
+            'sortierung' => (int) $seededE['sortierung'],
+            'aktiv' => true,
+        ], $this->context());
+
+        $team = $this->dumpTable('team')[0];
+        self::assertSame((int) $seededE['id'], (int) $team['bereich_id'], 'still resolves via the immutable seed payload');
+
+        $state = $this->runRebuildToCompletion($this->rebuildService());
+        self::assertSame([], $state->skipped);
+        self::assertSame($team, $this->dumpTable('team')[0]);
+    }
+
     public function testRebuildRunsInSmallBatches(): void
     {
         $store = $this->eventStore();
         $context = $this->context();
+
+        // Issue #27: migration 013 already seeded some bereich events before
+        // this test runs, so the batch math is relative to the total, not
+        // just the 7 team events this test adds.
+        $existingEvents = $store->countActive();
 
         for ($i = 1; $i <= 7; $i++) {
             $store->append(AggregateType::Team, null, EventType::Created, [
@@ -314,17 +387,18 @@ final class ReplayDeterminismTest extends DatabaseTestCase
                 'sortierung' => $i,
             ], $context);
         }
+        $totalEvents = $existingEvents + 7;
 
         $rebuild = $this->rebuildService();
         $state = $rebuild->start();
         $steps = 0;
         while (!$state->done) {
-            $state = $rebuild->step(3); // 7 events => 3 batches
+            $state = $rebuild->step(3); // batch size 3: full batches, then one more call to detect done
             $steps++;
         }
 
-        self::assertSame(3, $steps);
-        self::assertSame(7, $state->processed);
+        self::assertSame(intdiv($totalEvents, 3) + 1, $steps);
+        self::assertSame($totalEvents, $state->processed);
         self::assertCount(7, $this->dumpTable('team'));
     }
 }
