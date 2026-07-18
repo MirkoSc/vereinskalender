@@ -3,9 +3,10 @@
 // Issue #6, schmale Platzbelegung). Extrahiert für Testbarkeit mit
 // `node --test tests/js` (analog kalender-events.js/filter.js).
 (() => {
-    // Ob "Alle Plätze" (Farbe+Text statt Team/Spielstätte-Modus) aktiv ist:
-    // im Spielplan immer (kein Ressourcen-View dort), in der Platzbelegung
-    // nur unterhalb der Desktop-Sidebar-Schwelle ohne Einzelplatz-Auswahl.
+    // Ob "Alle Plätze" (Hintergrundfarbe+Text statt Ressourcen-Spalten) aktiv
+    // ist: im Spielplan immer (kein Ressourcen-View dort), in der
+    // Platzbelegung nur unterhalb der Desktop-Sidebar-Schwelle ohne
+    // Einzelplatz-Auswahl.
     const pitchGruppierungAktiv = (ansicht, isWideBelegung, pitchFilter) => (
         (pitchFilter ?? '') === ''
         && (ansicht === 'spielplan' || (ansicht === 'belegung' && !isWideBelegung))
@@ -28,16 +29,17 @@
         return props.pitch_kuerzel || props.pitch_name || null;
     };
 
-    // Ob die Termin-FARBE nach Platz statt nach dem Team/Spielstätte-Modus
-    // gehen soll (Issue #40). pitchGruppierungAktiv() ersetzt fehlende
-    // Ressourcen-Spalten in Grid-Ansichten (Issue #6/#11) - dort bleibt die
-    // Platzfarbe wie bisher. Die Terminliste (listNachlade, mobiler Default
-    // für Belegung UND Spielplan) ist aber ein chronologischer Feed ohne
-    // Spalten-Konzept; dort soll der Team/Spielstätte-Umschalter sichtbar
-    // wirken. Das Platz-Kürzel bleibt als Text-Präfix trotzdem erhalten -
-    // eventTitle() in kalender.js nutzt weiterhin pitchGruppierungAktiv()
-    // direkt, unverändert (Farbe ist nie das einzige Signal, CLAUDE.md
-    // Abschnitt 8).
+    // Ob der Termin-HINTERGRUND nach Platz eingefärbt werden soll (Issue
+    // #40). pitchGruppierungAktiv() ersetzt fehlende Ressourcen-Spalten in
+    // Grid-Ansichten (Issue #6/#11) - dort bleibt die Platzfarbe wie
+    // bisher. Die Terminliste (listNachlade, mobiler Default für Belegung
+    // UND Spielplan) ist aber ein chronologischer Feed ohne Spalten-Konzept;
+    // dort bleibt der Hintergrund neutral - die Team-/Spielstättenfarbe
+    // zeigen dort (wie überall) die zwei Punkte aus kalender-farbe.js
+    // (Issue #39), unabhängig von dieser Funktion. Das Platz-Kürzel bleibt
+    // als Text-Präfix trotzdem erhalten - eventTitle() in kalender.js nutzt
+    // weiterhin pitchGruppierungAktiv() direkt, unverändert (Farbe ist nie
+    // das einzige Signal, CLAUDE.md Abschnitt 8).
     const pitchFarbeAktiv = (pitchGruppierungAktivWert, istListenansicht) => (
         pitchGruppierungAktivWert && !istListenansicht
     );

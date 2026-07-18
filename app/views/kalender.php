@@ -2,11 +2,6 @@
     <h2><?= e($title) ?></h2>
 
     <div class="toolbar">
-        <div class="segmented" role="group" aria-label="Anzeigemodus">
-            <button type="button" data-modus="team" class="active">Nach Team</button>
-            <button type="button" data-modus="venue">Nach Spielstätte</button>
-        </div>
-
         <button type="button" id="filter-button" class="button filter-button">
             Filter <span id="filter-badge" class="badge" hidden>0</span>
         </button>
