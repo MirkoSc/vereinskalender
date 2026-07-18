@@ -1,0 +1,104 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Tests\Integration\PublicPages;
+
+use App\Http\HttpMethod;
+use App\Http\Request;
+use App\PublicPages\PublicController;
+use App\Repository\BereichRepository;
+use App\Repository\PageRepository;
+use App\Repository\PitchRepository;
+use App\Repository\SettingRepository;
+use App\Repository\TeamRepository;
+use App\Repository\UsageStatRepository;
+use App\Repository\VenueRepository;
+use App\Service\Wappen\WappenService;
+use App\Tests\Support\DatabaseTestCase;
+use App\View\View;
+
+/**
+ * Issue #37: Spielplan + Platzbelegung sind eine Seite (/kalender) mit vier
+ * Darstellungen (Tag/Woche/Monat/Liste) geworden; die Alt-Routen /belegung
+ * und /spielplan leiten (mit Query-String, damit geteilte Filter-Links
+ * funktionieren) per 301 dorthin um, statt selbst zu rendern.
+ */
+final class KalenderRouteTest extends DatabaseTestCase
+{
+    private function controller(): PublicController
+    {
+        $pdo = $this->pdo();
+
+        return new PublicController(
+            new View(dirname(__DIR__, 3) . '/app/views', '0.0.0-test'),
+            new TeamRepository($pdo),
+            new PitchRepository($pdo),
+            new VenueRepository($pdo),
+            new SettingRepository($pdo),
+            new PageRepository($pdo),
+            new UsageStatRepository($pdo),
+            '0.0.0-test',
+            sys_get_temp_dir(),
+            new WappenService(sys_get_temp_dir()),
+            new BereichRepository($pdo),
+        );
+    }
+
+    public function testKalenderSeiteRendertBeideEintragenWegeUndZaehltAlsSeite(): void
+    {
+        $response = $this->controller()->kalender(new Request(HttpMethod::Get, '/kalender'));
+
+        self::assertSame(200, $response->status);
+        self::assertStringContainsString('id="new-entry"', $response->body);
+        self::assertStringContainsString('id="entry-booking"', $response->body);
+        self::assertStringContainsString('id="entry-match"', $response->body);
+        self::assertStringContainsString('id="booking-dialog"', $response->body);
+        self::assertStringContainsString('id="match-dialog"', $response->body);
+        self::assertMatchesRegularExpression('#<script type="application/json" id="app-data">#', $response->body);
+
+        $stats = new UsageStatRepository($this->pdo());
+        self::assertSame(1, $stats->summary('seite')['heute']);
+        self::assertSame('/kalender', $stats->topDimensions('seite')[0]['dimension']);
+    }
+
+    public function testBelegungLeitetOhneQueryAufKalenderUm(): void
+    {
+        $response = $this->controller()->belegung(new Request(HttpMethod::Get, '/belegung'));
+
+        self::assertSame(301, $response->status);
+        self::assertSame('/kalender', $response->headers['Location']);
+    }
+
+    public function testBelegungLeitetMitQueryStringAufKalenderUm(): void
+    {
+        $response = $this->controller()->belegung(new Request(
+            HttpMethod::Get,
+            '/belegung',
+            query: ['team' => '5', 'pitch' => '3'],
+        ));
+
+        self::assertSame(301, $response->status);
+        self::assertSame('/kalender?team=5&pitch=3', $response->headers['Location']);
+    }
+
+    public function testSpielplanLeitetMitQueryStringAufKalenderUm(): void
+    {
+        $response = $this->controller()->spielplan(new Request(
+            HttpMethod::Get,
+            '/spielplan',
+            query: ['bereich' => '2'],
+        ));
+
+        self::assertSame(301, $response->status);
+        self::assertSame('/kalender?bereich=2', $response->headers['Location']);
+    }
+
+    public function testManifestStartUrlZeigtAufKalender(): void
+    {
+        $response = $this->controller()->manifest(new Request(HttpMethod::Get, '/manifest.webmanifest'));
+
+        $manifest = json_decode($response->body, true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame('/kalender', $manifest['start_url']);
+    }
+}

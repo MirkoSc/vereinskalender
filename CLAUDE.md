@@ -65,7 +65,7 @@ sind KEINE Projektionen.
   Inaktive Teams verschwinden aus Filtern/Neuanlagen, Historie bleibt.
 - **pitch**: venue_id FK (Heimverein), name, kuerzel (Pflichtfeld, max. 10
   Zeichen, für die Text-Beschriftung bei der Platz-Gruppierung im
-  Spielplan), farbe (aus vordefinierter Palette), typ, flutlicht, adresse
+  Kalender), farbe (aus vordefinierter Palette), typ, flutlicht, adresse
   NULL (nur falls abweichend), sortierung. Alt-Events ohne Farbe bzw. ohne
   Kürzel (vor Einführung der jeweiligen Spalte) werden beim Replay
   deterministisch auf eine feste Default-Farbe bzw. ein leeres Kürzel
@@ -239,28 +239,34 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   Frontend nötig. Sperrungen haben kein Team und bleiben bei ihrer
   bestehenden Art-Farbe (gesperrt/eingeschränkt). `typ=belegung` liefert
   zusätzlich Heimspiele mit zugeordnetem Platz (Status ≠ abgesagt); sie
-  erscheinen in der Platzbelegung auf ihrem Platz. Spiele tragen `manuell`
+  erscheinen dort auf ihrem Platz. Spiele tragen `manuell`
   (true = `import_source_id IS NULL`) und ein effektives `ende` (explizite
-  Spalte, sonst Anstoß + 2 Std.).
+  Spalte, sonst Anstoß + 2 Std.). Die zusammengeführte Kalenderseite (Issue
+  #37, Abschnitt 8) fragt `typ=''` ab (alle Termintypen in einem Feed, ohne
+  Duplikate); `typ=belegung`/`typ=spiel` bleiben als engere API-Filterwerte
+  Teil der öffentlichen Schnittstelle, werden vom Frontend aber nicht mehr
+  gesendet.
 - Platzfilter (`filter-pitch`, clientseitig, `/api/events` kennt ihn nicht):
-  in der Platzbelegung unterhalb der Desktop-Sidebar-Schwelle (~1100 px)
-  ersetzt er die Platz-Spalten; im Spielplan gilt er unabhängig von der
-  Bildschirmbreite (kein Ressourcen-View dort). Ein gewählter Einzelplatz
-  zeigt nur dessen Termine; „Alle Plätze" färbt in den Grid-Ansichten (Ersatz
-  für die fehlenden Ressourcen-Spalten) den Termin-HINTERGRUND nach
-  Platzfarbe mit Platz-Kürzel (Fallback Platzname) als Text-Präfix vor dem
-  Titel; Auswärtsspiele (nie eine `pitch_id`) bilden dabei die eigene Gruppe
-  „Auswärts" mit der globalen Auswärtsfarbe. Die Terminliste (`listNachlade`,
-  mobiler Default für Belegung UND Spielplan) ist kein Ressourcen-Ersatz,
-  sondern ein chronologischer Feed: dort bleibt der Hintergrund neutral
-  (Issue #40) – die Team-/Spielstättenfarbe zeigen dort wie überall die zwei
-  Farbpunkte, unabhängig von „Alle Plätze"; der Platz-Kürzel-Präfix im Titel
-  bleibt davon unberührt.
+  immer sichtbar (Issue #37). In den Ressourcen-Views (Tag/Woche, ab der
+  Desktop-Sidebar-Schwelle ~1100 px) reduziert ein gewählter Einzelplatz die
+  Platz-SPALTEN auf genau diesen Platz (inkl. der synthetischen „Auswärts"-
+  Spalte für Spiele ohne `pitch_id`); in jeder anderen Kombination (Monat,
+  Liste, schmale Tag-/Wochenansicht) filtert er stattdessen die Termine
+  direkt. Ohne Einzelplatz-Auswahl färbt „Alle Plätze" in den Grid-Ansichten
+  OHNE Ressourcen-Spalten (Ersatz für die fehlenden Spalten) den Termin-
+  HINTERGRUND nach Platzfarbe mit Platz-Kürzel (Fallback Platzname) als
+  Text-Präfix vor dem Titel; Auswärtsspiele (nie eine `pitch_id`) bilden
+  dabei die eigene Gruppe „Auswärts" mit der globalen Auswärtsfarbe. Die
+  Terminliste (`listNachlade`, per Umschalter jederzeit erreichbar, Issue
+  #37) ist kein Ressourcen-Ersatz, sondern ein chronologischer Feed: dort
+  bleibt der Hintergrund neutral (Issue #40) – die Team-/Spielstättenfarbe
+  zeigen dort wie überall die zwei Farbpunkte, unabhängig von „Alle Plätze";
+  der Platz-Kürzel-Präfix im Titel bleibt davon unberührt.
 - Filter „manuelle Termine" (`filter-manuell`, dreistufig: Alle / Ohne
   manuelle / Nur manuelle): clientseitig wie der Platzfilter, `/api/events`
   kennt ihn nicht; er wirkt auf das `manuell`-Flag im Event-Payload und
-  funktioniert dadurch offline identisch. „Nur manuelle" blendet in der
-  Platzbelegung auch Trainings/Sperrungen aus (Label macht das klar).
+  funktioniert dadurch offline identisch. „Nur manuelle" blendet dabei auch
+  Trainings/Sperrungen aus (Label macht das klar).
 - Spielstätten-Auflösung zur **Anzeigezeit** im einen `VenueMatcher`-Service
   (Anzeige UND Import): erster `venue_begriff` nach sortierung,
   case-insensitive in `ort_text` → venue + Farbe; kein Treffer, aber Platz
@@ -281,22 +287,36 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
 
 - Handgeschriebenes Stylesheet (Custom Properties, Grid, clamp(),
   `prefers-color-scheme`); mobile-first, Breakpoints ~768/~1100 px.
-- **FullCalendar**: Desktop timeGridWeek/dayGridMonth, mobil eine eigene
-  Listen-View (`listNachlade`, Basistyp `list`); Platzbelegung über Premium
-  Resource-Views, Lizenzkey `GPL-My-Project-Is-Open-Source` (Projekt ist
-  GPLv3).
-- **Terminliste mit Nachladen**: `listNachlade` ist auf Mobilgeräten die
-  Default-Ansicht von Platzbelegung UND Spielplan (nicht nur ein optionaler
-  Modus); ihr sichtbarer Bereich beginnt deshalb am Wochenanfang (Montag) der
-  laufenden Woche, nicht bei „heute" – sonst fehlten beim Öffnen bereits
-  vergangene Tage der aktuellen Woche (Issue #26). Sie zeigt initial
-  mindestens den kompletten nächsten Monat und lädt beim Scrollen ans
-  Listenende weitere Batches nach (`von`/`bis` wächst schrittweise, die API
-  kennt keine Pagination). Client-seitiger Cache dedupliziert nach
-  Event-`id` (spätester Stand gewinnt, z. B. bei einer verlegten Partie);
-  aktive Filter setzen Cache und Bereich auf den initialen Monat zurück.
-  Reine Frontend-Logik (`public/js/nachlade.js`, unit-getestet mit
-  `node --test tests/js`).
+- **FullCalendar** (Issue #37): EINE öffentliche Kalenderseite (`/kalender`;
+  `/belegung` und `/spielplan` leiten per 301 inkl. Query-String dorthin um)
+  mit vier Darstellungen **Tag/Woche/Monat/Liste** über eigene Umschalter-
+  Buttons (`customButtons`, nicht FullCalendars eingebaute View-Buttons – der
+  `events`-Callback feuert für eine neu aktivierte View, BEVOR
+  `calendar.view.type` den Wechsel widerspiegelt; Rendering-Logik liest
+  deshalb einen eigenen `modus`-State statt `calendar.view.type`). Default
+  **Woche** (mobil, <768 px: **Tag** – eine 7-Spalten-Woche ist dort praktisch
+  unlesbar, Liste bleibt einen Tap entfernt); die zuletzt gewählte
+  Darstellung wird in `localStorage` (`kalender_ansicht`) gemerkt und je
+  Wechsel in usage_stat gezählt (`feature_ansicht_tag/woche/monat/liste`,
+  `StatController`-Whitelist). Ab der Desktop-Sidebar-Schwelle (~1100 px)
+  zeigen Tag UND Woche Platz-Spalten (Premium Resource-Views, Lizenzkey
+  `GPL-My-Project-Is-Open-Source`, Projekt ist GPLv3) inkl. einer
+  synthetischen „Auswärts"-Spalte für Spiele ohne `pitch_id`; Monat und Liste
+  haben nie Spalten. Der Button „+ Eintragen" öffnet ein Auswahl-Sheet
+  („Belegung eintragen" / „Spiel eintragen") statt zweier getrennter
+  Toolbar-Buttons.
+- **Terminliste mit Nachladen**: `listNachlade` ist eine der vier
+  Darstellungen (Issue #37, per Umschalter erreichbar, nicht mehr an eine
+  Ansicht/Bildschirmbreite gebunden); ihr sichtbarer Bereich beginnt beim
+  Wechsel dorthin immer am Wochenanfang (Montag) der laufenden Woche, nicht
+  bei „heute" – sonst fehlten beim ersten Öffnen bereits vergangene Tage der
+  aktuellen Woche (Issue #26). Sie zeigt initial mindestens den kompletten
+  nächsten Monat und lädt beim Scrollen ans Listenende weitere Batches nach
+  (`von`/`bis` wächst schrittweise, die API kennt keine Pagination).
+  Client-seitiger Cache dedupliziert nach Event-`id` (spätester Stand
+  gewinnt, z. B. bei einer verlegten Partie); aktive Filter setzen Cache und
+  Bereich auf den initialen Monat zurück. Reine Frontend-Logik
+  (`public/js/nachlade.js`, unit-getestet mit `node --test tests/js`).
 - Mobile-Patterns: Bottom-Sheets, Chip-Filter, Segmented Control,
   Touch-Ziele ≥ 44 px.
 - **Legende** (Issue #38): EINE Komponente für Spielstätten-, Platz- und
@@ -322,10 +342,10 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   inkl. Platz-/Vereinszuordnung über `VenueMatcher`/`MatchDuration`),
   Trainings-Slots dagegen als **Regeln** (nicht expandiert) plus ihre
   Ausnahmen, dazu Teams (mit bereich_id)/Bereiche/Spielstätten/Plätze/
-  Farben/Settings. Alle vier
-  öffentlichen Ansichten – Spielplan, Platzbelegung, Terminliste UND
-  Verfügbarkeit – müssen offline vollständig funktionieren, nicht nur für
-  ein Zeitfenster: `public/js/offline-events.js` expandiert Slots
+  Farben/Settings. Die Kalenderseite (alle vier Darstellungen Tag/Woche/
+  Monat/Liste, Issue #37) UND die Verfügbarkeit müssen offline vollständig
+  funktionieren, nicht nur für ein Zeitfenster: `public/js/offline-events.js`
+  expandiert Slots
   clientseitig (Port von `SlotExpander`) und baut das `/api/events`-Shape;
   `public/js/offline-verfuegbarkeit.js` berechnet die Verfügbarkeit
   clientseitig (Port von `AvailabilityCalculator`) inkl. Nutzungszeiten,
@@ -339,7 +359,10 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   Verlegungsrisiko-Hinweis, da nun auch weit entfernte Termine offline
   sichtbar sind), **kein** Zeitfenster-Hinweis mehr, **Schreiben gesperrt**.
   Ein Bundle mit veraltetem `format` gilt als „keine Daten" und wird beim
-  nächsten Online-Besuch ersetzt.
+  nächsten Online-Besuch ersetzt. `manifest.webmanifest`-`start_url` zeigt auf
+  `/kalender`; der Service Worker cached nur noch `/kalender` (nicht mehr die
+  Alt-Routen) und mappt `/belegung`/`/spielplan` offline auf die gecachte
+  Kalenderseite, damit alte Bookmarks funktionieren.
 - **Web-Push**: Kategorien Platzrestriktion (beide Arten) und
   Spielverlegung/-absage, je Team filterbar; Opt-in nur per Klick.
   push_subscription + notification_queue (mit ausgeloest_von_event_id);

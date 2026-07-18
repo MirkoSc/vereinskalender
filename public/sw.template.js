@@ -5,8 +5,7 @@ const CACHE = 'vereinskalender-__VERSION__';
 
 const APP_SHELL = [
     '/',
-    '/belegung',
-    '/spielplan',
+    '/kalender',
     '/verfuegbarkeit',
     '/legende',
     '/css/app.css?v=__VERSION__',
@@ -18,6 +17,13 @@ const APP_SHELL = [
     '/js/offline-verfuegbarkeit.js?v=__VERSION__',
     '/js/legende-gruppierung.js?v=__VERSION__',
     '/js/legende.js?v=__VERSION__',
+    '/js/filter.js?v=__VERSION__',
+    '/js/konflikte.js?v=__VERSION__',
+    '/js/nachlade.js?v=__VERSION__',
+    '/js/kalender-events.js?v=__VERSION__',
+    '/js/kalender-pitch.js?v=__VERSION__',
+    '/js/kalender-farbe.js?v=__VERSION__',
+    '/js/kalender-ansicht.js?v=__VERSION__',
     '/js/kalender.js?v=__VERSION__',
     '/js/verfuegbarkeit.js?v=__VERSION__',
     '/js/vendor/fullcalendar-scheduler.global.min.js?v=__VERSION__',
@@ -40,6 +46,12 @@ self.addEventListener('activate', (event) => {
     );
 });
 
+// Issue #37: Spielplan + Platzbelegung zusammengeführt - Alt-Bookmarks auf
+// /belegung bzw. /spielplan bekommen offline die gecachte Kalenderseite
+// statt eines Cache-Miss (online übernimmt bereits der Server-Redirect,
+// fetch() folgt ihm transparent).
+const ALT_ROUTEN = ['/belegung', '/spielplan'];
+
 // App shell: network first (fresh colors/data), cache fallback offline.
 // API requests are NOT cached here - offline data comes from the
 // IndexedDB bundle (js/offline.js).
@@ -56,11 +68,18 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
         fetch(event.request)
             .then((response) => {
-                const copy = response.clone();
-                caches.open(CACHE).then((cache) => cache.put(event.request, copy));
+                // 301/opaqueredirect-Antworten (z.B. eine ungefolgte Alt-
+                // Route) nicht cachen - nur vollständige Erfolgsantworten.
+                if (response.ok) {
+                    const copy = response.clone();
+                    caches.open(CACHE).then((cache) => cache.put(event.request, copy));
+                }
                 return response;
             })
-            .catch(() => caches.match(event.request, { ignoreSearch: true })),
+            .catch(() => caches.match(
+                ALT_ROUTEN.includes(url.pathname) ? '/kalender' : event.request,
+                { ignoreSearch: true },
+            )),
     );
 });
 

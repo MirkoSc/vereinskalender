@@ -6,13 +6,10 @@
             Filter <span id="filter-badge" class="badge" hidden>0</span>
         </button>
 
-        <?php if ($ansicht === 'belegung'): ?>
-            <button type="button" id="new-booking" class="button">Belegung eintragen</button>
-        <?php endif; ?>
-
-        <?php if ($ansicht === 'spielplan'): ?>
-            <button type="button" id="new-match" class="button">Spiel eintragen</button>
-        <?php endif; ?>
+        <!-- Issue #37: ein gemeinsamer Button statt der früheren zwei
+             ("Belegung eintragen" / "Spiel eintragen") - öffnet ein kleines
+             Auswahl-Sheet (#entry-dialog weiter unten). -->
+        <button type="button" id="new-entry" class="button">+ Eintragen</button>
 
         <button type="button" id="push-bell" class="linklike bell" title="Push-Benachrichtigungen">🔔</button>
         <button type="button" id="legende-button" class="button">Legende</button>
@@ -49,10 +46,11 @@
         </select>
     </label>
 
-    <!-- Platzfilter (Issue #6: Platzbelegung, ersetzt unterhalb der Desktop-
-         Sidebar-Schwelle die Platz-Spalten; Issue #11: Spielplan, immer
-         sichtbar). "Alle" faerbt/gruppiert nach Platzfarbe + Kürzel. -->
-    <label class="filter<?= $ansicht === 'belegung' ? ' filter-narrow' : '' ?>">
+    <!-- Platzfilter (Issue #6/#11/#37: immer sichtbar). In den Ressourcen-
+         Views (Tag/Woche, ab der Desktop-Sidebar-Schwelle) reduziert ein
+         Einzelplatz die Platz-Spalten; sonst faerbt/gruppiert "Alle" nach
+         Platzfarbe + Kürzel. -->
+    <label class="filter">
         Platz
         <select id="filter-pitch">
             <option value="">Alle Plätze</option>
@@ -86,8 +84,7 @@
     <button type="button" class="linklike" id="detail-close">Schließen</button>
 </dialog>
 
-<?php if ($ansicht === 'belegung'): ?>
-    <dialog id="booking-dialog" class="sheet">
+<dialog id="booking-dialog" class="sheet">
         <h3 id="booking-title">Belegung eintragen</h3>
         <form id="booking-form">
             <input type="hidden" name="edit_scope">
@@ -153,12 +150,10 @@
             </div>
         </form>
     </dialog>
-<?php endif; ?>
 
-<!-- Issue #12: manuell erfasste Spiele. Existiert außerhalb des Belegung-
-     only-Blocks, weil ein manuelles Spiel mit Platz auch in der
-     Platzbelegung erscheint (typ=belegung) und dort bearbeitbar sein muss;
-     der "Spiel eintragen"-Button in der Toolbar steht nur im Spielplan. -->
+<!-- Issue #12: manuell erfasste Spiele. Bearbeiten/Löschen eines manuellen
+     Spiels mit Platz wird auch aus der Platz-Detailansicht angeboten; das
+     Anlegen läuft über das gemeinsame "+ Eintragen"-Sheet (Issue #37). -->
 <dialog id="match-dialog" class="sheet">
     <h3 id="match-title">Spiel eintragen</h3>
     <form id="match-form">
@@ -197,6 +192,16 @@
             <button type="button" class="linklike" id="match-cancel">Abbrechen</button>
         </div>
     </form>
+</dialog>
+
+<!-- Issue #37: Auswahl-Sheet für den gemeinsamen "+ Eintragen"-Button. -->
+<dialog id="entry-dialog" class="sheet">
+    <h3>Was möchtest du eintragen?</h3>
+    <div class="dialog-actions vertical">
+        <button type="button" class="button" id="entry-booking">Belegung eintragen</button>
+        <button type="button" class="button" id="entry-match">Spiel eintragen</button>
+        <button type="button" class="linklike" id="entry-cancel">Abbrechen</button>
+    </div>
 </dialog>
 
 <dialog id="name-dialog" class="sheet">

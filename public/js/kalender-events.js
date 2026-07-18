@@ -2,12 +2,14 @@
 // für Testbarkeit mit `node --test tests/js` (CLAUDE.md section 8, analog
 // nachlade.js/filter.js/konflikte.js).
 (() => {
-    // /api/events-Query aus Ansicht + aktiven Filtern (Issue #4/#8). 'pitch'
-    // und 'manuell' filtern nur clientseitig (applyPitchFilter/
-    // manuellFilterAnwenden in kalender.js, Issue #6/#11/#12), /api/events
-    // kennt beide nicht.
-    const baueEventsParams = (ansicht, filters) => {
-        const params = new URLSearchParams({ typ: ansicht === 'belegung' ? 'belegung' : 'spiel' });
+    // /api/events-Query aus den aktiven Filtern (Issue #37: die zusammen-
+    // geführte Kalenderseite fragt IMMER alle Termintypen ab - kein
+    // typ-Parameter, EventFeedService liefert dann Belegungen, Sperrungen
+    // UND Spiele ohne Duplikate). 'pitch' und 'manuell' filtern weiterhin nur
+    // clientseitig (applyPitchFilter/manuellFilterAnwenden in kalender.js,
+    // Issue #6/#11/#12), /api/events kennt beide nicht.
+    const baueEventsParams = (filters) => {
+        const params = new URLSearchParams();
         for (const [key, value] of Object.entries(filters)) {
             if (value !== '' && key !== 'pitch' && key !== 'manuell') {
                 params.set(key, value);
@@ -30,13 +32,7 @@
             : events.filter((e) => !istManuellesSpiel(e));
     };
 
-    // Offline-Fallback der Platzbelegung (Issue #10): serverseitig liefert
-    // typ=belegung Heimspiele mit zugeordnetem Platz mit (EventFeedService),
-    // dieser Filter hält das Offline-Bundle (typ='') damit konsistent.
-    const istBelegungsRelevant = (e) => e.typ === 'belegung' || e.typ === 'sperrung'
-        || (e.typ === 'spiel' && e.pitch_id !== null && e.status !== 'abgesagt');
-
-    const api = { baueEventsParams, istBelegungsRelevant, manuellFilterAnwenden };
+    const api = { baueEventsParams, manuellFilterAnwenden };
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = api;
     } else {

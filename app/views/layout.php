@@ -25,8 +25,7 @@
         Vereinskalender
     </a></h1>
     <nav class="main-nav">
-        <a href="/belegung">Platzbelegung</a>
-        <a href="/spielplan">Spielplan</a>
+        <a href="/kalender">Kalender</a>
         <a href="/verfuegbarkeit">Verfügbarkeit</a>
         <a href="/abonnieren">Abonnieren</a>
         <a href="/legende">Legende</a>
