@@ -29,6 +29,7 @@
         <a href="/spielplan">Spielplan</a>
         <a href="/verfuegbarkeit">Verfügbarkeit</a>
         <a href="/abonnieren">Abonnieren</a>
+        <a href="/legende">Legende</a>
     </nav>
 </header>
 <main>
