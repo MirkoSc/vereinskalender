@@ -15,3 +15,10 @@
         </a>
     </div>
 </section>
+
+<!-- Issue #38: kompakte, einklappbare Legende - dieselbe Komponente wie
+     /legende und das Kalender-Overlay, siehe public/js/legende.js. -->
+<details class="legende-compact">
+    <summary>Legende: Kürzel &amp; Farben</summary>
+    <div class="legende" data-legende></div>
+</details>

@@ -15,6 +15,7 @@
         <?php endif; ?>
 
         <button type="button" id="push-bell" class="linklike bell" title="Push-Benachrichtigungen">🔔</button>
+        <button type="button" id="legende-button" class="button">Legende</button>
     </div>
 
     <ul id="filter-chips" class="chip-row" aria-label="Aktive Filter"></ul>
@@ -77,6 +78,7 @@
 </dialog>
 
 <?php require __DIR__ . '/partials/push_dialog.php'; ?>
+<?php require __DIR__ . '/partials/legende_dialog.php'; ?>
 
 <dialog id="detail-dialog" class="sheet">
     <div id="detail-content"></div>

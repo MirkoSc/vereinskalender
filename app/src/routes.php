@@ -17,6 +17,7 @@ return static function (Router $router, Container $c): void {
     $router->get('/spielplan', static fn(Request $r, array $p): Response => $c->publicController()->spielplan($r));
     $router->get('/verfuegbarkeit', static fn(Request $r, array $p): Response => $c->publicController()->verfuegbarkeit($r));
     $router->get('/abonnieren', static fn(Request $r, array $p): Response => $c->publicController()->abonnieren($r));
+    $router->get('/legende', static fn(Request $r, array $p): Response => $c->publicController()->legende($r));
     $router->get('/{key:impressum|datenschutz}', static fn(Request $r, array $p): Response => $c->publicController()->seite($r, $p));
     $router->get('/sw.js', static fn(Request $r, array $p): Response => $c->publicController()->serviceWorker($r));
     $router->get('/manifest.webmanifest', static fn(Request $r, array $p): Response => $c->publicController()->manifest($r));

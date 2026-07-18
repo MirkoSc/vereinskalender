@@ -299,6 +299,22 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   `node --test tests/js`).
 - Mobile-Patterns: Bottom-Sheets, Chip-Filter, Segmented Control,
   Touch-Ziele ≥ 44 px.
+- **Legende** (Issue #38): EINE Komponente für Spielstätten-, Platz- und
+  Team-Kürzel/-Farben (Teams gruppiert nach Bereich, dazu die globale
+  Auswärts-Farbe; nur aktive Bereiche/Teams). Serverseitig gibt es dafür
+  keine eigene Route/kein eigenes Template mit Namen/Farben – `public/js/
+  legende.js` füllt jeden `[data-legende]`-Container aus derselben
+  `appData`, die auch Kalender-/Verfügbarkeitsansicht aus `#app-data` lesen
+  (`PublicController::stammdaten()`); dadurch ist sie ohne dritte
+  Datenpflege offline identisch verfügbar (die Seite inkl. eingebetteter
+  appData wird vom Service Worker gecacht). Drei Einbindungen derselben
+  Mounts: Startseite (`<details>`, einklappbar), eigene Route `/legende`
+  (teilbar), Overlay-Dialog (`<dialog class="sheet legende-sheet">`, Button
+  in der Kalender-Toolbar) mit Escape- und Klick-außerhalb-Schließen
+  (Escape nativ, Klick außerhalb eigens verdrahtet – andere Dialoge der App
+  bieten das bewusst nicht). Farbpunkte teilen sich die Kontrast-Technik
+  der Termin-Punkte (Issue #39): Team = Kreis, Spielstätte/Platz = Quadrat,
+  Text immer daneben.
 - **PWA/Offline**: Service Worker cached App-Shell; `GET /api/offline-bundle`
   (format-versioniert, aktuell 3 – Issue #27 hat eine `bereiche`-Liste sowie
   `team.bereich_id` ergänzt) liefert den **kompletten Datenbestand**
