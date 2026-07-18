@@ -4,7 +4,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { pitchGruppierungAktiv, pitchEventFarbe, pitchEventPraefix } = require('../../public/js/kalender-pitch.js');
+const {
+    pitchGruppierungAktiv, pitchEventFarbe, pitchEventPraefix, pitchFarbeAktiv,
+} = require('../../public/js/kalender-pitch.js');
 
 test('pitchGruppierungAktiv ist im Spielplan unabhängig von der Bildschirmbreite aktiv', () => {
     assert.equal(pitchGruppierungAktiv('spielplan', true, ''), true);
@@ -42,4 +44,22 @@ test('pitchEventPraefix: Platz-Kürzel vor Platzname, Platzname als Fallback ohn
     assert.equal(pitchEventPraefix({ typ: 'spiel', heimspiel: true, pitch_kuerzel: 'R1', pitch_name: 'Rasenplatz 1' }), 'R1');
     assert.equal(pitchEventPraefix({ typ: 'spiel', heimspiel: true, pitch_kuerzel: '', pitch_name: 'Rasenplatz 1' }), 'Rasenplatz 1');
     assert.equal(pitchEventPraefix({ typ: 'belegung', pitch_kuerzel: null, pitch_name: null }), null, 'kein Platz zugeordnet');
+});
+
+// Issue #40: die "Alle Plätze"-Gruppierung (pitchGruppierungAktiv) darf die
+// Terminliste (listNachlade, mobiler Default für Belegung UND Spielplan)
+// nicht mehr übersteuern - der Team/Spielstätte-Umschalter muss dort
+// sichtbar wirken. In Grid-Ansichten (Ressourcen-Ersatz, Issue #6/#11)
+// bleibt die Platzfarbe unverändert.
+test('pitchFarbeAktiv: Platzfarbe gilt in Grid-Ansichten wie bisher', () => {
+    assert.equal(pitchFarbeAktiv(true, false), true);
+});
+
+test('pitchFarbeAktiv: in der Terminliste gewinnt immer der Team/Spielstätte-Modus (Issue #40)', () => {
+    assert.equal(pitchFarbeAktiv(true, true), false);
+});
+
+test('pitchFarbeAktiv: ohne aktive Gruppierung bleibt es beim Modus, unabhängig von der Ansicht', () => {
+    assert.equal(pitchFarbeAktiv(false, false), false);
+    assert.equal(pitchFarbeAktiv(false, true), false);
 });
