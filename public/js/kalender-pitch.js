@@ -28,7 +28,23 @@
         return props.pitch_kuerzel || props.pitch_name || null;
     };
 
-    const api = { pitchGruppierungAktiv, pitchEventFarbe, pitchEventPraefix };
+    // Ob die Termin-FARBE nach Platz statt nach dem Team/Spielstätte-Modus
+    // gehen soll (Issue #40). pitchGruppierungAktiv() ersetzt fehlende
+    // Ressourcen-Spalten in Grid-Ansichten (Issue #6/#11) - dort bleibt die
+    // Platzfarbe wie bisher. Die Terminliste (listNachlade, mobiler Default
+    // für Belegung UND Spielplan) ist aber ein chronologischer Feed ohne
+    // Spalten-Konzept; dort soll der Team/Spielstätte-Umschalter sichtbar
+    // wirken. Das Platz-Kürzel bleibt als Text-Präfix trotzdem erhalten -
+    // eventTitle() in kalender.js nutzt weiterhin pitchGruppierungAktiv()
+    // direkt, unverändert (Farbe ist nie das einzige Signal, CLAUDE.md
+    // Abschnitt 8).
+    const pitchFarbeAktiv = (pitchGruppierungAktivWert, istListenansicht) => (
+        pitchGruppierungAktivWert && !istListenansicht
+    );
+
+    const api = {
+        pitchGruppierungAktiv, pitchEventFarbe, pitchEventPraefix, pitchFarbeAktiv,
+    };
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = api;
     } else {

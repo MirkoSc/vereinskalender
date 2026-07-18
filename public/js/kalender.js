@@ -194,12 +194,17 @@
 
     // ---- calendar ----
 
+    // Issue #40: die Terminliste (listNachlade) ist kein Ressourcen-View-
+    // Ersatz wie die Grid-Ansichten (Issue #6/#11) - dort soll der Team/
+    // Spielstätte-Umschalter die Farbe bestimmen, unabhängig von der
+    // "Alle Plätze"-Gruppierung. Der Platz-Kürzel-Präfix in eventTitle()
+    // bleibt davon unberührt.
     const eventColor = (props) => {
         if (props.typ === 'sperrung') {
             // same CSS custom properties as app.css, not a second literal (Issue #1)
             return props.art === 'gesperrt' ? 'var(--color-danger)' : 'var(--color-warning)';
         }
-        if (pitchGruppierungAktiv()) {
+        if (window.VKKalenderPitch.pitchFarbeAktiv(pitchGruppierungAktiv(), calendar.view.type === 'listNachlade')) {
             return window.VKKalenderPitch.pitchEventFarbe(props);
         }
         return modus === 'team' ? props.team_farbe : props.venue_farbe;
