@@ -12,6 +12,7 @@
 
         <button type="button" id="new-restriction" class="button">Sperrung eintragen</button>
         <button type="button" id="push-bell" class="linklike bell" title="Push-Benachrichtigungen">🔔</button>
+        <button type="button" id="legende-button" class="button">Legende</button>
     </div>
 
     <ul id="filter-chips" class="chip-row filter-narrow" aria-label="Aktive Filter"></ul>
@@ -86,3 +87,4 @@
 </dialog>
 
 <?php require __DIR__ . '/partials/push_dialog.php'; ?>
+<?php require __DIR__ . '/partials/legende_dialog.php'; ?>
