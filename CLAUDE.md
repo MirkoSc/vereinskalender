@@ -240,10 +240,15 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   in der Platzbelegung unterhalb der Desktop-Sidebar-Schwelle (~1100 px)
   ersetzt er die Platz-Spalten; im Spielplan gilt er unabhängig von der
   Bildschirmbreite (kein Ressourcen-View dort). Ein gewählter Einzelplatz
-  zeigt nur dessen Termine; „Alle Plätze" färbt nach Platzfarbe mit
-  Platz-Kürzel (Fallback Platzname) als Text-Präfix vor dem Titel;
-  Auswärtsspiele (nie eine `pitch_id`) bilden dabei die eigene Gruppe
-  „Auswärts" mit der globalen Auswärtsfarbe.
+  zeigt nur dessen Termine; „Alle Plätze" färbt in den Grid-Ansichten (Ersatz
+  für die fehlenden Ressourcen-Spalten) nach Platzfarbe mit Platz-Kürzel
+  (Fallback Platzname) als Text-Präfix vor dem Titel; Auswärtsspiele (nie
+  eine `pitch_id`) bilden dabei die eigene Gruppe „Auswärts" mit der
+  globalen Auswärtsfarbe. Die Terminliste (`listNachlade`, mobiler Default
+  für Belegung UND Spielplan) ist kein Ressourcen-Ersatz, sondern ein
+  chronologischer Feed: dort bestimmt immer der Team/Spielstätte-Umschalter
+  die Farbe, auch bei „Alle Plätze" (Issue #40) – der Platz-Kürzel-Präfix
+  im Titel bleibt davon unberührt.
 - Filter „manuelle Termine" (`filter-manuell`, dreistufig: Alle / Ohne
   manuelle / Nur manuelle): clientseitig wie der Platzfilter, `/api/events`
   kennt ihn nicht; er wirkt auf das `manuell`-Flag im Event-Payload und
