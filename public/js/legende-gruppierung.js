@@ -31,7 +31,24 @@
         }))
         .filter((gruppe) => gruppe.pitches.length > 0);
 
-    const api = { teamsNachBereich, plaetzeNachVenue };
+    /**
+     * Issue #47: je Sportheim seine Spielstätte (für die Punktfarbe, Sportheime
+     * haben selbst keine eigene Farbe - das bleibt der Administration
+     * vorbehalten) und seine Räume, in der gegebenen Reihenfolge. Sportheime
+     * ohne Räume bleiben enthalten (z. B. "ganzes Sportheim" vermietbar).
+     * @param {{id: number, venue_id: number}[]} sportheime
+     * @param {{id: number, sportheim_id: number}[]} raeume
+     * @param {{id: number}[]} venues
+     * @returns {{sportheim: object, venue: object|null, raeume: object[]}[]}
+     */
+    const raeumeNachSportheim = (sportheime, raeume, venues) => sportheime
+        .map((sportheim) => ({
+            sportheim,
+            venue: venues.find((venue) => venue.id === sportheim.venue_id) ?? null,
+            raeume: raeume.filter((raum) => raum.sportheim_id === sportheim.id),
+        }));
+
+    const api = { teamsNachBereich, plaetzeNachVenue, raeumeNachSportheim };
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = api;
     } else {
