@@ -18,6 +18,7 @@
             <a href="/admin/teams">Teams</a>
             <a href="/admin/plaetze">Plätze</a>
             <a href="/admin/spielstaetten">Spielstätten</a>
+            <a href="/admin/sportheime">Sportheime</a>
             <a href="/admin/import-quellen">Import</a>
             <a href="/admin/events">Events</a>
             <a href="/admin/saison">Saison</a>

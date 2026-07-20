@@ -351,8 +351,24 @@ dialog.sheet::backdrop {
 }
 
 .ev-belegung .fc-list-event-dot,
-.ev-spiel .fc-list-event-dot {
+.ev-spiel .fc-list-event-dot,
+.ev-vermietung .fc-list-event-dot {
     display: none;
+}
+
+/* Issue #36: Vermietung eigener, gedeckter Look statt Platzfarbe (die sie
+   nicht hat) - Text-Label ("Vermietung: …") bleibt das eigentliche Signal. */
+.ev-vermietung {
+    background-color: color-mix(in srgb, var(--color-text) 12%, var(--color-bg));
+    font-style: italic;
+}
+
+/* 🏠-Indikator am Termin, wenn dessen Platz zu einem gerade vermieteten
+   Sportheim gehört (Issue #36) - nur ein dezenter Hinweis, der volle Text
+   steht im Detail-Dialog. */
+.ev-vermietung-hinweis {
+    margin-left: 0.25rem;
+    flex: 0 0 auto;
 }
 
 /* Maps-Link im Termindetail (Issue #5): Icon + Text, nie Farbe allein */

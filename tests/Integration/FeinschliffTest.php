@@ -168,9 +168,12 @@ final class FeinschliffTest extends DatabaseTestCase
             new SettingRepository($pdo),
             \App\Service\Kalender\VenueMatcher::fromDatabase($pdo),
             new \App\Repository\BereichRepository($pdo),
+            new \App\Repository\SportheimRepository($pdo),
+            new \App\Repository\SportheimRaumRepository($pdo),
+            new \App\Repository\VermietungRepository($pdo),
         )->build();
 
-        self::assertSame(3, $bundle['format']);
+        self::assertSame(4, $bundle['format']);
         self::assertCount(2, $bundle['spiele'], 'the complete dataset: past AND future matches, no date window');
         self::assertArrayHasKey('team_farbe', $bundle['spiele'][0], 'both color modes work offline');
         self::assertArrayHasKey('venue_farbe', $bundle['spiele'][0]);

@@ -13,6 +13,8 @@ use App\Repository\BereichRepository;
 use App\Repository\PageRepository;
 use App\Repository\PitchRepository;
 use App\Repository\SettingRepository;
+use App\Repository\SportheimRaumRepository;
+use App\Repository\SportheimRepository;
 use App\Repository\TeamRepository;
 use App\Repository\UsageStatRepository;
 use App\Repository\VenueRepository;
@@ -46,6 +48,8 @@ final class LegendeRouteTest extends DatabaseTestCase
             sys_get_temp_dir(),
             new WappenService(sys_get_temp_dir()),
             new BereichRepository($pdo),
+            new SportheimRepository($pdo),
+            new SportheimRaumRepository($pdo),
         );
     }
 

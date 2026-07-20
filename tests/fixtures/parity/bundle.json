@@ -1,5 +1,5 @@
 {
-  "format": 2,
+  "format": 4,
   "stand": "2026-08-01 12:00:00",
   "spiele": [
     {
@@ -246,9 +246,96 @@
     { "id": 2, "name": "TSV Nachbarort", "farbe": "#8250df", "adresse": "Waldweg 5" }
   ],
   "pitches": [
-    { "id": 1, "venue_id": 1, "name": "Rasenplatz 1", "kuerzel": "P1", "farbe": "#0969da", "adresse": null, "venue_name": "SV Musterstadt" },
-    { "id": 2, "venue_id": 1, "name": "Kunstrasen", "kuerzel": "P2", "farbe": "#bc4c00", "adresse": "Nebenweg 2", "venue_name": "SV Musterstadt" },
-    { "id": 3, "venue_id": 2, "name": "Platz A", "kuerzel": "PA", "farbe": "#cf222e", "adresse": null, "venue_name": "TSV Nachbarort" }
+    { "id": 1, "venue_id": 1, "sportheim_id": 1, "name": "Rasenplatz 1", "kuerzel": "P1", "farbe": "#0969da", "adresse": null, "venue_name": "SV Musterstadt" },
+    { "id": 2, "venue_id": 1, "sportheim_id": null, "name": "Kunstrasen", "kuerzel": "P2", "farbe": "#bc4c00", "adresse": "Nebenweg 2", "venue_name": "SV Musterstadt" },
+    { "id": 3, "venue_id": 2, "sportheim_id": null, "name": "Platz A", "kuerzel": "PA", "farbe": "#cf222e", "adresse": null, "venue_name": "TSV Nachbarort" }
+  ],
+  "sportheime": [
+    { "id": 1, "venue_id": 1, "name": "Sportheim Musterstadt", "adresse": null, "sortierung": 0, "aktiv": true }
+  ],
+  "sportheim_raeume": [
+    { "id": 1, "sportheim_id": 1, "name": "Gastraum", "kuerzel": "GR", "sortierung": 0, "aktiv": true },
+    { "id": 2, "sportheim_id": 1, "name": "Kegelbahn", "kuerzel": "KB", "sortierung": 1, "aktiv": true }
+  ],
+  "vermietungen": [
+    {
+      "id": "vermietung-301",
+      "typ": "vermietung",
+      "vermietung_id": 301,
+      "start": "2026-08-04T18:00:00",
+      "ende": "2026-08-04T23:59:00",
+      "titel": "Vermietung: Vereinsfeier (gesamtes Sportheim)",
+      "anlass": "Vereinsfeier",
+      "sportheim_id": 1,
+      "sportheim_name": "Sportheim Musterstadt",
+      "raum_ids": [],
+      "raum_text": "gesamtes Sportheim",
+      "team_id": null,
+      "team_farbe": null,
+      "venue_id": 1,
+      "venue_name": "SV Musterstadt",
+      "venue_farbe": "#1a7f37",
+      "pitch_id": null,
+      "pitch_name": null,
+      "pitch_kuerzel": null,
+      "pitch_farbe": null,
+      "pitch_adresse": null,
+      "venue_adresse": "Sportweg 1",
+      "kontakt": null,
+      "bemerkung": null
+    },
+    {
+      "id": "vermietung-302",
+      "typ": "vermietung",
+      "vermietung_id": 302,
+      "start": "2026-08-20T00:00:00",
+      "ende": "2026-08-20T23:59:00",
+      "titel": "Vermietung: Kegelabend (KB)",
+      "anlass": "Kegelabend",
+      "sportheim_id": 1,
+      "sportheim_name": "Sportheim Musterstadt",
+      "raum_ids": [2],
+      "raum_text": "KB",
+      "team_id": null,
+      "team_farbe": null,
+      "venue_id": 1,
+      "venue_name": "SV Musterstadt",
+      "venue_farbe": "#1a7f37",
+      "pitch_id": null,
+      "pitch_name": null,
+      "pitch_kuerzel": null,
+      "pitch_farbe": null,
+      "pitch_adresse": null,
+      "venue_adresse": "Sportweg 1",
+      "kontakt": "Vereinsvorstand",
+      "bemerkung": null
+    },
+    {
+      "id": "vermietung-303",
+      "typ": "vermietung",
+      "vermietung_id": 303,
+      "start": "2026-08-27T16:00:00",
+      "ende": "2026-08-27T22:00:00",
+      "titel": "Vermietung: Geburtstagsfeier (GR)",
+      "anlass": "Geburtstagsfeier",
+      "sportheim_id": 1,
+      "sportheim_name": "Sportheim Musterstadt",
+      "raum_ids": [1],
+      "raum_text": "GR",
+      "team_id": null,
+      "team_farbe": null,
+      "venue_id": 1,
+      "venue_name": "SV Musterstadt",
+      "venue_farbe": "#1a7f37",
+      "pitch_id": null,
+      "pitch_name": null,
+      "pitch_kuerzel": null,
+      "pitch_farbe": null,
+      "pitch_adresse": null,
+      "venue_adresse": "Sportweg 1",
+      "kontakt": null,
+      "bemerkung": "Schlüssel beim Hausmeister"
+    }
   ],
   "settings": {
     "auswaerts_farbe": "#57606a",

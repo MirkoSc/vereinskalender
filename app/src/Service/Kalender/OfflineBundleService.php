@@ -10,9 +10,12 @@ use App\Repository\PitchRepository;
 use App\Repository\PitchRestrictionRepository;
 use App\Repository\SettingRepository;
 use App\Repository\SlotExceptionRepository;
+use App\Repository\SportheimRaumRepository;
+use App\Repository\SportheimRepository;
 use App\Repository\TeamRepository;
 use App\Repository\TrainingSlotRepository;
 use App\Repository\VenueRepository;
+use App\Repository\VermietungRepository;
 
 /**
  * ONE JSON with the complete dataset (CLAUDE.md section 8, Issue #25): all
@@ -30,11 +33,11 @@ use App\Repository\VenueRepository;
  */
 final readonly class OfflineBundleService
 {
-    // Issue #27: bumped to 3 - teams now carry bereich_id, and the bundle
-    // gained a `bereiche` list (the dynamic bereich aggregate instead of the
-    // former fixed enum); older cached bundles are treated as "no data"
+    // Issue #36: bumped to 4 - new sportheime/sportheim_raeume/vermietungen
+    // lists (the Sportheim-Vermietung termin type) and pitches now carry
+    // sportheim_id; older cached bundles are treated as "no data"
     // (VKOffline.load()) and get replaced on the next online visit.
-    public const int FORMAT = 3;
+    public const int FORMAT = 4;
 
     public function __construct(
         private TrainingSlotRepository $slots,
@@ -47,6 +50,9 @@ final readonly class OfflineBundleService
         private SettingRepository $settings,
         private VenueMatcher $venueMatcher,
         private BereichRepository $bereiche,
+        private SportheimRepository $sportheime,
+        private SportheimRaumRepository $raeume,
+        private VermietungRepository $vermietungen,
     ) {
     }
 
@@ -71,8 +77,16 @@ final readonly class OfflineBundleService
         foreach ($venues as $venue) {
             $venuesById[(int) $venue['id']] = $venue;
         }
+        $sportheimeById = [];
+        foreach ($this->sportheime->findAll() as $sportheim) {
+            $sportheimeById[(int) $sportheim['id']] = $sportheim;
+        }
+        $raeumeById = [];
+        foreach ($this->raeume->findAll() as $raum) {
+            $raeumeById[(int) $raum['id']] = $raum;
+        }
         $auswaertsFarbe = $this->settings->get('auswaerts_farbe', '#57606a');
-        $serializer = new EventSerializer($teamsById, $pitchesById, $venuesById, $this->venueMatcher, $auswaertsFarbe);
+        $serializer = new EventSerializer($teamsById, $pitchesById, $venuesById, $this->venueMatcher, $auswaertsFarbe, $sportheimeById, $raeumeById);
 
         $spiele = [];
         foreach ($this->matches->findAll() as $match) {
@@ -124,12 +138,30 @@ final readonly class OfflineBundleService
             'pitches' => array_map(static fn(array $p): array => [
                 'id' => (int) $p['id'],
                 'venue_id' => (int) $p['venue_id'],
+                'sportheim_id' => $p['sportheim_id'] !== null ? (int) $p['sportheim_id'] : null,
                 'name' => (string) $p['name'],
                 'kuerzel' => (string) $p['kuerzel'],
                 'farbe' => (string) $p['farbe'],
                 'adresse' => $p['adresse'] !== null ? (string) $p['adresse'] : null,
                 'venue_name' => (string) ($p['venue_name'] ?? ''),
             ], $pitches),
+            'sportheime' => array_map(static fn(array $s): array => [
+                'id' => (int) $s['id'],
+                'venue_id' => (int) $s['venue_id'],
+                'name' => (string) $s['name'],
+                'adresse' => $s['adresse'] !== null ? (string) $s['adresse'] : null,
+                'sortierung' => (int) $s['sortierung'],
+                'aktiv' => (int) $s['aktiv'] === 1,
+            ], $this->sportheime->findAktive()),
+            'sportheim_raeume' => array_map(static fn(array $r): array => [
+                'id' => (int) $r['id'],
+                'sportheim_id' => (int) $r['sportheim_id'],
+                'name' => (string) $r['name'],
+                'kuerzel' => (string) $r['kuerzel'],
+                'sortierung' => (int) $r['sortierung'],
+                'aktiv' => (int) $r['aktiv'] === 1,
+            ], $this->raeume->findAll()),
+            'vermietungen' => array_map($serializer->vermietung(...), $this->vermietungen->findAll()),
             'settings' => [
                 'auswaerts_farbe' => $auswaertsFarbe,
                 'nutzungszeiten_von' => $this->settings->get('nutzungszeiten_von', '08:00'),

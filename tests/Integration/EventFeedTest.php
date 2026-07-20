@@ -324,6 +324,55 @@ final class EventFeedTest extends DatabaseTestCase
         self::assertSame('Platzpflege', $sperrungen[0]['grund']);
     }
 
+    /**
+     * Issue #36: Vermietungen only ever appear in the merged feed (typ=''),
+     * never under typ=belegung/spiel; they carry no team, so a team/bereich
+     * filter hides them.
+     */
+    public function testVermietungAppearsOnlyInMergedFeed(): void
+    {
+        $sportheimId = $this->createSportheim($this->venueId);
+        $this->createVermietung($sportheimId, '2026-08-04 18:00:00', '2026-08-04 22:00:00', 'Geburtstagsfeier');
+
+        $range = ['von' => '2026-08-01', 'bis' => '2026-08-09'];
+
+        $alle = $this->eventFeedService()->events($range);
+        $vermietungen = array_values(array_filter($alle, static fn(array $e): bool => $e['typ'] === 'vermietung'));
+        self::assertCount(1, $vermietungen);
+        self::assertSame('vermietung-' . $vermietungen[0]['vermietung_id'], $vermietungen[0]['id']);
+        self::assertStringContainsString('Geburtstagsfeier', $vermietungen[0]['titel']);
+        self::assertStringContainsString('gesamtes Sportheim', $vermietungen[0]['raum_text']);
+        self::assertSame($this->venueId, $vermietungen[0]['venue_id']);
+
+        $belegung = $this->eventFeedService()->events([...$range, 'typ' => 'belegung']);
+        self::assertSame([], array_values(array_filter($belegung, static fn(array $e): bool => $e['typ'] === 'vermietung')));
+
+        $spiel = $this->eventFeedService()->events([...$range, 'typ' => 'spiel']);
+        self::assertSame([], array_values(array_filter($spiel, static fn(array $e): bool => $e['typ'] === 'vermietung')));
+
+        self::assertCount(0, array_filter(
+            $this->eventFeedService()->events([...$range, 'team' => (string) $this->teamId]),
+            static fn(array $e): bool => $e['typ'] === 'vermietung',
+        ), 'a team filter hides Vermietungen (no team)');
+    }
+
+    public function testVermietungMatchesVenueFilter(): void
+    {
+        $sportheimId = $this->createSportheim($this->venueId);
+        $this->createVermietung($sportheimId, '2026-08-04 18:00:00', '2026-08-04 22:00:00');
+
+        $range = ['von' => '2026-08-01', 'bis' => '2026-08-09'];
+
+        self::assertCount(1, array_filter(
+            $this->eventFeedService()->events([...$range, 'venue' => (string) $this->venueId]),
+            static fn(array $e): bool => $e['typ'] === 'vermietung',
+        ));
+        self::assertCount(0, array_filter(
+            $this->eventFeedService()->events([...$range, 'venue' => 'auswaerts']),
+            static fn(array $e): bool => $e['typ'] === 'vermietung',
+        ));
+    }
+
     public function testExceptionRemovesSingleOccurrence(): void
     {
         $slotId = (int) $this->dumpTable('training_slot')[0]['id'];

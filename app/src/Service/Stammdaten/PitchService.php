@@ -9,6 +9,7 @@ use App\Domain\EventContext;
 use App\Domain\EventType;
 use App\Domain\Palette;
 use App\Repository\PitchRepository;
+use App\Repository\SportheimRepository;
 use App\Repository\VenueRepository;
 use App\Service\EventStore\EventStore;
 use App\Service\ValidationException;
@@ -19,6 +20,7 @@ final readonly class PitchService
         private EventStore $eventStore,
         private PitchRepository $pitches,
         private VenueRepository $venues,
+        private SportheimRepository $sportheime,
     ) {
     }
 
@@ -75,6 +77,7 @@ final readonly class PitchService
             'flutlicht' => (bool) $pitch['flutlicht'],
             'adresse' => $pitch['adresse'] !== null ? (string) $pitch['adresse'] : null,
             'sortierung' => (int) $pitch['sortierung'],
+            'sportheim_id' => $pitch['sportheim_id'] !== null ? (int) $pitch['sportheim_id'] : null,
         ];
         $this->eventStore->append(AggregateType::Pitch, $id, EventType::Deleted, $payload, $context);
     }
@@ -117,6 +120,17 @@ final readonly class PitchService
             $errors['adresse'] = 'Adresse darf max. 255 Zeichen lang sein.';
         }
 
+        $sportheimId = null;
+        $rawSportheimId = trim((string) ($input['sportheim_id'] ?? ''));
+        if ($rawSportheimId !== '') {
+            $sportheim = $this->sportheime->find((int) $rawSportheimId);
+            if ($sportheim === null) {
+                $errors['sportheim_id'] = 'Bitte ein vorhandenes Sportheim wählen.';
+            } else {
+                $sportheimId = (int) $rawSportheimId;
+            }
+        }
+
         if ($errors !== []) {
             throw new ValidationException($errors);
         }
@@ -131,6 +145,8 @@ final readonly class PitchService
             // NULL = same address as the venue (CLAUDE.md section 4)
             'adresse' => $adresse === '' ? null : $adresse,
             'sortierung' => (int) ($input['sortierung'] ?? 0),
+            // NULL = not every pitch is at a clubhouse (Issue #36)
+            'sportheim_id' => $sportheimId,
         ];
     }
 }
