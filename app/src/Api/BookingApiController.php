@@ -15,6 +15,7 @@ use App\Service\Kalender\ConflictException;
 use App\Service\Kalender\ConflictGrouper;
 use App\Service\Kalender\MatchService;
 use App\Service\Kalender\RestrictionService;
+use App\Service\Kalender\VermietungService;
 use App\Service\ValidationException;
 
 /**
@@ -30,6 +31,7 @@ final readonly class BookingApiController
         private BookingService $booking,
         private RestrictionService $restrictions,
         private MatchService $matches,
+        private VermietungService $vermietungen,
     ) {
     }
 
@@ -49,6 +51,7 @@ final readonly class BookingApiController
             return Response::json([
                 'konflikte' => ConflictGrouper::group(self::onlyConflicts($result->details)),
                 'warnungen' => ConflictGrouper::group(self::onlyWarnings($result->details)),
+                'hinweise' => ConflictGrouper::group($result->hinweise),
             ]);
         } catch (ValidationException $e) {
             return Response::json(['fehler' => $e->getErrors()], 422);
@@ -194,6 +197,7 @@ final readonly class BookingApiController
             return Response::json([
                 'konflikte' => ConflictGrouper::group(self::onlyConflicts($result->details)),
                 'warnungen' => ConflictGrouper::group(self::onlyWarnings($result->details)),
+                'hinweise' => ConflictGrouper::group($result->hinweise),
             ]);
         } catch (ValidationException $e) {
             return Response::json(['fehler' => $e->getErrors()], 422);
@@ -236,6 +240,45 @@ final readonly class BookingApiController
     {
         try {
             $this->matches->deleteMatch((int) $params['id'], $this->context($request));
+
+            return Response::json(['ok' => true]);
+        } catch (ValidationException $e) {
+            return Response::json(['fehler' => $e->getErrors()], 422);
+        }
+    }
+
+    public function createVermietung(Request $request): Response
+    {
+        try {
+            $id = $this->vermietungen->create($request->post, $this->context($request));
+
+            return Response::json(['id' => $id], 201);
+        } catch (ValidationException $e) {
+            return Response::json(['fehler' => $e->getErrors()], 422);
+        }
+    }
+
+    /**
+     * @param array<string, string> $params
+     */
+    public function updateVermietung(Request $request, array $params): Response
+    {
+        try {
+            $this->vermietungen->update((int) $params['id'], $request->post, $this->context($request));
+
+            return Response::json(['ok' => true]);
+        } catch (ValidationException $e) {
+            return Response::json(['fehler' => $e->getErrors()], 422);
+        }
+    }
+
+    /**
+     * @param array<string, string> $params
+     */
+    public function deleteVermietung(Request $request, array $params): Response
+    {
+        try {
+            $this->vermietungen->delete((int) $params['id'], $this->context($request));
 
             return Response::json(['ok' => true]);
         } catch (ValidationException $e) {

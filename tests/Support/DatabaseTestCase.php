@@ -17,11 +17,14 @@ use App\Service\Projection\PitchProjector;
 use App\Service\Projection\PitchRestrictionProjector;
 use App\Service\Projection\ProjectorRegistry;
 use App\Service\Projection\SlotExceptionProjector;
+use App\Service\Projection\SportheimProjector;
+use App\Service\Projection\SportheimRaumProjector;
 use App\Service\Projection\TeamHomePitchProjector;
 use App\Service\Projection\TeamProjector;
 use App\Service\Projection\TrainingSlotProjector;
 use App\Service\Projection\VenueBegriffProjector;
 use App\Service\Projection\VenueProjector;
+use App\Service\Projection\VermietungProjector;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -80,6 +83,9 @@ abstract class DatabaseTestCase extends TestCase
             new ImportSourceProjector($this->pdo()),
             new MatchProjector($this->pdo()),
             new TeamHomePitchProjector($this->pdo()),
+            new SportheimProjector($this->pdo()),
+            new SportheimRaumProjector($this->pdo()),
+            new VermietungProjector($this->pdo()),
         ]);
     }
 
@@ -128,13 +134,13 @@ abstract class DatabaseTestCase extends TestCase
         )->aggregateId;
     }
 
-    protected function createPitch(int $venueId, string $name = 'Rasenplatz 1', string $farbe = '#0969da', string $kuerzel = 'P1'): int
+    protected function createPitch(int $venueId, string $name = 'Rasenplatz 1', string $farbe = '#0969da', string $kuerzel = 'P1', ?int $sportheimId = null): int
     {
         return $this->eventStore()->append(
             \App\Domain\AggregateType::Pitch,
             null,
             \App\Domain\EventType::Created,
-            ['venue_id' => $venueId, 'name' => $name, 'kuerzel' => $kuerzel, 'farbe' => $farbe, 'typ' => 'Rasen', 'flutlicht' => true, 'adresse' => null, 'sortierung' => 0],
+            ['venue_id' => $venueId, 'name' => $name, 'kuerzel' => $kuerzel, 'farbe' => $farbe, 'typ' => 'Rasen', 'flutlicht' => true, 'adresse' => null, 'sortierung' => 0, 'sportheim_id' => $sportheimId],
             $this->context(),
         )->aggregateId;
     }
@@ -243,6 +249,50 @@ abstract class DatabaseTestCase extends TestCase
         )->aggregateId;
     }
 
+    protected function createSportheim(int $venueId, string $name = 'Sportheim Musterstadt'): int
+    {
+        return $this->eventStore()->append(
+            \App\Domain\AggregateType::Sportheim,
+            null,
+            \App\Domain\EventType::Created,
+            ['venue_id' => $venueId, 'name' => $name, 'adresse' => null, 'sortierung' => 0, 'aktiv' => true],
+            $this->context(),
+        )->aggregateId;
+    }
+
+    protected function createSportheimRaum(int $sportheimId, string $name = 'Gastraum', string $kuerzel = 'GR'): int
+    {
+        return $this->eventStore()->append(
+            \App\Domain\AggregateType::SportheimRaum,
+            null,
+            \App\Domain\EventType::Created,
+            ['sportheim_id' => $sportheimId, 'name' => $name, 'kuerzel' => $kuerzel, 'sortierung' => 0, 'aktiv' => true],
+            $this->context(),
+        )->aggregateId;
+    }
+
+    /**
+     * @param list<int> $raumIds
+     */
+    protected function createVermietung(int $sportheimId, string $von, string $bis, string $titel = 'Geburtstagsfeier', array $raumIds = []): int
+    {
+        return $this->eventStore()->append(
+            \App\Domain\AggregateType::Vermietung,
+            null,
+            \App\Domain\EventType::Created,
+            [
+                'sportheim_id' => $sportheimId,
+                'raum_ids' => $raumIds,
+                'von' => $von,
+                'bis' => $bis,
+                'titel' => $titel,
+                'kontakt' => null,
+                'bemerkung' => null,
+            ],
+            $this->context(),
+        )->aggregateId;
+    }
+
     protected function icsImportService(\App\Service\Import\IcsFeedFetcher $fetcher): \App\Service\Import\IcsImportService
     {
         $pdo = $this->pdo();
@@ -271,6 +321,31 @@ abstract class DatabaseTestCase extends TestCase
             new \App\Repository\MatchRepository($pdo),
             new \App\Repository\TeamRepository($pdo),
             new \App\Repository\PitchRepository($pdo),
+            new \App\Repository\VermietungRepository($pdo),
+        );
+    }
+
+    protected function vermietungService(): \App\Service\Kalender\VermietungService
+    {
+        $pdo = $this->pdo();
+
+        return new \App\Service\Kalender\VermietungService(
+            $this->eventStore(),
+            new \App\Repository\VermietungRepository($pdo),
+            new \App\Repository\SportheimRepository($pdo),
+            new \App\Repository\SportheimRaumRepository($pdo),
+        );
+    }
+
+    protected function sportheimService(): \App\Service\Stammdaten\SportheimService
+    {
+        $pdo = $this->pdo();
+
+        return new \App\Service\Stammdaten\SportheimService(
+            $this->eventStore(),
+            new \App\Repository\SportheimRepository($pdo),
+            new \App\Repository\SportheimRaumRepository($pdo),
+            new \App\Repository\VenueRepository($pdo),
         );
     }
 
@@ -325,6 +400,9 @@ abstract class DatabaseTestCase extends TestCase
             new \App\Repository\VenueRepository($pdo),
             new \App\Repository\SettingRepository($pdo),
             \App\Service\Kalender\VenueMatcher::fromDatabase($pdo),
+            new \App\Repository\SportheimRepository($pdo),
+            new \App\Repository\SportheimRaumRepository($pdo),
+            new \App\Repository\VermietungRepository($pdo),
         );
     }
 
@@ -343,6 +421,9 @@ abstract class DatabaseTestCase extends TestCase
             new \App\Repository\SettingRepository($pdo),
             \App\Service\Kalender\VenueMatcher::fromDatabase($pdo),
             new \App\Repository\BereichRepository($pdo),
+            new \App\Repository\SportheimRepository($pdo),
+            new \App\Repository\SportheimRaumRepository($pdo),
+            new \App\Repository\VermietungRepository($pdo),
         );
     }
 

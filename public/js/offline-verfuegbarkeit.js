@@ -244,6 +244,24 @@
             }
         }
 
+        // Vermietungen (Issue #36): venue-level hint layer, never touching a
+        // pitch timeline - a rented Sportheim never turns a pitch "gesperrt".
+        const vermietungenByVenue = new Map();
+        for (const vermietung of bundle.vermietungen ?? []) {
+            if (vermietung.venue_id === null || !overlapsRange(vermietung, von, bis)) {
+                continue;
+            }
+            if (!vermietungenByVenue.has(vermietung.venue_id)) {
+                vermietungenByVenue.set(vermietung.venue_id, []);
+            }
+            vermietungenByVenue.get(vermietung.venue_id).push({
+                von: vermietung.start,
+                bis: vermietung.ende,
+                titel: vermietung.anlass,
+                raum_text: vermietung.raum_text,
+            });
+        }
+
         const restrictionsByPitch = new Map();
         for (const sperrung of bundle.sperrungen) {
             if (!overlapsRange(sperrung, von, bis)) {
@@ -275,6 +293,7 @@
                 adresse: venue.adresse,
                 farbe: venue.farbe,
                 hinweise: hinweiseByVenue.get(venue.id) ?? [],
+                vermietungen: vermietungenByVenue.get(venue.id) ?? [],
                 plaetze: [],
             };
 

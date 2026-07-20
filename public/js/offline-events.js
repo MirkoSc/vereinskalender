@@ -114,6 +114,7 @@
             pitch_farbe: pitch !== null ? pitch.farbe : null,
             pitch_adresse: pitch !== null && pitch.adresse !== null ? pitch.adresse : null,
             venue_adresse: venueId !== null && venue !== undefined ? venue.adresse : null,
+            pitch_sportheim_id: pitch !== null ? pitch.sportheim_id : null,
             wochentage: slot.wochentage,
             gueltig_ab: slot.gueltig_ab,
             gueltig_bis: slot.gueltig_bis,
@@ -157,6 +158,13 @@
         for (const sperrung of bundle.sperrungen) {
             if (overlapsRange(sperrung, von, bis)) {
                 events.push(sperrung);
+            }
+        }
+        // Issue #36: vermietungen ship pre-serialized (EventSerializer::
+        // vermietung), same overlap semantics as sperrungen
+        for (const vermietung of bundle.vermietungen ?? []) {
+            if (overlapsRange(vermietung, von, bis)) {
+                events.push(vermietung);
             }
         }
 

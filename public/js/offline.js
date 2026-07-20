@@ -11,7 +11,7 @@ window.VKOffline = (() => {
     // must match App\Service\Kalender\OfflineBundleService::FORMAT; a bundle
     // from an older app version is treated as "no data" and gets replaced
     // on the next online visit's refresh()
-    const BUNDLE_FORMAT = 3;
+    const BUNDLE_FORMAT = 4;
 
     const openDb = () => new Promise((resolve, reject) => {
         const request = indexedDB.open(DB_NAME, 1);

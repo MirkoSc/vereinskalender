@@ -11,7 +11,7 @@
     const baueEventsParams = (filters) => {
         const params = new URLSearchParams();
         for (const [key, value] of Object.entries(filters)) {
-            if (value !== '' && key !== 'pitch' && key !== 'manuell') {
+            if (value !== '' && key !== 'pitch' && key !== 'manuell' && key !== 'vermietung') {
                 params.set(key, value);
             }
         }
@@ -32,7 +32,20 @@
             : events.filter((e) => !istManuellesSpiel(e));
     };
 
-    const api = { baueEventsParams, manuellFilterAnwenden };
+    // Dreistufiger Filter "Vermietungen" (Issue #36), analog manuell: ''
+    // zeigt alles, 'ohne' blendet Vermietungen aus, 'nur' zeigt
+    // ausschließlich sie (dann auch ohne Trainings/Spiele/Sperrungen).
+    const vermietungFilterAnwenden = (events, wert) => {
+        if (wert === '') {
+            return events;
+        }
+        const istVermietung = (e) => e.typ === 'vermietung';
+        return wert === 'nur'
+            ? events.filter(istVermietung)
+            : events.filter((e) => !istVermietung(e));
+    };
+
+    const api = { baueEventsParams, manuellFilterAnwenden, vermietungFilterAnwenden };
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = api;
     } else {

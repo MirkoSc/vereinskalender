@@ -10,9 +10,12 @@ use App\Repository\PitchRepository;
 use App\Repository\PitchRestrictionRepository;
 use App\Repository\SettingRepository;
 use App\Repository\SlotExceptionRepository;
+use App\Repository\SportheimRaumRepository;
+use App\Repository\SportheimRepository;
 use App\Repository\TeamRepository;
 use App\Repository\TrainingSlotRepository;
 use App\Repository\VenueRepository;
+use App\Repository\VermietungRepository;
 use App\Service\ValidationException;
 
 /**
@@ -41,6 +44,9 @@ final readonly class EventFeedService
         private SettingRepository $settings,
         private VenueMatcher $venueMatcher,
         private BereichRepository $bereiche,
+        private SportheimRepository $sportheime,
+        private SportheimRaumRepository $raeume,
+        private VermietungRepository $vermietungen,
     ) {
     }
 
@@ -79,8 +85,16 @@ final readonly class EventFeedService
         foreach ($this->venues->findAll() as $venue) {
             $venues[(int) $venue['id']] = $venue;
         }
+        $sportheime = [];
+        foreach ($this->sportheime->findAll() as $sportheim) {
+            $sportheime[(int) $sportheim['id']] = $sportheim;
+        }
+        $raeume = [];
+        foreach ($this->raeume->findAll() as $raum) {
+            $raeume[(int) $raum['id']] = $raum;
+        }
         $auswaertsFarbe = $this->settings->get('auswaerts_farbe', '#57606a');
-        $serializer = new EventSerializer($teams, $pitches, $venues, $this->venueMatcher, $auswaertsFarbe);
+        $serializer = new EventSerializer($teams, $pitches, $venues, $this->venueMatcher, $auswaertsFarbe, $sportheime, $raeume);
 
         // a multi-team booking matches when ANY of its teams matches
         $matchesTeams = function (array $teamIds) use ($teamFilter, $bereichIdFilter, $teams): bool {
@@ -155,6 +169,19 @@ final readonly class EventFeedService
                     continue;
                 }
 
+                $events[] = $event;
+            }
+        }
+
+        // Issue #36: Vermietungen only ever appear in the merged feed
+        // (typ=''), never under typ=belegung/spiel; they have no team, so an
+        // active team/bereich filter hides them (same as restrictions above)
+        if ($typ === '' && $teamFilter === null && $bereichIdFilter === null) {
+            foreach ($this->vermietungen->findInRange($von . ' 00:00:00', $bis . ' 23:59:59') as $vermietung) {
+                $event = $serializer->vermietung($vermietung);
+                if (!$matchesVenue($event['venue_id'])) {
+                    continue;
+                }
                 $events[] = $event;
             }
         }
