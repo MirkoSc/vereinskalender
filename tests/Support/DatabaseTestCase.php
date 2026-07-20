@@ -293,7 +293,7 @@ abstract class DatabaseTestCase extends TestCase
         )->aggregateId;
     }
 
-    protected function icsImportService(\App\Service\Import\IcsFeedFetcher $fetcher): \App\Service\Import\IcsImportService
+    protected function icsImportService(\App\Service\Import\IcsFeedFetcher $fetcher, ?\DateTimeImmutable $now = null): \App\Service\Import\IcsImportService
     {
         $pdo = $this->pdo();
 
@@ -305,6 +305,7 @@ abstract class DatabaseTestCase extends TestCase
             new \App\Repository\TeamHomePitchRepository($pdo),
             \App\Service\Kalender\VenueMatcher::fromDatabase($pdo),
             $fetcher,
+            now: $now,
         );
     }
 
