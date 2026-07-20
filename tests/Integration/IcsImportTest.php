@@ -180,6 +180,96 @@ final class IcsImportTest extends DatabaseTestCase
         self::assertSame('geplant', $this->dumpTable('match')[0]['status']);
     }
 
+    /**
+     * Issue #48 regression lock-in: the cancel follow-up compares kickoff
+     * against the import moment (Europe/Berlin), not midnight. A match
+     * whose UID vanished from the feed but that kicked off earlier the same
+     * day must stay untouched - some feeds drop past events, and that is
+     * not an actual cancellation.
+     */
+    public function testPastMatchMissingFromFeedStaysPlanned(): void
+    {
+        $now = new \DateTimeImmutable('2099-08-08 15:00:00');
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('vergangen', '20990808T130000', 'Spiel A', 'Stadion A'),
+        )]);
+        $import = $this->icsImportService($fetcher, $now);
+        $import->runAll();
+
+        $fetcher->set(self::URL, self::feed());
+        $result = $this->icsImportService($fetcher, $now)->runAll()[0];
+
+        self::assertSame(0, $result->cancelled);
+        self::assertSame('geplant', $this->dumpTable('match')[0]['status']);
+
+        // no new event was appended for the untouched match
+        $matchEvents = array_values(array_filter(
+            $this->dumpTable('event'),
+            static fn(array $e): bool => $e['aggregat_typ'] === 'match',
+        ));
+        self::assertCount(1, $matchEvents, 'only the original Created event exists');
+    }
+
+    /**
+     * Issue #48: the regular behaviour for future matches is unchanged.
+     */
+    public function testFutureMatchMissingFromFeedIsCancelled(): void
+    {
+        $now = new \DateTimeImmutable('2099-08-08 15:00:00');
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('zukunft', '20990808T170000', 'Spiel B', 'Stadion B'),
+        )]);
+        $import = $this->icsImportService($fetcher, $now);
+        $import->runAll();
+
+        $fetcher->set(self::URL, self::feed());
+        $result = $this->icsImportService($fetcher, $now)->runAll()[0];
+
+        self::assertSame(1, $result->cancelled);
+        self::assertSame('abgesagt', $this->dumpTable('match')[0]['status']);
+    }
+
+    /**
+     * Issue #48: a match that kicked off before the import moment - and is
+     * therefore either running or already over - is never auto-cancelled,
+     * regardless of its UID's presence in the feed.
+     */
+    public function testRunningMatchIsNotCancelled(): void
+    {
+        $now = new \DateTimeImmutable('2099-08-08 15:00:00');
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('laeuft', '20990808T130000', 'Spiel C', 'Stadion C'),
+        )]);
+        $import = $this->icsImportService($fetcher, $now);
+        $import->runAll();
+
+        $fetcher->set(self::URL, self::feed());
+        $result = $this->icsImportService($fetcher, $now)->runAll()[0];
+
+        self::assertSame(0, $result->cancelled);
+        self::assertSame('geplant', $this->dumpTable('match')[0]['status']);
+    }
+
+    /**
+     * Issue #48 documented boundary: kickoff exactly at the import moment
+     * counts as "already started" and is never auto-cancelled.
+     */
+    public function testKickoffExactlyNowIsNotCancelled(): void
+    {
+        $now = new \DateTimeImmutable('2099-08-08 15:00:00');
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('grenze', '20990808T150000', 'Spiel D', 'Stadion D'),
+        )]);
+        $import = $this->icsImportService($fetcher, $now);
+        $import->runAll();
+
+        $fetcher->set(self::URL, self::feed());
+        $result = $this->icsImportService($fetcher, $now)->runAll()[0];
+
+        self::assertSame(0, $result->cancelled);
+        self::assertSame('geplant', $this->dumpTable('match')[0]['status']);
+    }
+
     public function testCancelledStatusInFeed(): void
     {
         $fetcher = new FakeFeedFetcher([self::URL => self::feed(
