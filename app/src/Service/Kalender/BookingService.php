@@ -14,6 +14,7 @@ use App\Repository\PitchRestrictionRepository;
 use App\Repository\SlotExceptionRepository;
 use App\Repository\TeamRepository;
 use App\Repository\TrainingSlotRepository;
+use App\Repository\VermietungRepository;
 use App\Service\EventStore\EventStore;
 use App\Service\ValidationException;
 
@@ -29,6 +30,11 @@ use App\Service\ValidationException;
  * 'nachfolgende' splits it at the occurrence date (truncate + new slot),
  * 'einzeln' replaces one occurrence (exception + one-day slot). Multi-event
  * scopes run in one DB transaction; the EventStore joins it.
+ *
+ * Issue #36: a Vermietung (Sportheim rental) of the pitch's clubhouse never
+ * conflicts and never warns - it is surfaced purely as a hint
+ * (ConflictCheckResult::$hinweise), kept out of $conflicts/$warnings so it
+ * neither blocks the write nor forces a "Trotzdem speichern?" confirmation.
  */
 final readonly class BookingService
 {
@@ -46,6 +52,7 @@ final readonly class BookingService
         private MatchRepository $matches,
         private TeamRepository $teams,
         private PitchRepository $pitches,
+        private VermietungRepository $vermietungen,
     ) {
     }
 
@@ -79,6 +86,7 @@ final readonly class BookingService
         $conflicts = [];
         $warnings = [];
         $details = [];
+        $hinweise = $this->vermietungHinweise($pitchId, $start, $end);
 
         $teamNames = [];
         foreach ($this->teams->findAll() as $team) {
@@ -182,6 +190,7 @@ final readonly class BookingService
             array_values(array_unique($conflicts)),
             array_values(array_unique($warnings)),
             $details,
+            $hinweise,
         );
     }
 
@@ -486,6 +495,7 @@ final readonly class BookingService
 
         $matches = $this->matches->findInRange($von . ' 00:00:00', $bis . ' 23:59:59', (int) $payload['pitch_id']);
         $restrictions = $this->restrictions->findOverlapping($von . ' 00:00:00', $bis . ' 23:59:59', (int) $payload['pitch_id']);
+        $vermietungen = $this->vermietungenForPitch((int) $payload['pitch_id'], $von . ' 00:00:00', $bis . ' 23:59:59');
 
         $teamNames = [];
         foreach ($this->teams->findAll() as $team) {
@@ -507,6 +517,17 @@ final readonly class BookingService
             }
             $seenDetails[$key] = true;
             $details[] = $detail;
+        };
+
+        $hinweise = [];
+        $seenHinweise = [];
+        $addHinweis = static function (Conflict $hinweis) use (&$hinweise, &$seenHinweise): void {
+            $key = implode('|', [$hinweis->typ, $hinweis->verursacherId, $hinweis->datum, $hinweis->von, $hinweis->bis]);
+            if (isset($seenHinweise[$key])) {
+                return;
+            }
+            $seenHinweise[$key] = true;
+            $hinweise[] = $hinweis;
         };
 
         foreach ($candidateOccurrences as $occurrence) {
@@ -593,12 +614,22 @@ final readonly class BookingService
                     $message,
                 ));
             }
+
+            foreach ($vermietungen as $vermietung) {
+                $vermietungStart = new \DateTimeImmutable((string) $vermietung['von']);
+                $vermietungEnd = new \DateTimeImmutable((string) $vermietung['bis']);
+                if (!self::overlaps($occurrence->start, $occurrence->end, $vermietungStart, $vermietungEnd)) {
+                    continue;
+                }
+                $addHinweis(self::vermietungHinweis($vermietung, $occurrence->datum, $vermietungStart, $vermietungEnd));
+            }
         }
 
         return new ConflictCheckResult(
             array_values(array_unique($conflicts)),
             array_values(array_unique($warnings)),
             $details,
+            $hinweise,
         );
     }
 
@@ -712,6 +743,72 @@ final readonly class BookingService
             }
             throw $e;
         }
+    }
+
+    /**
+     * Vermietungen of the pitch's Sportheim overlapping [von, bis] (Issue
+     * #36: purely a hint, never fetched for conflict/warning purposes).
+     * Empty when the pitch has no Sportheim assigned.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function vermietungenForPitch(int $pitchId, string $von, string $bis): array
+    {
+        $pitch = $this->pitches->find($pitchId);
+        $sportheimId = $pitch !== null && $pitch['sportheim_id'] !== null ? (int) $pitch['sportheim_id'] : null;
+        if ($sportheimId === null) {
+            return [];
+        }
+
+        return $this->vermietungen->findOverlappingForSportheim($sportheimId, $von, $bis);
+    }
+
+    /**
+     * @return list<Conflict>
+     */
+    private function vermietungHinweise(int $pitchId, \DateTimeImmutable $start, \DateTimeImmutable $end): array
+    {
+        $datum = $start->format('Y-m-d');
+        $hinweise = [];
+        foreach ($this->vermietungenForPitch($pitchId, $datum . ' 00:00:00', $datum . ' 23:59:59') as $vermietung) {
+            $vermietungStart = new \DateTimeImmutable((string) $vermietung['von']);
+            $vermietungEnd = new \DateTimeImmutable((string) $vermietung['bis']);
+            if (!self::overlaps($start, $end, $vermietungStart, $vermietungEnd)) {
+                continue;
+            }
+            $hinweise[] = self::vermietungHinweis($vermietung, $datum, $vermietungStart, $vermietungEnd);
+        }
+
+        return $hinweise;
+    }
+
+    /**
+     * @param array<string, mixed> $vermietung
+     */
+    private static function vermietungHinweis(
+        array $vermietung,
+        string $datum,
+        \DateTimeImmutable $vermietungStart,
+        \DateTimeImmutable $vermietungEnd,
+    ): Conflict {
+        $message = sprintf(
+            'Sportheim vermietet: %s, Nutzung ggf. eingeschränkt (%s %s–%s Uhr).',
+            (string) $vermietung['titel'],
+            self::germanDate($datum),
+            $vermietungStart->format('H:i'),
+            $vermietungEnd->format('H:i'),
+        );
+
+        return new Conflict(
+            'vermietung',
+            (int) $vermietung['id'],
+            (string) $vermietung['titel'],
+            $datum,
+            $vermietungStart->format('H:i'),
+            $vermietungEnd->format('H:i'),
+            true,
+            $message,
+        );
     }
 
     private static function overlaps(

@@ -430,6 +430,85 @@ final class BookingServiceTest extends DatabaseTestCase
         }
     }
 
+    /**
+     * Issue #36: a Vermietung of the pitch's Sportheim overlapping the
+     * booking must NEVER block or warn - createSlot saves without a
+     * ConflictException and without confirmation-requiring warnings, the
+     * overlap surfaces only in ConflictCheckResult::$hinweise.
+     */
+    public function testVermietungNeverBlocksOrWarnsBooking(): void
+    {
+        $venueId = $this->createVenue();
+        $sportheimId = $this->createSportheim($venueId);
+        $pitchId = $this->createPitch($venueId, 'Rasenplatz Sportheim', '#0969da', 'RS', $sportheimId);
+        $this->createVermietung($sportheimId, '2026-08-04 08:00:00', '2026-08-04 23:00:00', 'Geburtstagsfeier');
+
+        $result = $this->bookingService()->createSlot(
+            $this->slotInput(['pitch_id' => $pitchId]),
+            $this->context(),
+        );
+
+        self::assertSame([], $result['warnings']);
+        self::assertCount(1, $this->dumpTable('training_slot'), 'booking is saved despite the overlapping Vermietung');
+
+        // re-check the same booking, ignoring itself (as an edit dialog
+        // would) - isolates the Vermietung hint from the booking's own slot
+        $check = $this->bookingService()->check($this->slotInput(['pitch_id' => $pitchId]), $result['id']);
+        self::assertFalse($check->hasConflicts());
+        self::assertSame([], $check->warnings);
+        self::assertCount(1, $check->hinweise);
+        self::assertSame('vermietung', $check->hinweise[0]->typ);
+        self::assertStringContainsString('Geburtstagsfeier', $check->hinweise[0]->nachricht);
+    }
+
+    public function testPitchWithoutSportheimGetsNoVermietungHinweis(): void
+    {
+        // $this->pitchId (setUp) has no sportheim_id - a Vermietung anywhere
+        // else must never leak into its hint list.
+        $venueId = $this->createVenue('Anderer Verein');
+        $sportheimId = $this->createSportheim($venueId);
+        $this->createVermietung($sportheimId, '2026-08-04 08:00:00', '2026-08-04 23:00:00', 'Kegelabend');
+
+        $check = $this->bookingService()->check($this->slotInput());
+
+        self::assertSame([], $check->hinweise);
+    }
+
+    public function testVermietungHinweisAppliesEvenWithoutOverlappingRoom(): void
+    {
+        // an empty raum_ids list means "whole house" - the hint must appear
+        // regardless of which/any room the booking would otherwise concern
+        // (a pitch has no room concept at all).
+        $venueId = $this->createVenue();
+        $sportheimId = $this->createSportheim($venueId);
+        $raumId = $this->createSportheimRaum($sportheimId, 'Kegelbahn', 'KB');
+        $pitchId = $this->createPitch($venueId, 'Rasenplatz Sportheim', '#0969da', 'RS', $sportheimId);
+        $this->createVermietung($sportheimId, '2026-08-04 08:00:00', '2026-08-04 23:00:00', 'Kegelabend', [$raumId]);
+
+        $check = $this->bookingService()->check($this->slotInput(['pitch_id' => $pitchId]));
+
+        self::assertCount(1, $check->hinweise);
+    }
+
+    public function testCheckMatchNeverWarnsForVermietungOverlap(): void
+    {
+        $venueId = $this->createVenue();
+        $sportheimId = $this->createSportheim($venueId);
+        $pitchId = $this->createPitch($venueId, 'Rasenplatz Sportheim', '#0969da', 'RS', $sportheimId);
+        $this->createVermietung($sportheimId, '2026-08-08 08:00:00', '2026-08-08 23:00:00', 'Vereinsfeier');
+
+        $result = $this->bookingService()->checkMatch(
+            $pitchId,
+            new \DateTimeImmutable('2026-08-08 15:00:00'),
+            new \DateTimeImmutable('2026-08-08 17:00:00'),
+        );
+
+        self::assertFalse($result->hasConflicts());
+        self::assertSame([], $result->warnings);
+        self::assertCount(1, $result->hinweise);
+        self::assertSame('vermietung', $result->hinweise[0]->typ);
+    }
+
     public function testValidationRejectsBrokenInput(): void
     {
         try {

@@ -25,3 +25,10 @@ test('indikatorFarben liefert null für Sperrungen (kein echtes Team, eigene Art
     const sperrung = { typ: 'sperrung', team_farbe: '#000000', venue_farbe: '#57606a' };
     assert.equal(indikatorFarben(sperrung), null);
 });
+
+// Issue #36: Vermietungen haben kein Team, nur die Spielstätte (Sportheim)
+
+test('indikatorFarben liefert nur die Spielstättenfarbe für Vermietungen (kein Team)', () => {
+    const vermietung = { typ: 'vermietung', team_farbe: null, venue_farbe: '#1a7f37' };
+    assert.deepEqual(indikatorFarben(vermietung), { team: null, venue: '#1a7f37' });
+});

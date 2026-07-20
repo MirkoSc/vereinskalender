@@ -6,6 +6,7 @@ namespace App\Tests\Integration;
 
 use App\Domain\Palette;
 use App\Repository\PitchRepository;
+use App\Repository\SportheimRepository;
 use App\Repository\VenueRepository;
 use App\Service\Stammdaten\PitchService;
 use App\Service\ValidationException;
@@ -21,7 +22,7 @@ final class PitchServiceTest extends DatabaseTestCase
     {
         $pdo = $this->pdo();
 
-        return new PitchService($this->eventStore(), new PitchRepository($pdo), new VenueRepository($pdo));
+        return new PitchService($this->eventStore(), new PitchRepository($pdo), new VenueRepository($pdo), new SportheimRepository($pdo));
     }
 
     public function testCreateWithValidPaletteColorSucceeds(): void

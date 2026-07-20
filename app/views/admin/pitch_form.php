@@ -58,6 +58,18 @@
             <?php if (isset($errors['adresse'])): ?><span class="field-error"><?= e($errors['adresse']) ?></span><?php endif; ?>
         </label>
         <label>
+            Sportheim (nur falls der Platz an einem Sportheim liegt)
+            <select name="sportheim_id">
+                <option value="">– keines –</option>
+                <?php foreach ($sportheime as $sportheim): ?>
+                    <option value="<?= e($sportheim['id']) ?>" <?= (string) ($values['sportheim_id'] ?? '') === (string) $sportheim['id'] ? 'selected' : '' ?>>
+                        <?= e($sportheim['name']) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+            <?php if (isset($errors['sportheim_id'])): ?><span class="field-error"><?= e($errors['sportheim_id']) ?></span><?php endif; ?>
+        </label>
+        <label>
             Sortierung
             <input type="number" name="sortierung" value="<?= e($values['sortierung'] ?? 0) ?>">
         </label>

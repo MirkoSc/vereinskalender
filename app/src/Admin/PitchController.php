@@ -10,6 +10,7 @@ use App\Http\ResponseInterface;
 use App\Http\Session;
 use App\Domain\AggregateType;
 use App\Repository\PitchRepository;
+use App\Repository\SportheimRepository;
 use App\Repository\VenueRepository;
 use App\Service\Stammdaten\PitchService;
 use App\Service\Stammdaten\SortierungService;
@@ -23,6 +24,7 @@ final class PitchController extends AdminController
         Session $session,
         private readonly PitchRepository $pitches,
         private readonly VenueRepository $venues,
+        private readonly SportheimRepository $sportheime,
         private readonly PitchService $service,
         private readonly SortierungService $sortierung,
     ) {
@@ -43,6 +45,7 @@ final class PitchController extends AdminController
             'title' => 'Platz anlegen',
             'action' => '/admin/plaetze',
             'venues' => $this->venues->findAll(),
+            'sportheime' => $this->sportheime->findAktive(),
             'values' => [],
             'errors' => [],
         ]);
@@ -57,6 +60,7 @@ final class PitchController extends AdminController
                 'title' => 'Platz anlegen',
                 'action' => '/admin/plaetze',
                 'venues' => $this->venues->findAll(),
+                'sportheime' => $this->sportheime->findAktive(),
                 'values' => $request->post,
                 'errors' => $e->getErrors(),
             ], 422);
@@ -82,6 +86,7 @@ final class PitchController extends AdminController
             'title' => 'Platz bearbeiten',
             'action' => '/admin/plaetze/' . $id,
             'venues' => $this->venues->findAll(),
+            'sportheime' => $this->sportheime->findAktive(),
             'values' => [...$pitch, 'flutlicht' => ((int) $pitch['flutlicht'] === 1) ? '1' : ''],
             'errors' => [],
         ]);
@@ -101,6 +106,7 @@ final class PitchController extends AdminController
                 'title' => 'Platz bearbeiten',
                 'action' => '/admin/plaetze/' . $id,
                 'venues' => $this->venues->findAll(),
+                'sportheime' => $this->sportheime->findAktive(),
                 'values' => $request->post,
                 'errors' => $e->getErrors(),
             ], 422);

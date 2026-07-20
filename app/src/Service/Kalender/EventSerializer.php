@@ -20,6 +20,8 @@ final readonly class EventSerializer
      * @param array<int, array<string, mixed>> $teamsById
      * @param array<int, array<string, mixed>> $pitchesById
      * @param array<int, array<string, mixed>> $venuesById
+     * @param array<int, array<string, mixed>> $sportheimeById
+     * @param array<int, array<string, mixed>> $raeumeById
      */
     public function __construct(
         private array $teamsById,
@@ -27,6 +29,8 @@ final readonly class EventSerializer
         private array $venuesById,
         private VenueMatcher $venueMatcher,
         private string $auswaertsFarbe,
+        private array $sportheimeById = [],
+        private array $raeumeById = [],
     ) {
     }
 
@@ -73,6 +77,9 @@ final readonly class EventSerializer
             // pitch.adresse only set when it differs from the venue's)
             'pitch_adresse' => $pitch !== null && $pitch['adresse'] !== null ? (string) $pitch['adresse'] : null,
             'venue_adresse' => $venueId !== null && isset($this->venuesById[$venueId]) ? (string) $this->venuesById[$venueId]['adresse'] : null,
+            // Issue #36: lets the client match this event against a
+            // Vermietung of the same Sportheim without a second lookup
+            'pitch_sportheim_id' => $pitch !== null && $pitch['sportheim_id'] !== null ? (int) $pitch['sportheim_id'] : null,
             'wochentage' => SlotExpander::intList($slotRow['wochentage']),
             'gueltig_ab' => (string) $slotRow['gueltig_ab'],
             'gueltig_bis' => (string) $slotRow['gueltig_bis'],
@@ -110,6 +117,7 @@ final readonly class EventSerializer
             'pitch_farbe' => $pitch !== null ? (string) $pitch['farbe'] : null,
             'pitch_adresse' => $pitch !== null && $pitch['adresse'] !== null ? (string) $pitch['adresse'] : null,
             'venue_adresse' => $venueId !== null && isset($this->venuesById[$venueId]) ? (string) $this->venuesById[$venueId]['adresse'] : null,
+            'pitch_sportheim_id' => $pitch !== null && $pitch['sportheim_id'] !== null ? (int) $pitch['sportheim_id'] : null,
         ];
     }
 
@@ -161,10 +169,60 @@ final readonly class EventSerializer
             'pitch_farbe' => $pitch !== null ? (string) $pitch['farbe'] : null,
             'pitch_adresse' => $pitch !== null && $pitch['adresse'] !== null ? (string) $pitch['adresse'] : null,
             'venue_adresse' => $venueId !== null && isset($this->venuesById[$venueId]) ? (string) $this->venuesById[$venueId]['adresse'] : null,
+            'pitch_sportheim_id' => $pitch !== null && $pitch['sportheim_id'] !== null ? (int) $pitch['sportheim_id'] : null,
             'gegner' => (string) $matchRow['gegner'],
             'heimspiel' => (int) $matchRow['heimspiel'] === 1,
             'ort_text' => (string) $matchRow['ort_text'],
             'status' => (string) $matchRow['status'],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $row raw vermietung projection row
+     *        (raum_ids as a JSON string, like the DB column)
+     * @return array<string, mixed>
+     */
+    public function vermietung(array $row): array
+    {
+        $sportheim = $this->sportheimeById[(int) $row['sportheim_id']] ?? null;
+        $venueId = $sportheim !== null ? (int) $sportheim['venue_id'] : null;
+
+        $raumIds = array_map(intval(...), (array) json_decode((string) $row['raum_ids'], true));
+        $raeume = array_values(array_filter(array_map(
+            fn(int $raumId): ?array => $this->raeumeById[$raumId] ?? null,
+            $raumIds,
+        )));
+        $raumText = $raeume === []
+            ? 'gesamtes Sportheim'
+            : implode('+', array_map(static fn(array $r): string => (string) $r['kuerzel'], $raeume));
+
+        return [
+            'id' => 'vermietung-' . (int) $row['id'],
+            'typ' => 'vermietung',
+            'vermietung_id' => (int) $row['id'],
+            'start' => str_replace(' ', 'T', (string) $row['von']),
+            'ende' => str_replace(' ', 'T', (string) $row['bis']),
+            'titel' => sprintf('Vermietung: %s (%s)', (string) $row['titel'], $raumText),
+            'anlass' => (string) $row['titel'],
+            'sportheim_id' => (int) $row['sportheim_id'],
+            'sportheim_name' => $sportheim !== null ? (string) $sportheim['name'] : '',
+            'raum_ids' => $raumIds,
+            'raum_text' => $raumText,
+            'team_id' => null,
+            'team_farbe' => null,
+            'venue_id' => $venueId,
+            'venue_name' => $venueId !== null ? (string) ($this->venuesById[$venueId]['name'] ?? '') : null,
+            'venue_farbe' => $venueId !== null
+                ? (string) ($this->venuesById[$venueId]['farbe'] ?? $this->auswaertsFarbe)
+                : $this->auswaertsFarbe,
+            'pitch_id' => null,
+            'pitch_name' => null,
+            'pitch_kuerzel' => null,
+            'pitch_farbe' => null,
+            'pitch_adresse' => null,
+            'venue_adresse' => $venueId !== null && isset($this->venuesById[$venueId]) ? (string) $this->venuesById[$venueId]['adresse'] : null,
+            'kontakt' => $row['kontakt'] !== null ? (string) $row['kontakt'] : null,
+            'bemerkung' => $row['bemerkung'] !== null ? (string) $row['bemerkung'] : null,
         ];
     }
 }

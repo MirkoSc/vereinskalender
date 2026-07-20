@@ -109,6 +109,15 @@ final class ParityFixturesTest extends TestCase
             }
         }
 
+        // Issue #36: same overlap semantics, ships pre-serialized like sperrungen
+        foreach ($bundle['vermietungen'] ?? [] as $vermietung) {
+            $start = str_replace('T', ' ', (string) $vermietung['start']);
+            $ende = str_replace('T', ' ', (string) $vermietung['ende']);
+            if ($start < $bis . ' 23:59:59' && $ende > $von . ' 00:00:00') {
+                $events[] = $vermietung;
+            }
+        }
+
         usort($events, static fn(array $a, array $b): int => [$a['start'], $a['id']] <=> [$b['start'], $b['id']]);
 
         return $events;

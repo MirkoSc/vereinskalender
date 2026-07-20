@@ -14,7 +14,7 @@ namespace App\Service\Kalender;
 final readonly class Conflict
 {
     public function __construct(
-        public string $typ, // 'slot' | 'match' | 'restriktion'
+        public string $typ, // 'slot' | 'match' | 'restriktion' | 'vermietung'
         public int $verursacherId, // slot id / match id / restriction id
         public string $label, // team names, opponent, or Grund
         public string $datum, // Y-m-d

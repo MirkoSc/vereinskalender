@@ -179,6 +179,18 @@
                 section.append(p);
             }
 
+            // Issue #36: Sportheim-Vermietung als eigener Hinweis-Layer - der
+            // Platz bleibt frei/belegt wie bisher, wird NIE als gesperrt gewertet.
+            for (const vermietung of venue.vermietungen ?? []) {
+                const p = document.createElement('p');
+                p.className = 'hint';
+                const von = new Date(vermietung.von);
+                const bis = new Date(vermietung.bis);
+                const fmt = (d) => `${d.toLocaleDateString('de-DE')} ${d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`;
+                p.textContent = `⚠ Sportheim vermietet: ${vermietung.titel} (${vermietung.raum_text}), ${fmt(von)}–${fmt(bis)} Uhr`;
+                section.append(p);
+            }
+
             for (const pitch of plaetze) {
                 const pitchBlock = document.createElement('div');
                 pitchBlock.className = 'pitch-block';
