@@ -1,5 +1,11 @@
 <section class="calendar-page">
-    <h2><?= e($title) ?></h2>
+    <div class="kalender-titelzeile">
+        <h2><?= e($title) ?></h2>
+        <!-- Issue #53: Zeitraum-Anzeige neben der Überschrift statt in
+             FullCalendars eigener Toolbar - public/js/kalender-titel.js
+             füllt sie (reine Textableitung, kein FullCalendar-Bezug). -->
+        <span id="kalender-zeitraum" class="kalender-zeitraum" aria-live="polite"></span>
+    </div>
 
     <div class="toolbar">
         <button type="button" id="filter-button" class="button filter-button">
