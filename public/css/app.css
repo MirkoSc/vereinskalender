@@ -140,31 +140,56 @@ main {
 }
 
 /*
- * FullCalendar's own header toolbar (prev/next/today/title/view switcher) -
- * not the custom filter .toolbar below. Issue #3: compact, single line,
- * no wrap 360-430px, touch targets stay >= 44px via min-height/min-width.
+ * Kalender-Überschrift + Zeitraum-Anzeige (Issue #53): die Zeitraum-Anzeige
+ * saß vorher in FullCalendars eigener Toolbar (`.fc-toolbar-title`, von
+ * Preact verwaltet) - ein direktes `textContent`-Schreiben dort (Terminliste,
+ * Issue #31/#52) und Preacts eigene Re-Renders beim View-Wechsel gerieten
+ * sich in die Quere (siehe kalender-titel.js). Jetzt ein eigenes Element
+ * neben der Überschrift, außerhalb von FullCalendars DOM. Feste min-height
+ * verhindert einen Layoutsprung, wenn der Text beim Darstellungswechsel
+ * kürzer/länger wird.
+ */
+.kalender-titelzeile {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 0.75rem;
+    row-gap: 0.15rem;
+}
+
+.kalender-titelzeile h2 {
+    margin: 0;
+}
+
+.kalender-zeitraum {
+    display: inline-block;
+    min-height: 1.3em;
+    font-size: clamp(0.85rem, 3vw, 1.05rem);
+    color: var(--color-text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+/*
+ * FullCalendar's own header toolbar (prev/next/today/view switcher - der
+ * Titel wurde mit Issue #53 daraus entfernt, s.o.) - nicht die custom
+ * filter .toolbar weiter unten. Issue #3/#53: kompakt, KEIN horizontaler
+ * Scrollbalken mehr auf 360-430px - stattdessen umbricht die Toolbar sauber
+ * in eine zweite Zeile, Touch-Ziele bleiben >= 44px via min-height/min-width.
  */
 .fc .fc-header-toolbar {
-    flex-wrap: nowrap;
-    gap: 0.35rem;
+    flex-wrap: wrap;
+    row-gap: 0.35rem;
+    column-gap: 0.35rem;
     margin-bottom: 0.75rem;
-    overflow-x: auto;
-    scrollbar-width: thin;
 }
 
 .fc .fc-toolbar-chunk {
     display: flex;
     align-items: center;
     flex: 0 0 auto;
-}
-
-.fc .fc-toolbar-title {
-    margin: 0;
-    font-size: clamp(0.8rem, 3.5vw, 1.15rem);
-    white-space: nowrap;
-    max-width: 40vw;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 .fc .fc-button-group {
