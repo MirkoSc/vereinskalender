@@ -280,6 +280,21 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   Duplikate); `typ=belegung`/`typ=spiel` bleiben als engere API-Filterwerte
   Teil der öffentlichen Schnittstelle, werden vom Frontend aber nicht mehr
   gesendet.
+- Die Antwort ist `{ events, naechster }` (Issue #52): `naechster` ist das
+  Datum des nächsten Termins **nach `bis`**, oder `null`, wenn danach
+  nachweislich keiner mehr folgt. Es trägt allein die Abbruchbedingung der
+  Terminliste (Abschnitt 8) – die Grid-Ansichten ignorieren es. Bewusst eine
+  **untere Schranke**, keine exakte Auskunft: nie SPÄTER als der echte
+  nächste Termin, `null` nur bei wirklich leerem Rest. Zwei Abschwächungen
+  fallen darunter: Trainings-Slots liefern die erste passende
+  Wochentags-Occurrence ihrer Regel **ohne** `slot_exception`-Abgleich
+  (Ausnahmen können Termine nur entfernen), und die Filter
+  `team`/`bereich`/`venue` bleiben unberücksichtigt (gefilterte Termine sind
+  eine Teilmenge; `venue` ist in SQL ohnehin nicht auflösbar, der
+  `VenueMatcher` arbeitet zur Anzeigezeit). Eine zu frühe Schranke kostet
+  einen leeren Batch-Request, eine zu späte würde Termine verschlucken –
+  deshalb die Asymmetrie. Berechnung in `EventFeedService::naechsterTermin()`
+  (MIN-Abfragen je Quelle + `NextEventDate` für die Slot-Regeln).
 - Platzfilter (`filter-pitch`, clientseitig, `/api/events` kennt ihn nicht):
   immer sichtbar (Issue #37). In den Ressourcen-Views (Tag/Woche, ab der
   Desktop-Sidebar-Schwelle ~1100 px) reduziert ein gewählter Einzelplatz die
@@ -372,6 +387,19 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   gewinnt, z. B. bei einer verlegten Partie); aktive Filter setzen Cache und
   Bereich auf den initialen Monat zurück. Reine Frontend-Logik
   (`public/js/nachlade.js`, unit-getestet mit `node --test tests/js`).
+  **Abbruch und Lücken** (Issue #52): Das Ende der Kette wird NIE aus leeren
+  Batches abgeleitet – maßgeblich ist allein `naechster` aus der
+  Feed-Antwort (Abschnitt 7). `naechster === null` beendet die Kette und
+  zeigt „keine weiteren Termine"; liegt `naechster` hinter dem geladenen
+  Bereich (Winterpause), **springt** der nächste Batch direkt dorthin,
+  statt sich in 31-Tage-Schritten durch die Lücke zu tasten. Eine beliebig
+  lange Lücke kostet damit genau einen zusätzlichen Roundtrip – den leeren
+  Batch, der `naechster` mitgebracht hat. Die frühere Heuristik („3 leere
+  Batches in Folge = erschöpft") überbrückte nur 93 Tage und beendete die
+  Liste mitten in einer längeren Pause. Nach einem leeren Batch lädt der
+  mobile Scroll-Trigger weiterhin selbständig weiter (Issue #46: ein
+  unveränderter Sentinel löst keinen neuen IntersectionObserver-Trigger
+  aus) – das bleibt nötig, weil `naechster` nur eine untere Schranke ist.
 - Mobile-Patterns: Bottom-Sheets, Chip-Filter, Segmented Control,
   Touch-Ziele ≥ 44 px.
 - **Legende** (Issue #38): EINE Komponente für Spielstätten-, Platz- und
@@ -421,7 +449,15 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   (Spiel-/Sperrungs-Serialisierung) und `AvailabilityCalculator`
   (Timeline-Berechnung) als reine, DB-freie Klassen ausgelagert, damit
   dieselben goldenen Fixtures (`tests/fixtures/parity/`) PHP-Referenz UND
-  JS-Port paritätsgetestet gegeneinander prüfen (Abschnitt 11). Ablage in
+  JS-Port paritätsgetestet gegeneinander prüfen (Abschnitt 11).
+  `VKOfflineEvents.naechsterTermin()` liefert zusätzlich das `naechster`-Feld
+  (Issue #52, Abschnitt 7) aus demselben Bundle, damit die Terminliste
+  offline **dieselbe** Abbruchbedingung hat wie online – kein Sonderweg,
+  kein Zusatz-Request, keine `format`-Erhöhung (das Bundle enthält bereits
+  alles Nötige). Bewusst NICHT paritätsgetestet: serverseitig sind es
+  MIN-Abfragen, clientseitig ein Array-Scan; verbindlich ist nur die
+  Schranken-Eigenschaft (Abschnitt 7), eine Abweichung kostet höchstens
+  einen leeren Batch-Request. Ablage in
   IndexedDB mit Zeitstempel, Aktualisierung bei jedem Online-Besuch. Offline:
   Banner „⚠ Offline – Stand: <Zeit>" (Pflicht, prominent, mit
   Verlegungsrisiko-Hinweis, da nun auch weit entfernte Termine offline
@@ -568,7 +604,13 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   ein bereits zugewiesener – nun inaktiver – Bereich bleibt für das eigene
   Team gültig, neue Zuweisungen an ihn werden abgelehnt); Drag&Drop-
   Sortierung (nur tatsächlich verschobene Zeilen erhalten ein Updated-Event,
-  eine Transaktion); **Offline-
+  eine Transaktion); **Terminlisten-Abbruch über Lücken** (Issue #52:
+  `naechster` als untere Schranke – Sprung über die reale Datenlage „letzter
+  Termin 15.11., nächster 07.03. des Folgejahres" erreicht den Folgetermin,
+  Lücke > 1 Jahr beendet die Kette nicht, „wirklich kein Termin mehr" endet
+  terminierend mit Abschlusshinweis, Slot-Regel als frühester Kandidat,
+  laufende Sperrung zählt nicht als „nächster"; Filter senken die Schranke
+  nicht); **Offline-
   Paritätstests** (Issue #25): goldene Fixtures
   (`tests/fixtures/parity/bundle.json` + `cases.json`, inkl. beider
   DST-Wochenenden, überlappender Slots, mehrtägiger vor dem Zeitraum
