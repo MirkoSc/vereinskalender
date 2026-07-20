@@ -31,6 +31,7 @@ final class AvailabilityCalculator
      *     ausnahmen: list<array<string, mixed>>,
      *     spiele: list<array<string, mixed>> (EventSerializer::spiel shape),
      *     sperrungen: list<array<string, mixed>> (EventSerializer::sperrung shape),
+     *     vermietungen: list<array<string, mixed>> (EventSerializer::vermietung shape),
      *     teams: list<array<string, mixed>>,
      *     venues: list<array<string, mixed>>,
      *     pitches: list<array<string, mixed>>,
@@ -94,6 +95,22 @@ final class AvailabilityCalculator
             }
         }
 
+        // Vermietungen (Issue #36): venue-level hint layer, like the
+        // Heimspiel hint above - the pitch timeline is NEVER touched, so a
+        // rented Sportheim never turns a pitch "gesperrt".
+        $vermietungenByVenue = [];
+        foreach ($daten['vermietungen'] ?? [] as $vermietung) {
+            if ($vermietung['venue_id'] === null || !self::overlapsRange($vermietung, $von, $bis)) {
+                continue;
+            }
+            $vermietungenByVenue[(int) $vermietung['venue_id']][] = [
+                'von' => (string) $vermietung['start'],
+                'bis' => (string) $vermietung['ende'],
+                'titel' => (string) $vermietung['anlass'],
+                'raum_text' => (string) $vermietung['raum_text'],
+            ];
+        }
+
         $restrictionsByPitch = [];
         foreach ($daten['sperrungen'] as $sperrung) {
             if (!self::overlapsRange($sperrung, $von, $bis)) {
@@ -123,6 +140,7 @@ final class AvailabilityCalculator
                 'adresse' => (string) $venue['adresse'],
                 'farbe' => (string) $venue['farbe'],
                 'hinweise' => $hinweiseByVenue[$venueId] ?? [],
+                'vermietungen' => $vermietungenByVenue[$venueId] ?? [],
                 'plaetze' => [],
             ];
 

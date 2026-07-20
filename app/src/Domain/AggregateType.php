@@ -17,4 +17,7 @@ enum AggregateType: string
     case Match = 'match';
     case ImportSource = 'import_source';
     case TeamHomePitch = 'team_home_pitch';
+    case Sportheim = 'sportheim';
+    case SportheimRaum = 'sportheim_raum';
+    case Vermietung = 'vermietung';
 }

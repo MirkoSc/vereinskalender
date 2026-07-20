@@ -92,6 +92,9 @@ return static function (Router $router, Container $c): void {
     $router->post('/api/spiele', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->createMatch($r)));
     $router->post('/api/spiele/{id:\d+}', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->updateMatch($r, $p)));
     $router->post('/api/spiele/{id:\d+}/loeschen', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->deleteMatch($r, $p)));
+    $router->post('/api/vermietungen', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->createVermietung($r)));
+    $router->post('/api/vermietungen/{id:\d+}', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->updateVermietung($r, $p)));
+    $router->post('/api/vermietungen/{id:\d+}/loeschen', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->deleteVermietung($r, $p)));
     $router->post('/api/push/subscribe', $publicWrite(fn(Request $r, array $p) => $c->pushApiController()->subscribe($r), false));
     $router->post('/api/push/unsubscribe', $publicWrite(fn(Request $r, array $p) => $c->pushApiController()->unsubscribe($r), false));
 
@@ -172,6 +175,17 @@ return static function (Router $router, Container $c): void {
     $router->post('/admin/spielstaetten/{id:\d+}/loeschen', $guard(fn(Request $r, array $p) => $c->venueController()->delete($r, $p)));
     $router->post('/admin/spielstaetten/{id:\d+}/begriffe', $guard(fn(Request $r, array $p) => $c->venueController()->addBegriff($r, $p)));
     $router->post('/admin/begriffe/{id:\d+}/loeschen', $guard(fn(Request $r, array $p) => $c->venueController()->deleteBegriff($r, $p)));
+
+    $router->get('/admin/sportheime', $guard(fn(Request $r, array $p) => $c->sportheimController()->index($r)));
+    $router->get('/admin/sportheime/neu', $guard(fn(Request $r, array $p) => $c->sportheimController()->createForm($r)));
+    $router->post('/admin/sportheime', $guard(fn(Request $r, array $p) => $c->sportheimController()->create($r)));
+    $router->post('/admin/sportheime/sortierung', $guard(fn(Request $r, array $p) => $c->sportheimController()->sortierung($r)));
+    $router->get('/admin/sportheime/{id:\d+}', $guard(fn(Request $r, array $p) => $c->sportheimController()->editForm($r, $p)));
+    $router->post('/admin/sportheime/{id:\d+}', $guard(fn(Request $r, array $p) => $c->sportheimController()->update($r, $p)));
+    $router->post('/admin/sportheime/{id:\d+}/loeschen', $guard(fn(Request $r, array $p) => $c->sportheimController()->delete($r, $p)));
+    $router->post('/admin/sportheime/{id:\d+}/raeume', $guard(fn(Request $r, array $p) => $c->sportheimController()->addRaum($r, $p)));
+    $router->post('/admin/sportheime/raeume/sortierung', $guard(fn(Request $r, array $p) => $c->sportheimController()->raumSortierung($r)));
+    $router->post('/admin/raeume/{id:\d+}/loeschen', $guard(fn(Request $r, array $p) => $c->sportheimController()->deleteRaum($r, $p)));
 
     $router->get('/admin/import-quellen', $guard(fn(Request $r, array $p) => $c->importSourceController()->index($r)));
     $router->get('/admin/import-quellen/neu', $guard(fn(Request $r, array $p) => $c->importSourceController()->createForm($r)));

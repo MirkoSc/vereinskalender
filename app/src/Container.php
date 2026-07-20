@@ -15,6 +15,7 @@ use App\Admin\PitchController;
 use App\Admin\RebuildController;
 use App\Admin\SaisonController;
 use App\Admin\SettingsController;
+use App\Admin\SportheimController;
 use App\Admin\TeamController;
 use App\Admin\UpdateController;
 use App\Admin\VenueController;
@@ -41,11 +42,14 @@ use App\Repository\PitchRestrictionRepository;
 use App\Repository\PushSubscriptionRepository;
 use App\Repository\SettingRepository;
 use App\Repository\SlotExceptionRepository;
+use App\Repository\SportheimRaumRepository;
+use App\Repository\SportheimRepository;
 use App\Repository\TeamHomePitchRepository;
 use App\Repository\TeamRepository;
 use App\Repository\TrainingSlotRepository;
 use App\Repository\UsageStatRepository;
 use App\Repository\VenueRepository;
+use App\Repository\VermietungRepository;
 use App\Service\Auth\AuthService;
 use App\Service\Backup\BackupService;
 use App\Service\EventStore\EventStore;
@@ -62,6 +66,7 @@ use App\Service\Kalender\MatchService;
 use App\Service\Kalender\OfflineBundleService;
 use App\Service\Kalender\RestrictionService;
 use App\Service\Kalender\VenueMatcher;
+use App\Service\Kalender\VermietungService;
 use App\Service\Push\NotificationTrigger;
 use App\Service\Push\PushSender;
 use App\Service\RateLimiter;
@@ -74,15 +79,19 @@ use App\Service\Projection\PitchProjector;
 use App\Service\Projection\PitchRestrictionProjector;
 use App\Service\Projection\ProjectorRegistry;
 use App\Service\Projection\SlotExceptionProjector;
+use App\Service\Projection\SportheimProjector;
+use App\Service\Projection\SportheimRaumProjector;
 use App\Service\Projection\TeamHomePitchProjector;
 use App\Service\Projection\TeamProjector;
 use App\Service\Projection\TrainingSlotProjector;
 use App\Service\Projection\VenueBegriffProjector;
 use App\Service\Projection\VenueProjector;
+use App\Service\Projection\VermietungProjector;
 use App\Service\Migration\Migrator;
 use App\Service\Stammdaten\BereichService;
 use App\Service\Stammdaten\PitchService;
 use App\Service\Stammdaten\SortierungService;
+use App\Service\Stammdaten\SportheimService;
 use App\Service\Stammdaten\TeamHomePitchService;
 use App\Service\Stammdaten\TeamService;
 use App\Service\Stammdaten\VenueService;
@@ -148,6 +157,9 @@ final class Container
             new ImportSourceProjector($this->pdo()),
             new MatchProjector($this->pdo()),
             new TeamHomePitchProjector($this->pdo()),
+            new SportheimProjector($this->pdo()),
+            new SportheimRaumProjector($this->pdo()),
+            new VermietungProjector($this->pdo()),
         ]));
     }
 
@@ -238,6 +250,9 @@ final class Container
             $this->settingRepository(),
             $this->venueMatcher(),
             $this->bereichRepository(),
+            $this->sportheimRepository(),
+            $this->sportheimRaumRepository(),
+            $this->vermietungRepository(),
         ));
     }
 
@@ -314,6 +329,21 @@ final class Container
     public function matchRepository(): MatchRepository
     {
         return $this->cached('matchRepository', fn(): MatchRepository => new MatchRepository($this->pdo()));
+    }
+
+    public function sportheimRepository(): SportheimRepository
+    {
+        return $this->cached('sportheimRepository', fn(): SportheimRepository => new SportheimRepository($this->pdo()));
+    }
+
+    public function sportheimRaumRepository(): SportheimRaumRepository
+    {
+        return $this->cached('sportheimRaumRepository', fn(): SportheimRaumRepository => new SportheimRaumRepository($this->pdo()));
+    }
+
+    public function vermietungRepository(): VermietungRepository
+    {
+        return $this->cached('vermietungRepository', fn(): VermietungRepository => new VermietungRepository($this->pdo()));
     }
 
     public function backupService(): BackupService
@@ -502,6 +532,7 @@ final class Container
             $this->matchRepository(),
             $this->teamRepository(),
             $this->pitchRepository(),
+            $this->vermietungRepository(),
         ));
     }
 
@@ -536,6 +567,9 @@ final class Container
             $this->venueRepository(),
             $this->settingRepository(),
             $this->venueMatcher(),
+            $this->sportheimRepository(),
+            $this->sportheimRaumRepository(),
+            $this->vermietungRepository(),
         ));
     }
 
@@ -552,6 +586,29 @@ final class Container
             $this->settingRepository(),
             $this->venueMatcher(),
             $this->bereichRepository(),
+            $this->sportheimRepository(),
+            $this->sportheimRaumRepository(),
+            $this->vermietungRepository(),
+        ));
+    }
+
+    public function vermietungService(): VermietungService
+    {
+        return $this->cached('vermietungService', fn(): VermietungService => new VermietungService(
+            $this->eventStore(),
+            $this->vermietungRepository(),
+            $this->sportheimRepository(),
+            $this->sportheimRaumRepository(),
+        ));
+    }
+
+    public function sportheimService(): SportheimService
+    {
+        return $this->cached('sportheimService', fn(): SportheimService => new SportheimService(
+            $this->eventStore(),
+            $this->sportheimRepository(),
+            $this->sportheimRaumRepository(),
+            $this->venueRepository(),
         ));
     }
 
@@ -572,6 +629,7 @@ final class Container
             $this->bookingService(),
             $this->restrictionService(),
             $this->matchService(),
+            $this->vermietungService(),
         ));
     }
 
@@ -589,6 +647,8 @@ final class Container
             $this->paths->publicDir(),
             $this->wappenService(),
             $this->bereichRepository(),
+            $this->sportheimRepository(),
+            $this->sportheimRaumRepository(),
         ));
     }
 
@@ -612,6 +672,7 @@ final class Container
             $this->eventStore(),
             $this->pitchRepository(),
             $this->venueRepository(),
+            $this->sportheimRepository(),
         ));
     }
 
@@ -689,6 +750,7 @@ final class Container
             $this->session(),
             $this->pitchRepository(),
             $this->venueRepository(),
+            $this->sportheimRepository(),
             $this->pitchService(),
             $this->sortierungService(),
         ));
@@ -713,6 +775,19 @@ final class Container
             $this->session(),
             $this->bereichRepository(),
             $this->bereichService(),
+            $this->sortierungService(),
+        ));
+    }
+
+    public function sportheimController(): SportheimController
+    {
+        return $this->cached('sportheimController', fn(): SportheimController => new SportheimController(
+            $this->view(),
+            $this->session(),
+            $this->sportheimRepository(),
+            $this->sportheimRaumRepository(),
+            $this->venueRepository(),
+            $this->sportheimService(),
             $this->sortierungService(),
         ));
     }

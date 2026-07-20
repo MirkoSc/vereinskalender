@@ -224,6 +224,175 @@ final class ReplayDeterminismTest extends DatabaseTestCase
     }
 
     /**
+     * Issue #36: pitch events written before migration 014 carry no
+     * sportheim_id key at all. NULL is explicitly allowed (not every pitch
+     * is at a clubhouse), so the upcast to NULL must be deterministic - both
+     * on the initial write and on replay - and the Replayer must never treat
+     * the missing/NULL FK as an orphan reference.
+     */
+    public function testLegacyPitchEventWithoutSportheimIdUpcastsToNullOnReplay(): void
+    {
+        $store = $this->eventStore();
+        $context = $this->context();
+
+        $venueId = $store->append(AggregateType::Venue, null, EventType::Created, [
+            'name' => 'SV Musterstadt',
+            'farbe' => '#1a7f37',
+            'adresse' => 'Sportweg 1, 12345 Musterstadt',
+            'default_pitch_id' => null,
+            'sortierung' => 0,
+        ], $context)->aggregateId;
+
+        // events written before migration 014 carry no sportheim_id key at all
+        $store->append(AggregateType::Pitch, null, EventType::Created, [
+            'venue_id' => $venueId,
+            'name' => 'Rasenplatz 1',
+            'kuerzel' => 'R1',
+            'farbe' => '#0969da',
+            'typ' => 'Rasen',
+            'flutlicht' => true,
+            'adresse' => null,
+            'sortierung' => 0,
+        ], $context);
+
+        $pitch = $this->dumpTable('pitch')[0];
+        self::assertNull($pitch['sportheim_id']);
+
+        $state = $this->runRebuildToCompletion($this->rebuildService());
+        self::assertSame([], $state->skipped, 'a NULL FK value must never be reported as an orphan reference');
+        self::assertSame($pitch, $this->dumpTable('pitch')[0]);
+    }
+
+    /**
+     * Issue #36: sportheim/sportheim_raum/vermietung create/update/delete
+     * (incl. deactivating a Sportheim/room and an empty raum_ids "whole
+     * house" Vermietung) must reproduce identically after a rebuild.
+     */
+    public function testSportheimSportheimRaumAndVermietungReproduceIdenticallyAfterRebuild(): void
+    {
+        $store = $this->eventStore();
+        $context = $this->context();
+
+        $venueId = $store->append(AggregateType::Venue, null, EventType::Created, [
+            'name' => 'SV Musterstadt',
+            'farbe' => '#1a7f37',
+            'adresse' => 'Sportweg 1, 12345 Musterstadt',
+            'default_pitch_id' => null,
+            'sortierung' => 0,
+        ], $context)->aggregateId;
+
+        $sportheimId = $store->append(AggregateType::Sportheim, null, EventType::Created, [
+            'venue_id' => $venueId,
+            'name' => 'Sportheim Musterstadt',
+            'adresse' => null,
+            'sortierung' => 0,
+            'aktiv' => true,
+        ], $context)->aggregateId;
+
+        $raumId = $store->append(AggregateType::SportheimRaum, null, EventType::Created, [
+            'sportheim_id' => $sportheimId,
+            'name' => 'Gastraum',
+            'kuerzel' => 'GR',
+            'sortierung' => 0,
+            'aktiv' => true,
+        ], $context)->aggregateId;
+        $deletedRaumId = $store->append(AggregateType::SportheimRaum, null, EventType::Created, [
+            'sportheim_id' => $sportheimId,
+            'name' => 'Kegelbahn',
+            'kuerzel' => 'KB',
+            'sortierung' => 1,
+            'aktiv' => true,
+        ], $context)->aggregateId;
+        $store->append(AggregateType::SportheimRaum, $deletedRaumId, EventType::Deleted, [
+            'sportheim_id' => $sportheimId,
+            'name' => 'Kegelbahn',
+            'kuerzel' => 'KB',
+            'sortierung' => 1,
+            'aktiv' => true,
+        ], $context);
+
+        // deactivated instead of deleted (still referenced by the pitch below)
+        $store->append(AggregateType::Sportheim, $sportheimId, EventType::Updated, [
+            'venue_id' => $venueId,
+            'name' => 'Sportheim Musterstadt',
+            'adresse' => null,
+            'sortierung' => 0,
+            'aktiv' => false,
+        ], $context);
+
+        $pitchId = $store->append(AggregateType::Pitch, null, EventType::Created, [
+            'venue_id' => $venueId,
+            'name' => 'Rasenplatz 1',
+            'kuerzel' => 'R1',
+            'farbe' => '#0969da',
+            'typ' => 'Rasen',
+            'flutlicht' => true,
+            'adresse' => null,
+            'sortierung' => 0,
+            'sportheim_id' => $sportheimId,
+        ], $context)->aggregateId;
+        self::assertGreaterThan(0, $pitchId);
+
+        // empty raum_ids = whole house
+        $vermietungId = $store->append(AggregateType::Vermietung, null, EventType::Created, [
+            'sportheim_id' => $sportheimId,
+            'raum_ids' => [],
+            'von' => '2026-08-01 18:00:00',
+            'bis' => '2026-08-01 22:00:00',
+            'titel' => 'Geburtstagsfeier',
+            'kontakt' => null,
+            'bemerkung' => null,
+        ], $context)->aggregateId;
+        $store->append(AggregateType::Vermietung, $vermietungId, EventType::Updated, [
+            'sportheim_id' => $sportheimId,
+            'raum_ids' => [$raumId],
+            'von' => '2026-08-01 18:00:00',
+            'bis' => '2026-08-01 23:00:00',
+            'titel' => 'Geburtstagsfeier (verlängert)',
+            'kontakt' => 'Max Mustermann',
+            'bemerkung' => null,
+        ], $context);
+
+        $deletedVermietungId = $store->append(AggregateType::Vermietung, null, EventType::Created, [
+            'sportheim_id' => $sportheimId,
+            'raum_ids' => [],
+            'von' => '2026-09-01 18:00:00',
+            'bis' => '2026-09-01 22:00:00',
+            'titel' => 'Abgesagte Feier',
+            'kontakt' => null,
+            'bemerkung' => null,
+        ], $context)->aggregateId;
+        $store->append(AggregateType::Vermietung, $deletedVermietungId, EventType::Deleted, [
+            'sportheim_id' => $sportheimId,
+            'raum_ids' => [],
+            'von' => '2026-09-01 18:00:00',
+            'bis' => '2026-09-01 22:00:00',
+            'titel' => 'Abgesagte Feier',
+            'kontakt' => null,
+            'bemerkung' => null,
+        ], $context);
+
+        $sportheimeBefore = $this->dumpTable('sportheim');
+        $raeumeBefore = $this->dumpTable('sportheim_raum');
+        $vermietungenBefore = $this->dumpTable('vermietung');
+        $pitchesBefore = $this->dumpTable('pitch');
+
+        self::assertCount(1, $sportheimeBefore);
+        self::assertSame(0, (int) $sportheimeBefore[0]['aktiv']);
+        self::assertCount(1, $raeumeBefore, 'the deleted room is gone, the kept one remains');
+        self::assertCount(1, $vermietungenBefore, 'the deleted Vermietung is gone, the updated one remains');
+        self::assertSame([$raumId], json_decode((string) $vermietungenBefore[0]['raum_ids'], true));
+
+        $state = $this->runRebuildToCompletion($this->rebuildService());
+
+        self::assertSame([], $state->skipped);
+        self::assertSame($sportheimeBefore, $this->dumpTable('sportheim'));
+        self::assertSame($raeumeBefore, $this->dumpTable('sportheim_raum'));
+        self::assertSame($vermietungenBefore, $this->dumpTable('vermietung'));
+        self::assertSame($pitchesBefore, $this->dumpTable('pitch'));
+    }
+
+    /**
      * Issue #10/#12: match events written before pitch_manuell or ende
      * existed carry no such keys. The upcasts (pitch_manuell -> false,
      * ende -> NULL, CLAUDE.md section 5) must be deterministic, both on the

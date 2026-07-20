@@ -11,6 +11,8 @@ use App\Repository\BereichRepository;
 use App\Repository\PageRepository;
 use App\Repository\PitchRepository;
 use App\Repository\SettingRepository;
+use App\Repository\SportheimRaumRepository;
+use App\Repository\SportheimRepository;
 use App\Repository\TeamRepository;
 use App\Repository\UsageStatRepository;
 use App\Repository\VenueRepository;
@@ -37,6 +39,8 @@ final readonly class PublicController
         private string $publicDir,
         private WappenService $wappen,
         private BereichRepository $bereiche,
+        private SportheimRepository $sportheime,
+        private SportheimRaumRepository $raeume,
     ) {
     }
 
@@ -117,6 +121,7 @@ final readonly class PublicController
                 '/js/kalender-pitch.js',
                 '/js/kalender-farbe.js',
                 '/js/kalender-ansicht.js',
+                '/js/vermietung-hinweis.js',
                 '/js/kalender.js',
             ],
         ]));
@@ -296,11 +301,28 @@ final readonly class PublicController
         $pitches = array_map(static fn(array $p): array => [
             'id' => (int) $p['id'],
             'venue_id' => (int) $p['venue_id'],
+            'sportheim_id' => $p['sportheim_id'] !== null ? (int) $p['sportheim_id'] : null,
             'name' => (string) $p['name'],
             'kuerzel' => (string) $p['kuerzel'],
             'farbe' => (string) $p['farbe'],
             'venue_name' => (string) ($p['venue_name'] ?? ''),
         ], $this->pitches->findAll());
+
+        $sportheime = array_map(static fn(array $s): array => [
+            'id' => (int) $s['id'],
+            'venue_id' => (int) $s['venue_id'],
+            'name' => (string) $s['name'],
+        ], $this->sportheime->findAktive());
+
+        $sportheimRaeume = array_map(static fn(array $r): array => [
+            'id' => (int) $r['id'],
+            'sportheim_id' => (int) $r['sportheim_id'],
+            'name' => (string) $r['name'],
+            'kuerzel' => (string) $r['kuerzel'],
+        ], array_values(array_filter(
+            $this->raeume->findAll(),
+            static fn(array $r): bool => (int) $r['aktiv'] === 1,
+        )));
 
         $auswaertsFarbe = $this->settings->get('auswaerts_farbe', '#57606a');
 
@@ -318,6 +340,8 @@ final readonly class PublicController
                 'bereiche' => $bereiche,
                 'venues' => $venues,
                 'pitches' => $pitches,
+                'sportheime' => $sportheime,
+                'sportheimRaeume' => $sportheimRaeume,
                 'auswaertsFarbe' => $auswaertsFarbe,
             ],
             ':root { ' . implode(' ', $cssLines) . ' }',

@@ -63,14 +63,16 @@ sind KEINE Projektionen.
   Replay-Reihenfolge relativ zu den Bereich-Seed-Events keine Rolle spielt.
   Mehrere Mannschaften je Bereich; je Mannschaft eine import_source.
   Inaktive Teams verschwinden aus Filtern/Neuanlagen, Historie bleibt.
-- **pitch**: venue_id FK (Heimverein), name, kuerzel (Pflichtfeld, max. 10
+- **pitch**: venue_id FK (Heimverein), sportheim_id FK NULL (Issue #36: nicht
+  jeder Platz liegt an einem Sportheim), name, kuerzel (Pflichtfeld, max. 10
   Zeichen, für die Text-Beschriftung bei der Platz-Gruppierung im
   Kalender), farbe (aus vordefinierter Palette), typ, flutlicht, adresse
   NULL (nur falls abweichend), sortierung. Alt-Events ohne Farbe bzw. ohne
   Kürzel (vor Einführung der jeweiligen Spalte) werden beim Replay
   deterministisch auf eine feste Default-Farbe bzw. ein leeres Kürzel
-  gehoben (Upcasting, analog training_slot); das Frontend fällt bei leerem
-  Kürzel auf den Platznamen zurück.
+  gehoben (Upcasting, analog training_slot); Alt-Events ohne sportheim_id
+  werden analog auf NULL gehoben (Migration 014). Das Frontend fällt bei
+  leerem Kürzel auf den Platznamen zurück.
 - **training_slot**: team_ids (Liste 1..n – gemeinsames Training ist EIN
   Slot), pitch_id FK, wochentage (Liste 1..n aus 1–7), beginn, ende,
   gueltig_ab, gueltig_bis. Wiederholungsregel, zur Laufzeit expandiert.
@@ -120,6 +122,22 @@ sind KEINE Projektionen.
   sortierung. Mehrere Heimvereine, je 1..n Plätze.
 - **venue_begriff**: venue_id FK, begriff (Match-Keyword), sortierung.
   Mehrere Begriffe je Verein möglich.
+- **sportheim** (Issue #36): venue_id FK (Heimverein), name, adresse NULL
+  (nur falls abweichend), sortierung, aktiv. Eigenes Event-Aggregat wie
+  `bereich`/`venue`. Löschen nur ohne referenzierende Räume, Plätze und
+  Vermietungen (sonst deaktivieren – Historie bleibt); inaktive Sportheime
+  verschwinden aus Filtern/Neuanlagen.
+- **sportheim_raum** (Issue #36): sportheim_id FK, name (z. B. „Gastraum",
+  „Kegelbahn"), kuerzel, sortierung, aktiv. Mehrere Räume je Sportheim.
+  Löschen nur ohne referenzierende Vermietungen (sonst deaktivieren).
+- **vermietung** (Issue #36): sportheim_id FK, raum_ids (Liste 0..n – leer =
+  gesamtes Sportheim), von, bis (DATETIME), titel (Anlass), kontakt NULL
+  (Freitext), bemerkung NULL. **Blockiert nie** Trainings oder Spiele –
+  `BookingService` behandelt eine überlappende Vermietung ausschließlich als
+  Hinweis (`ConflictCheckResult::$hinweise`, nie `$conflicts`/`$warnings`),
+  nicht als Konflikt oder bestätigungspflichtige Warnung. Anlegen/
+  Bearbeiten/Löschen öffentlich (Ebene 2) als Events wie manuelle Spiele,
+  Löschen = delete-Event; keine Konfliktprüfung beim eigenen Schreiben.
 - **admin**: username UNIQUE, password_hash
 - **event**: siehe Abschnitt 4 – Quelle der Wahrheit.
 - **setting** (key/value): Konfiguration in der DB, nicht in Dateien
@@ -173,7 +191,10 @@ CSRF-Token für alle Schreibrouten. Passwörter nie loggen.
 Admin-Funktionen: Bereiche/Teams/Plätze/Spielstätten-CRUD (Teams inkl.
 eingebetteter Heimspielstätten-Regeln, Abschnitt 3; Sortierung in allen vier
 Listen per Drag&Drop – Pointer Events, Touch-Ziel ≥ 44 px –, das Zahlenfeld
-bleibt als Fallback), Import-Quellen, Event-Historie (Filter:
+bleibt als Fallback), Sportheime-CRUD (Issue #36, inkl. eingebetteter
+Räume-Verwaltung analog Spielstätten-Begriffe, Drag&Drop-Sortierung je Liste,
+Delete-Guard bei referenzierenden Plätzen/Räumen/Vermietungen → deaktivieren
+statt löschen), Import-Quellen, Event-Historie (Filter:
 IP/Name/Typ/Quelle/Zeitraum; Einzel- und Massen-Ausschluss, Korrektur,
 Ausschluss aufheben, Rebuild mit Fortschritt), Backup
 erstellen/herunterladen, Update einspielen, Saison-Assistent (Hinweis auf
@@ -267,6 +288,19 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   kennt ihn nicht; er wirkt auf das `manuell`-Flag im Event-Payload und
   funktioniert dadurch offline identisch. „Nur manuelle" blendet dabei auch
   Trainings/Sperrungen aus (Label macht das klar).
+- **Vermietungen** (Issue #36) sind ein eigener Termintyp (`typ=vermietung`),
+  ausschließlich im zusammengeführten Feed (`typ=''`) enthalten – nie unter
+  `typ=belegung`/`typ=spiel`; ein aktiver Team-/Bereichsfilter blendet sie
+  aus (kein Team), ein Venue-Filter matcht über die Spielstätte des
+  Sportheims. Payload trägt `sportheim_id`, `sportheim_name`, `raum_ids`,
+  `raum_text` (Kürzelliste, leer → „gesamtes Sportheim"), `kontakt`,
+  `bemerkung`, kein `team_id`/`pitch_id`. Trainings/Belegungen/Sperrungen/
+  Spiele tragen zusätzlich `pitch_sportheim_id` (NULL ohne Sportheim-
+  Zuordnung des Platzes), damit der Client Termine ohne Zusatz-Request gegen
+  laufende Vermietungen abgleichen kann (Hinweis-Indikator, Abschnitt 8).
+  Filter „Vermietungen" (`filter-vermietung`, dreistufig wie `filter-manuell`):
+  clientseitig, `/api/events` kennt ihn nicht; „Nur Vermietungen" blendet
+  auch Trainings/Spiele/Sperrungen aus.
 - Spielstätten-Auflösung zur **Anzeigezeit** im einen `VenueMatcher`-Service
   (Anzeige UND Import): erster `venue_begriff` nach sortierung,
   case-insensitive in `ort_text` → venue + Farbe; kein Treffer, aber Platz
@@ -301,10 +335,18 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   `StatController`-Whitelist). Ab der Desktop-Sidebar-Schwelle (~1100 px)
   zeigen Tag UND Woche Platz-Spalten (Premium Resource-Views, Lizenzkey
   `GPL-My-Project-Is-Open-Source`, Projekt ist GPLv3) inkl. einer
-  synthetischen „Auswärts"-Spalte für Spiele ohne `pitch_id`; Monat und Liste
-  haben nie Spalten. Der Button „+ Eintragen" öffnet ein Auswahl-Sheet
-  („Belegung eintragen" / „Spiel eintragen") statt zweier getrennter
-  Toolbar-Buttons.
+  synthetischen „Auswärts"-Spalte für Spiele ohne `pitch_id` sowie einer
+  synthetischen „Sportheim"-Spalte (Issue #36) für Vermietungen (die keinen
+  Platz, sondern ein Sportheim betreffen); Monat und Liste haben nie
+  Spalten. Der Button „+ Eintragen" öffnet ein Auswahl-Sheet („Belegung
+  eintragen" / „Spiel eintragen" / „Vermietung eintragen") statt getrennter
+  Toolbar-Buttons. Vermietungen zeigen als Termin nur den
+  Spielstätten-Farbpunkt (kein Team) mit Text-Label „Vermietung: <Anlass>
+  (<Räume>)"; Trainings/Spiele auf einem Platz eines gerade vermieteten
+  Sportheims tragen zusätzlich einen dezenten 🏠-Indikator, der volle
+  Hinweis („Sportheim vermietet: <Anlass>, Nutzung ggf. eingeschränkt")
+  steht im Detail-Dialog (`public/js/vermietung-hinweis.js`, reiner
+  Overlap-Abgleich auf den bereits geladenen Events, kein Zusatz-Request).
 - **Terminliste mit Nachladen**: `listNachlade` ist eine der vier
   Darstellungen (Issue #37, per Umschalter erreichbar, nicht mehr an eine
   Ansicht/Bildschirmbreite gebunden); ihr sichtbarer Bereich beginnt beim
@@ -336,20 +378,24 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   der Termin-Punkte (Issue #39): Team = Kreis, Spielstätte/Platz = Quadrat,
   Text immer daneben.
 - **PWA/Offline**: Service Worker cached App-Shell; `GET /api/offline-bundle`
-  (format-versioniert, aktuell 3 – Issue #27 hat eine `bereiche`-Liste sowie
-  `team.bereich_id` ergänzt) liefert den **kompletten Datenbestand**
-  (Issue #25): alle Spiele und Sperrungen bereits serialisiert (Feed-Shape,
-  inkl. Platz-/Vereinszuordnung über `VenueMatcher`/`MatchDuration`),
-  Trainings-Slots dagegen als **Regeln** (nicht expandiert) plus ihre
-  Ausnahmen, dazu Teams (mit bereich_id)/Bereiche/Spielstätten/Plätze/
-  Farben/Settings. Die Kalenderseite (alle vier Darstellungen Tag/Woche/
+  (format-versioniert, aktuell 4 – Issue #36 hat `sportheime`/
+  `sportheim_raeume`/`vermietungen`-Listen ergänzt und `pitch.sportheim_id`
+  aufgenommen) liefert den **kompletten Datenbestand**
+  (Issue #25): alle Spiele, Sperrungen und Vermietungen bereits serialisiert
+  (Feed-Shape, inkl. Platz-/Vereinszuordnung über
+  `VenueMatcher`/`MatchDuration`), Trainings-Slots dagegen als **Regeln**
+  (nicht expandiert) plus ihre Ausnahmen, dazu Teams (mit bereich_id)/
+  Bereiche/Spielstätten/Plätze (mit sportheim_id)/Sportheime/Räume/Farben/
+  Settings. Die Kalenderseite (alle vier Darstellungen Tag/Woche/
   Monat/Liste, Issue #37) UND die Verfügbarkeit müssen offline vollständig
   funktionieren, nicht nur für ein Zeitfenster: `public/js/offline-events.js`
   expandiert Slots
-  clientseitig (Port von `SlotExpander`) und baut das `/api/events`-Shape;
+  clientseitig (Port von `SlotExpander`) und baut das `/api/events`-Shape
+  (inkl. Vermietungen, überlappend zum abgefragten Zeitraum);
   `public/js/offline-verfuegbarkeit.js` berechnet die Verfügbarkeit
   clientseitig (Port von `AvailabilityCalculator`) inkl. Nutzungszeiten,
-  Prioritäten und Hinweis-Layer. Serverseitig sind `EventSerializer`
+  Prioritäten, Hinweis-Layer und dem Vermietungs-Hinweis-Layer je
+  Spielstätte. Serverseitig sind `EventSerializer`
   (Spiel-/Sperrungs-Serialisierung) und `AvailabilityCalculator`
   (Timeline-Berechnung) als reine, DB-freie Klassen ausgelagert, damit
   dieselben goldenen Fixtures (`tests/fixtures/parity/`) PHP-Referenz UND
@@ -373,7 +419,10 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   Intervalle frei|belegt|eingeschraenkt|gesperrt inkl. Grund, gruppiert nach
   Heimverein mit Adressen; freie Lücken nur innerhalb Setting
   **Nutzungszeiten**; 'eingeschraenkt' als Grund-Layer hinter Belegungen;
-  Hinweis-Layer für Heimspiele ohne sichere Platz-Zuordnung.
+  Hinweis-Layer für Heimspiele ohne sichere Platz-Zuordnung. Vermietungen
+  (Issue #36) erscheinen als eigener, je Spielstätte gruppierter
+  Hinweis-Layer (`venue.vermietungen`) – der Platz bleibt dabei
+  frei/belegt wie sonst auch, wird NIE als gesperrt gewertet.
 - **Kalender-Abos**: stabile Feeds `/export/team/<id>.ics`,
   `/export/spiele.ics`, `/export/platz/<id>.ics`; **stabile UIDs aus
   aggregat_id** (Verlegung verschiebt statt dupliziert);
@@ -479,7 +528,16 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   blockiert / Überlappung + eingeschraenkt warnen, **„Import ignoriert
   manuelle Spiele"-Regression**, ende-Fallback in Konfliktprüfung/
   Verfügbarkeit/Feed/Export, ende-NULL-Upcasting beim Replay, Push bei
-  Verlegung/Absage manueller Spiele, kein Push bei Löschung); **Bereich-
+  Verlegung/Absage manueller Spiele, kein Push bei Löschung); **Vermietungen**
+  (Issue #36: Nicht-Blockade-Regression – Belegung/Spiel über eine
+  überlappende Vermietung hinweg wird gespeichert, ohne Bestätigungszwang
+  durch die Vermietung, Hinweis nur in `ConflictCheckResult::$hinweise`;
+  Raum-Zuordnung, leere raum_ids-Liste = ganzes Sportheim; Platz ohne
+  sportheim_id erzeugt nie einen Hinweis; `pitch.sportheim_id`-NULL-
+  Upcasting beim Replay analog `pitch.farbe`; Sportheim-/Raum-Delete-Guards
+  – referenzierende Räume/Plätze/Vermietungen bzw. Vermietungen →
+  deaktivieren statt löschen; Offline-Parität für den neuen Termintyp,
+  s. u.); **Bereich-
   Upcasting** (Issue #27: Alt-Team-Event mit nur dem Enum-String → über die
   System-Seed-Events im Event-Log auf die passende bereich_id gehoben,
   deterministisch unabhängig von der Replay-Reihenfolge relativ zu den
@@ -492,7 +550,10 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   Paritätstests** (Issue #25): goldene Fixtures
   (`tests/fixtures/parity/bundle.json` + `cases.json`, inkl. beider
   DST-Wochenenden, überlappender Slots, mehrtägiger vor dem Zeitraum
-  beginnender Sperrung) prüfen, dass die clientseitigen Ports
+  beginnender Sperrung, sowie – Issue #36 – Sportheime/Räume/Vermietungen
+  inkl. einer raumbezogenen und einer Ganzhaus-Vermietung, eines Platzes mit
+  sportheim_id und eines eigenen `vermietung`-Falls) prüfen, dass die
+  clientseitigen Ports
   (`public/js/offline-events.js`, `public/js/offline-verfuegbarkeit.js`)
   byte-identisch zur PHP-Referenz (`SlotExpander`/`EventSerializer`,
   `AvailabilityCalculator`) sind – `tests/Kalender/ParityFixturesTest.php`

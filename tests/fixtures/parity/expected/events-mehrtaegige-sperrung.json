@@ -20,6 +20,34 @@
         "venue_adresse": "Waldweg 5"
     },
     {
+        "id": "vermietung-302",
+        "typ": "vermietung",
+        "vermietung_id": 302,
+        "start": "2026-08-20T00:00:00",
+        "ende": "2026-08-20T23:59:00",
+        "titel": "Vermietung: Kegelabend (KB)",
+        "anlass": "Kegelabend",
+        "sportheim_id": 1,
+        "sportheim_name": "Sportheim Musterstadt",
+        "raum_ids": [
+            2
+        ],
+        "raum_text": "KB",
+        "team_id": null,
+        "team_farbe": null,
+        "venue_id": 1,
+        "venue_name": "SV Musterstadt",
+        "venue_farbe": "#1a7f37",
+        "pitch_id": null,
+        "pitch_name": null,
+        "pitch_kuerzel": null,
+        "pitch_farbe": null,
+        "pitch_adresse": null,
+        "venue_adresse": "Sportweg 1",
+        "kontakt": "Vereinsvorstand",
+        "bemerkung": null
+    },
+    {
         "id": "match-102",
         "typ": "spiel",
         "match_id": 102,
@@ -68,6 +96,7 @@
         "pitch_farbe": "#0969da",
         "pitch_adresse": null,
         "venue_adresse": "Sportweg 1",
+        "pitch_sportheim_id": 1,
         "wochentage": [
             2,
             7

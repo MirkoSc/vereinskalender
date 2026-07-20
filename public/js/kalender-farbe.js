@@ -11,11 +11,17 @@
     // (Auswärtsfarbe als Fallback ohne Spielstätte, EventSerializer) - der
     // zweite Punkt fehlt Terminen ohne Platz/Spielstätte also nie
     // kommentarlos.
-    const indikatorFarben = (props) => (
-        (props.typ === 'belegung' || props.typ === 'spiel')
-            ? { team: props.team_farbe, venue: props.venue_farbe }
-            : null
-    );
+    const indikatorFarben = (props) => {
+        if (props.typ === 'belegung' || props.typ === 'spiel') {
+            return { team: props.team_farbe, venue: props.venue_farbe };
+        }
+        // Issue #36: Vermietungen haben kein Team, nur die Spielstätte
+        // (Sportheim) - der Team-Punkt entfällt, der Venue-Punkt bleibt.
+        if (props.typ === 'vermietung') {
+            return { team: null, venue: props.venue_farbe };
+        }
+        return null;
+    };
 
     const api = { indikatorFarben };
     if (typeof module !== 'undefined' && module.exports) {

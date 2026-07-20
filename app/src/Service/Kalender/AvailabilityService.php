@@ -9,9 +9,12 @@ use App\Repository\PitchRepository;
 use App\Repository\PitchRestrictionRepository;
 use App\Repository\SettingRepository;
 use App\Repository\SlotExceptionRepository;
+use App\Repository\SportheimRaumRepository;
+use App\Repository\SportheimRepository;
 use App\Repository\TeamRepository;
 use App\Repository\TrainingSlotRepository;
 use App\Repository\VenueRepository;
+use App\Repository\VermietungRepository;
 use App\Service\ValidationException;
 
 /**
@@ -34,6 +37,9 @@ final readonly class AvailabilityService
         private VenueRepository $venues,
         private SettingRepository $settings,
         private VenueMatcher $venueMatcher,
+        private SportheimRepository $sportheime,
+        private SportheimRaumRepository $raeume,
+        private VermietungRepository $vermietungen,
     ) {
     }
 
@@ -66,8 +72,16 @@ final readonly class AvailabilityService
         foreach ($venues as $venue) {
             $venuesById[(int) $venue['id']] = $venue;
         }
+        $sportheimeById = [];
+        foreach ($this->sportheime->findAll() as $sportheim) {
+            $sportheimeById[(int) $sportheim['id']] = $sportheim;
+        }
+        $raeumeById = [];
+        foreach ($this->raeume->findAll() as $raum) {
+            $raeumeById[(int) $raum['id']] = $raum;
+        }
         $auswaertsFarbe = $this->settings->get('auswaerts_farbe', '#57606a');
-        $serializer = new EventSerializer($teamsById, $pitchesById, $venuesById, $this->venueMatcher, $auswaertsFarbe);
+        $serializer = new EventSerializer($teamsById, $pitchesById, $venuesById, $this->venueMatcher, $auswaertsFarbe, $sportheimeById, $raeumeById);
 
         $slotRows = $this->slots->findOverlapping($von, $bis);
         $ausnahmen = $this->exceptions->findForSlots(
@@ -87,11 +101,17 @@ final readonly class AvailabilityService
             $this->restrictions->findOverlapping($von . ' 00:00:00', $bis . ' 23:59:59'),
         );
 
+        $vermietungen = array_map(
+            $serializer->vermietung(...),
+            $this->vermietungen->findInRange($von . ' 00:00:00', $bis . ' 23:59:59'),
+        );
+
         $daten = [
             'slots' => $slotRows,
             'ausnahmen' => $ausnahmen,
             'spiele' => $spiele,
             'sperrungen' => $sperrungen,
+            'vermietungen' => $vermietungen,
             'teams' => $teams,
             'venues' => $venues,
             'pitches' => $pitches,

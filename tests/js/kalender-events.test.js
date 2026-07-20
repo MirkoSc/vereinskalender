@@ -5,7 +5,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-    baueEventsParams, manuellFilterAnwenden,
+    baueEventsParams, manuellFilterAnwenden, vermietungFilterAnwenden,
 } = require('../../public/js/kalender-events.js');
 
 test('baueEventsParams liefert eine leere Query ohne aktive Filter (Issue #37: kein typ mehr, EventFeedService liefert alles)', () => {
@@ -66,4 +66,38 @@ test('manuellFilterAnwenden: Events ohne manuell-Feld (z.B. altes Offline-Bundle
     const altesSpiel = { typ: 'spiel' };
     assert.deepEqual(manuellFilterAnwenden([altesSpiel], 'ohne'), [altesSpiel]);
     assert.deepEqual(manuellFilterAnwenden([altesSpiel], 'nur'), []);
+});
+
+// Issue #36: Filter "Vermietungen" (dreistufig, rein clientseitig, analog manuell)
+
+test('baueEventsParams lässt vermietung weg (Issue #36: clientseitiger Filter)', () => {
+    const params = baueEventsParams({ team: '5', bereich: '', venue: '', pitch: '', manuell: '', vermietung: 'ohne' });
+    assert.equal(params.toString(), 'team=5');
+});
+
+test('vermietungFilterAnwenden: leerer Wert zeigt alles', () => {
+    const events = [{ typ: 'vermietung' }, { typ: 'belegung' }, { typ: 'spiel' }];
+    assert.deepEqual(vermietungFilterAnwenden(events, ''), events);
+});
+
+test('vermietungFilterAnwenden: "ohne" blendet Vermietungen aus', () => {
+    const vermietung = { typ: 'vermietung' };
+    const belegung = { typ: 'belegung' };
+    const spiel = { typ: 'spiel' };
+
+    assert.deepEqual(
+        vermietungFilterAnwenden([vermietung, belegung, spiel], 'ohne'),
+        [belegung, spiel],
+    );
+});
+
+test('vermietungFilterAnwenden: "nur" zeigt ausschließlich Vermietungen', () => {
+    const vermietung = { typ: 'vermietung' };
+    const belegung = { typ: 'belegung' };
+    const sperrung = { typ: 'sperrung' };
+
+    assert.deepEqual(
+        vermietungFilterAnwenden([vermietung, belegung, sperrung], 'nur'),
+        [vermietung],
+    );
 });

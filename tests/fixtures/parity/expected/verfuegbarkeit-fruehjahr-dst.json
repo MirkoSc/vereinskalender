@@ -12,6 +12,7 @@
             "adresse": "Sportweg 1",
             "farbe": "#1a7f37",
             "hinweise": [],
+            "vermietungen": [],
             "plaetze": [
                 {
                     "id": 1,
@@ -215,6 +216,7 @@
             "adresse": "Waldweg 5",
             "farbe": "#8250df",
             "hinweise": [],
+            "vermietungen": [],
             "plaetze": [
                 {
                     "id": 3,

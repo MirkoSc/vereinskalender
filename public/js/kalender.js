@@ -50,6 +50,7 @@
         { key: 'venue', default: '', label: (wert) => `Ort: ${venueLabel(wert)}` },
         { key: 'pitch', default: '', label: (wert) => `Platz: ${pitchLabel(wert)}` },
         { key: 'manuell', default: '', label: (wert) => (wert === 'nur' ? 'Nur manuelle Termine' : 'Ohne manuelle Termine') },
+        { key: 'vermietung', default: '', label: (wert) => (wert === 'nur' ? 'Nur Vermietungen' : 'Ohne Vermietungen') },
     ];
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -126,15 +127,18 @@
     };
 
     const manuellSelect = document.querySelector('#filter-manuell');
+    const vermietungSelect = document.querySelector('#filter-vermietung');
 
     teamSelect.value = filters.team;
     bereichSelect.value = filters.bereich;
     venueSelect.value = filters.venue;
     manuellSelect.value = filters.manuell;
+    vermietungSelect.value = filters.vermietung;
     teamSelect.addEventListener('change', () => setzeFilter('team', teamSelect.value));
     bereichSelect.addEventListener('change', () => setzeFilter('bereich', bereichSelect.value));
     venueSelect.addEventListener('change', () => setzeFilter('venue', venueSelect.value));
     manuellSelect.addEventListener('change', () => setzeFilter('manuell', manuellSelect.value));
+    vermietungSelect.addEventListener('change', () => setzeFilter('vermietung', vermietungSelect.value));
 
     document.querySelector('#filter-button').addEventListener('click', () => filterDialog.showModal());
     document.querySelector('#filter-close').addEventListener('click', () => filterDialog.close());
@@ -192,6 +196,9 @@
     // Konstante zwischen aktuelleRessourcen() und toFcEvent(), da Events ohne
     // bekannte resourceId in Ressourcen-Views sonst lautlos verschwinden.
     const RESOURCE_AUSWAERTS_ID = 'auswaerts';
+    // Issue #36: eigene synthetische Spalte für Vermietungen (kein Platz,
+    // sondern das Sportheim) - analog RESOURCE_AUSWAERTS_ID.
+    const RESOURCE_SPORTHEIM_ID = 'sportheim';
 
     // ---- calendar ----
 
@@ -206,6 +213,11 @@
         if (props.typ === 'sperrung') {
             // same CSS custom properties as app.css, not a second literal (Issue #1)
             return props.art === 'gesperrt' ? 'var(--color-danger)' : 'var(--color-warning)';
+        }
+        // Issue #36: Vermietungen haben keinen Platz - eigener Look über
+        // die .ev-vermietung-Klasse (app.css) statt Platzfarbe.
+        if (props.typ === 'vermietung') {
+            return null;
         }
         if (window.VKKalenderPitch.pitchFarbeAktiv(pitchGruppierungAktiv(), modus === 'liste')) {
             return window.VKKalenderPitch.pitchEventFarbe(props);
@@ -251,12 +263,16 @@
         const punkte = document.createElement('span');
         punkte.className = 'ev-punkte';
 
-        const teamPunkt = document.createElement('span');
-        teamPunkt.className = 'ev-punkt ev-punkt-team';
-        teamPunkt.style.backgroundColor = farben.team;
-        teamPunkt.setAttribute('role', 'img');
-        teamPunkt.setAttribute('aria-label', `Team: ${props.team_name ?? ''}`);
-        teamPunkt.title = `Team: ${props.team_name ?? ''}`;
+        // Issue #36: Vermietungen haben kein Team - nur der Spielstätten-Punkt
+        if (farben.team !== null) {
+            const teamPunkt = document.createElement('span');
+            teamPunkt.className = 'ev-punkt ev-punkt-team';
+            teamPunkt.style.backgroundColor = farben.team;
+            teamPunkt.setAttribute('role', 'img');
+            teamPunkt.setAttribute('aria-label', `Team: ${props.team_name ?? ''}`);
+            teamPunkt.title = `Team: ${props.team_name ?? ''}`;
+            punkte.append(teamPunkt);
+        }
 
         const venuePunkt = document.createElement('span');
         venuePunkt.className = 'ev-punkt ev-punkt-venue';
@@ -265,7 +281,7 @@
         venuePunkt.setAttribute('aria-label', `Spielstätte: ${venueName(props)}`);
         venuePunkt.title = `Spielstätte: ${venueName(props)}`;
 
-        punkte.append(teamPunkt, venuePunkt);
+        punkte.append(venuePunkt);
         return punkte;
     };
 
@@ -300,6 +316,18 @@
         titel.textContent = arg.event.title || ' ';
         wrapper.append(titel);
 
+        // Issue #36: dezenter Hinweis am Termin, wenn sein Platz zu einem
+        // gerade vermieteten Sportheim gehört (voller Hinweis im Detail-Dialog).
+        if (window.VKVermietungHinweis.findeUeberschneidende(vermietungenAktuell, props).length > 0) {
+            const hinweis = document.createElement('span');
+            hinweis.className = 'ev-vermietung-hinweis';
+            hinweis.textContent = '🏠';
+            hinweis.setAttribute('role', 'img');
+            hinweis.setAttribute('aria-label', 'Sportheim vermietet');
+            hinweis.title = 'Sportheim vermietet - Nutzung ggf. eingeschränkt';
+            wrapper.append(hinweis);
+        }
+
         return { domNodes: [wrapper] };
     };
 
@@ -311,7 +339,11 @@
         title: eventTitle(e),
         start: e.start,
         end: e.ende,
-        resourceId: e.pitch_id !== null ? String(e.pitch_id) : RESOURCE_AUSWAERTS_ID,
+        // Issue #36: Vermietungen haben keine pitch_id - eigene Spalte statt
+        // der "Auswärts"-Spalte, die sonst für Termine ohne Platz greift.
+        resourceId: e.typ === 'vermietung'
+            ? RESOURCE_SPORTHEIM_ID
+            : (e.pitch_id !== null ? String(e.pitch_id) : RESOURCE_AUSWAERTS_ID),
         color: eventColor(e) ?? undefined,
         display: e.typ === 'sperrung' ? 'background' : 'auto',
         classNames: [`ev-${e.typ}`, e.status === 'abgesagt' ? 'ev-abgesagt' : ''].filter(Boolean),
@@ -333,7 +365,22 @@
 
     // Beide clientseitigen Filter zusammen anwenden (auch im Offline-Pfad,
     // da fetchEventsRange auch dort schon fertige Event-Objekte liefert).
-    const applyClientFilters = (events) => window.VKKalenderEvents.manuellFilterAnwenden(applyPitchFilter(events), filters.manuell);
+    const applyClientFilters = (events) => window.VKKalenderEvents.vermietungFilterAnwenden(
+        window.VKKalenderEvents.manuellFilterAnwenden(applyPitchFilter(events), filters.manuell),
+        filters.vermietung,
+    );
+
+    // Issue #36: die zuletzt geladenen Vermietungen (immer aus dem GEFILTERTEN
+    // Event-Set, damit ein ausgeblendeter Vermietungs-Filter auch den
+    // 🏠-Indikator/Detail-Hinweis konsequent abschaltet), für den
+    // 🏠-Indikator am Termin und den Hinweis im Detail-Dialog. Deckt nur das
+    // gerade sichtbare Fenster ab - kein Anspruch auf Vollständigkeit
+    // außerhalb davon.
+    let vermietungenAktuell = [];
+    const merkeVermietungen = (events) => {
+        vermietungenAktuell = events.filter((e) => e.typ === 'vermietung');
+        return events;
+    };
 
     // Ein Bereich [von, bis) laden - per Fetch oder, offline, aus dem
     // IndexedDB-Bundle mit dem kompletten Datenbestand (CLAUDE.md Abschnitt 8,
@@ -628,6 +675,7 @@
         const alle = [
             ...appData.pitches.map((p) => ({ id: String(p.id), title: `${p.name} (${p.venue_name})` })),
             { id: RESOURCE_AUSWAERTS_ID, title: 'Auswärts' },
+            { id: RESOURCE_SPORTHEIM_ID, title: 'Sportheim' },
         ];
         return filters.pitch !== '' ? alle.filter((r) => r.id === filters.pitch) : alle;
     };
@@ -726,7 +774,7 @@
                     listeAktiv = true;
                     listeLadeKette(params);
                 }
-                success(applyClientFilters(listeEvents).map(toFcEvent));
+                success(merkeVermietungen(applyClientFilters(listeEvents)).map(toFcEvent));
                 listeTitelAktualisieren();
                 return;
             }
@@ -735,7 +783,7 @@
             try {
                 const von = info.startStr.slice(0, 10);
                 const bis = info.endStr.slice(0, 10);
-                success(applyClientFilters(await fetchEventsRange(von, bis, params)).map(toFcEvent));
+                success(merkeVermietungen(applyClientFilters(await fetchEventsRange(von, bis, params))).map(toFcEvent));
             } catch (error) {
                 failure(error);
             }
@@ -805,6 +853,18 @@
         const ende = new Date(props.ende);
         const datum = start.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
         detailContent.append(zeile('Termin', `${datum}, ${start.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}–${ende.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr`));
+
+        // Issue #36: voller Hinweis für Trainings/Spiele auf einem Platz
+        // eines gerade vermieteten Sportheims - blockiert nichts, ist reine
+        // Information (CLAUDE.md Abschnitt 4/9).
+        if (props.typ === 'belegung' || props.typ === 'spiel') {
+            for (const v of window.VKVermietungHinweis.findeUeberschneidende(vermietungenAktuell, props)) {
+                const hinweis = document.createElement('p');
+                hinweis.className = 'warning-message';
+                hinweis.textContent = `⚠ Sportheim vermietet: ${v.anlass} (${v.raum_text}), Nutzung ggf. eingeschränkt.`;
+                detailContent.append(hinweis);
+            }
+        }
 
         if (props.typ === 'belegung') {
             detailContent.append(zeile((props.team_ids ?? []).length > 1 ? 'Teams' : 'Team', props.team_name));
@@ -954,6 +1014,46 @@
                 }
             });
             detailActions.append(deleteButton);
+        } else if (props.typ === 'vermietung') {
+            detailContent.append(zeile('Sportheim', props.sportheim_name));
+            detailContent.append(zeile('Räume', props.raum_text));
+            if (props.kontakt) {
+                detailContent.append(zeile('Kontakt', props.kontakt));
+            }
+            if (props.bemerkung) {
+                detailContent.append(zeile('Bemerkung', props.bemerkung));
+            }
+
+            // öffentlich bearbeitbar/löschbar wie ein manuelles Spiel
+            // (CLAUDE.md Abschnitt 6/3): Vermietungen blockieren nie, daher
+            // kein Konflikt-/Warnungs-Check im Dialog.
+            const editButton = document.createElement('button');
+            editButton.type = 'button';
+            editButton.className = 'button';
+            editButton.textContent = 'Bearbeiten';
+            editButton.addEventListener('click', () => {
+                detailDialog.close();
+                openVermietungDialog(props);
+            });
+
+            const deleteButton = document.createElement('button');
+            deleteButton.type = 'button';
+            deleteButton.className = 'linklike danger';
+            deleteButton.textContent = 'Vermietung löschen';
+            deleteButton.addEventListener('click', async () => {
+                if (!confirm('Diese Vermietung endgültig löschen?')) {
+                    return;
+                }
+                const result = await VK.post(`/api/vermietungen/${props.vermietung_id}/loeschen`).catch(() => null);
+                if (result?.ok) {
+                    detailDialog.close();
+                    calendar.refetchEvents();
+                } else if (result) {
+                    alert(VK.fehlerText(result.data));
+                }
+            });
+
+            detailActions.append(editButton, deleteButton);
         }
 
         detailDialog.showModal();
@@ -1121,6 +1221,96 @@
                 matchFeedback.textContent = VK.fehlerText(result.data);
                 matchSubmit.textContent = 'Speichern';
                 matchWarnungenBestaetigt = false;
+            }
+        } catch {
+            // name dialog cancelled
+        }
+    });
+
+    // ---- Vermietung dialog (Issue #36) ----
+    // Anlegen/Bearbeiten/Löschen öffentlich (Ebene 2), analog dem manuellen
+    // Spiel-Dialog - aber ohne Konflikt-/Warnungs-Check: eine Vermietung
+    // blockiert nie Trainings/Spiele (BookingService behandelt sie nur als
+    // Hinweis), daher speichert der Dialog direkt.
+    const vermietungDialog = document.querySelector('#vermietung-dialog');
+    const vermietungForm = document.querySelector('#vermietung-form');
+    const vermietungFeedback = document.querySelector('#vermietung-feedback');
+    const vermietungTitle = document.querySelector('#vermietung-title');
+    const vermietungSportheimSelect = document.querySelector('#vermietung-sportheim');
+    const vermietungRaeumeContainer = document.querySelector('#vermietung-raeume');
+
+    for (const sportheim of appData.sportheime) {
+        vermietungSportheimSelect.add(new Option(sportheim.name, String(sportheim.id)));
+    }
+
+    // Räume gehören zu genau einem Sportheim (Issue #36) - die Checkbox-Liste
+    // wird bei jeder Sportheim-Auswahl neu aufgebaut.
+    const renderVermietungRaeume = (sportheimId, checkedIds = []) => {
+        vermietungRaeumeContainer.replaceChildren();
+        const raeume = appData.sportheimRaeume.filter((r) => String(r.sportheim_id) === String(sportheimId));
+        for (const raum of raeume) {
+            const label = document.createElement('label');
+            const box = document.createElement('input');
+            box.type = 'checkbox';
+            box.name = 'raum_ids[]';
+            box.value = String(raum.id);
+            box.checked = checkedIds.includes(raum.id);
+            label.append(box, ` ${raum.name}`);
+            vermietungRaeumeContainer.append(label);
+        }
+    };
+    vermietungSportheimSelect.addEventListener('change', () => renderVermietungRaeume(vermietungSportheimSelect.value));
+
+    const openVermietungDialog = (props) => {
+        vermietungForm.reset();
+        vermietungFeedback.textContent = '';
+        vermietungFeedback.className = '';
+
+        const isEdit = props !== null;
+        vermietungTitle.textContent = isEdit ? 'Vermietung bearbeiten' : 'Vermietung eintragen';
+
+        vermietungForm.elements.vermietung_id.value = isEdit ? String(props.vermietung_id) : '';
+        vermietungForm.elements.sportheim_id.value = isEdit ? String(props.sportheim_id) : '';
+        renderVermietungRaeume(vermietungForm.elements.sportheim_id.value, isEdit ? props.raum_ids : []);
+        // datetime-local erwartet 'YYYY-MM-DDTHH:MM', start/ende liefern das
+        // bereits als Präfix (Sekunden abgeschnitten)
+        vermietungForm.elements.von.value = isEdit ? props.start.slice(0, 16) : '';
+        vermietungForm.elements.bis.value = isEdit ? props.ende.slice(0, 16) : '';
+        vermietungForm.elements.titel.value = isEdit ? props.anlass : '';
+        vermietungForm.elements.kontakt.value = isEdit ? (props.kontakt ?? '') : '';
+        vermietungForm.elements.bemerkung.value = isEdit ? (props.bemerkung ?? '') : '';
+
+        vermietungDialog.showModal();
+    };
+
+    document.querySelector('#vermietung-cancel').addEventListener('click', () => vermietungDialog.close());
+
+    const collectVermietungData = () => {
+        const data = {};
+        for (const [key, value] of new FormData(vermietungForm)) {
+            if (key.endsWith('[]')) {
+                (data[key.slice(0, -2)] ??= []).push(value);
+            } else {
+                data[key] = value;
+            }
+        }
+        return data;
+    };
+
+    vermietungForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const data = collectVermietungData();
+        const vermietungId = data.vermietung_id;
+        const url = vermietungId === '' ? '/api/vermietungen' : `/api/vermietungen/${vermietungId}`;
+
+        try {
+            const result = await VK.post(url, data);
+            if (result.ok) {
+                vermietungDialog.close();
+                calendar.refetchEvents();
+            } else {
+                vermietungFeedback.className = 'error-message';
+                vermietungFeedback.textContent = VK.fehlerText(result.data);
             }
         } catch {
             // name dialog cancelled
@@ -1349,5 +1539,9 @@
     document.querySelector('#entry-match').addEventListener('click', () => {
         entryDialog.close();
         openMatchDialog(null);
+    });
+    document.querySelector('#entry-vermietung').addEventListener('click', () => {
+        entryDialog.close();
+        openVermietungDialog(null);
     });
 })();

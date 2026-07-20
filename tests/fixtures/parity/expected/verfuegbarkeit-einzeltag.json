@@ -19,6 +19,14 @@
                     "text": "Heimspiel, Platz offen"
                 }
             ],
+            "vermietungen": [
+                {
+                    "von": "2026-08-04T18:00:00",
+                    "bis": "2026-08-04T23:59:00",
+                    "titel": "Vereinsfeier",
+                    "raum_text": "gesamtes Sportheim"
+                }
+            ],
             "plaetze": [
                 {
                     "id": 1,
@@ -112,6 +120,7 @@
             "adresse": "Waldweg 5",
             "farbe": "#8250df",
             "hinweise": [],
+            "vermietungen": [],
             "plaetze": [
                 {
                     "id": 3,

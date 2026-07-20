@@ -21,14 +21,17 @@ final class PitchProjector extends TableProjector
 
     public function references(): array
     {
-        return ['venue_id' => 'venue'];
+        return ['venue_id' => 'venue', 'sportheim_id' => 'sportheim'];
     }
 
     /**
-     * Pitch events written before migration 009 carry no color, and events
-     * before migration 011 carry no kuerzel; upcast both deterministically
-     * to the same defaults the migrations backfill onto existing rows
-     * (CLAUDE.md section 5).
+     * Pitch events written before migration 009 carry no color, events
+     * before migration 011 carry no kuerzel, and events before migration 014
+     * carry no sportheim_id; upcast all deterministically to the same
+     * defaults the migrations backfill onto existing rows (CLAUDE.md
+     * section 5). sportheim_id is nullable (not every pitch is at a
+     * clubhouse), so a NULL upcast is safe - the Replayer skips NULL FK
+     * values during the reference check.
      */
     public function normalizePayload(array $payload): array
     {
@@ -38,11 +41,12 @@ final class PitchProjector extends TableProjector
             ...$payload,
             'farbe' => $farbe === '' ? Palette::PITCH_DEFAULT : $farbe,
             'kuerzel' => (string) ($payload['kuerzel'] ?? ''),
+            'sportheim_id' => $payload['sportheim_id'] ?? null,
         ];
     }
 
     protected function columns(): array
     {
-        return ['venue_id', 'name', 'kuerzel', 'farbe', 'typ', 'flutlicht', 'adresse', 'sortierung'];
+        return ['venue_id', 'name', 'kuerzel', 'farbe', 'typ', 'flutlicht', 'adresse', 'sortierung', 'sportheim_id'];
     }
 }

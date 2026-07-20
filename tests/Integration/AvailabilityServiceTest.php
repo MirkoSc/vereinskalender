@@ -243,6 +243,50 @@ final class AvailabilityServiceTest extends DatabaseTestCase
         self::assertSame([['von' => '08:00', 'bis' => '22:00', 'zustand' => 'frei']], $intervals);
     }
 
+    /**
+     * Issue #36: a Vermietung appears as a venue-level hint layer, never
+     * touching the pitch timeline - the pitch stays frei/belegt as usual,
+     * NEVER gesperrt.
+     */
+    public function testVermietungAppearsAsVenueHintButNeverBlocksPitch(): void
+    {
+        $sportheimId = $this->createSportheim($this->venueId);
+        $pitchWithSportheim = $this->createPitch($this->venueId, 'Rasenplatz Sportheim', '#0969da', 'RS', $sportheimId);
+        $this->createVermietung($sportheimId, '2026-08-04 18:00:00', '2026-08-04 22:00:00', 'Geburtstagsfeier');
+
+        $result = $this->availabilityService()->compute('2026-08-04', '2026-08-04');
+
+        $vermietungen = $result['venues'][0]['vermietungen'];
+        self::assertCount(1, $vermietungen);
+        self::assertSame('Geburtstagsfeier', $vermietungen[0]['titel']);
+        self::assertStringContainsString('gesamtes Sportheim', $vermietungen[0]['raum_text']);
+
+        $pitchDay = null;
+        foreach ($result['venues'][0]['plaetze'] as $pitch) {
+            if ($pitch['id'] === $pitchWithSportheim) {
+                $pitchDay = $pitch['tage'][0];
+            }
+        }
+        self::assertNotNull($pitchDay);
+        self::assertSame(
+            [['von' => '08:00', 'bis' => '22:00', 'zustand' => 'frei']],
+            $pitchDay['intervalle'],
+            'the rented Sportheim must never turn the pitch gesperrt',
+        );
+    }
+
+    public function testPitchWithoutSportheimShowsNoVermietungHint(): void
+    {
+        $otherVenueId = $this->createVenue('Anderer Verein');
+        $sportheimId = $this->createSportheim($otherVenueId);
+        $this->createVermietung($sportheimId, '2026-08-04 18:00:00', '2026-08-04 22:00:00');
+
+        $result = $this->availabilityService()->compute('2026-08-04', '2026-08-04');
+
+        $ownVenue = array_values(array_filter($result['venues'], fn(array $v): bool => $v['id'] === $this->venueId))[0];
+        self::assertSame([], $ownVenue['vermietungen']);
+    }
+
     public function testImportedHomeMatchOnRulePitchBlocksAvailability(): void
     {
         $this->createBegriff($this->venueId, 'Musterstadt');

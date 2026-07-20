@@ -69,6 +69,18 @@
         </select>
     </label>
 
+    <!-- Issue #36: Vermietungen ein-/ausblenden bzw. isoliert anzeigen; rein
+         clientseitig wie der Manuell-Filter, funktioniert dadurch auch
+         offline (das Feld ist im Bundle enthalten). -->
+    <label class="filter">
+        Vermietungen
+        <select id="filter-vermietung">
+            <option value="">Alle Termine</option>
+            <option value="ohne">Ohne Vermietungen</option>
+            <option value="nur">Nur Vermietungen</option>
+        </select>
+    </label>
+
     <div class="dialog-actions">
         <button type="button" class="button" id="filter-close">Fertig</button>
         <button type="button" class="linklike" id="filter-reset">Zurücksetzen</button>
@@ -200,8 +212,45 @@
     <div class="dialog-actions vertical">
         <button type="button" class="button" id="entry-booking">Belegung eintragen</button>
         <button type="button" class="button" id="entry-match">Spiel eintragen</button>
+        <button type="button" class="button" id="entry-vermietung">Vermietung eintragen</button>
         <button type="button" class="linklike" id="entry-cancel">Abbrechen</button>
     </div>
+</dialog>
+
+<!-- Issue #36: Sportheim-Vermietung. Anlegen/Bearbeiten/Löschen öffentlich
+     (Ebene 2), analog dem manuellen Spiel-Dialog. Blockiert nie Trainings/
+     Spiele - deshalb keine Konflikt-/Warnungs-Anzeige wie beim Belegungs-/
+     Spiel-Dialog. -->
+<dialog id="vermietung-dialog" class="sheet">
+    <h3 id="vermietung-title">Vermietung eintragen</h3>
+    <form id="vermietung-form">
+        <input type="hidden" name="vermietung_id">
+        <label>Sportheim
+            <select name="sportheim_id" required id="vermietung-sportheim"></select>
+        </label>
+        <fieldset class="checkbox-group">
+            <legend>Räume (leer lassen für „gesamtes Sportheim")</legend>
+            <div id="vermietung-raeume" class="checkbox-list"></div>
+        </fieldset>
+        <div class="field-row">
+            <label>Von <input type="datetime-local" name="von" required></label>
+            <label>Bis <input type="datetime-local" name="bis" required></label>
+        </div>
+        <label>Anlass
+            <input type="text" name="titel" required maxlength="255">
+        </label>
+        <label>Kontakt (optional)
+            <input type="text" name="kontakt" maxlength="255">
+        </label>
+        <label>Bemerkung (optional)
+            <textarea name="bemerkung" rows="2"></textarea>
+        </label>
+        <div id="vermietung-feedback" aria-live="polite"></div>
+        <div class="dialog-actions">
+            <button type="submit" class="button">Speichern</button>
+            <button type="button" class="linklike" id="vermietung-cancel">Abbrechen</button>
+        </div>
+    </form>
 </dialog>
 
 <dialog id="name-dialog" class="sheet">
