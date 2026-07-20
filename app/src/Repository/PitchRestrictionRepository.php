@@ -52,4 +52,19 @@ final readonly class PitchRestrictionRepository
 
         return $stmt->fetchAll();
     }
+
+    /**
+     * Start date of the earliest restriction beginning strictly after `$nach`
+     * (datetime), or null if none follows. A restriction that merely REACHES
+     * into a later range already started before `$nach` and is therefore
+     * part of the current batch - only new starts matter here (Issue #52).
+     */
+    public function naechsterBeginnNach(string $nach): ?string
+    {
+        $stmt = $this->pdo->prepare('SELECT MIN(von) FROM pitch_restriction WHERE von > ?');
+        $stmt->execute([$nach]);
+        $wert = $stmt->fetchColumn();
+
+        return $wert === false || $wert === null ? null : substr((string) $wert, 0, 10);
+    }
 }

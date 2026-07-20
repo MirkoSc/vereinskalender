@@ -38,6 +38,20 @@ final readonly class VermietungRepository
     }
 
     /**
+     * Start date of the earliest Vermietung beginning strictly after `$nach`
+     * (datetime), or null if none follows - same reasoning as
+     * PitchRestrictionRepository::naechsterBeginnNach (Issue #52).
+     */
+    public function naechsterBeginnNach(string $nach): ?string
+    {
+        $stmt = $this->pdo->prepare('SELECT MIN(von) FROM vermietung WHERE von > ?');
+        $stmt->execute([$nach]);
+        $wert = $stmt->fetchColumn();
+
+        return $wert === false || $wert === null ? null : substr((string) $wert, 0, 10);
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
     public function find(int $id): ?array

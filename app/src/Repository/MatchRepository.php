@@ -77,6 +77,21 @@ final readonly class MatchRepository
     }
 
     /**
+     * Kickoff date of the earliest match strictly after `$nach` (datetime),
+     * or null if none follows. Feeds the Terminliste's stop condition
+     * (Issue #52, CLAUDE.md section 7) - cancelled matches count too, they
+     * are part of the merged feed.
+     */
+    public function naechsterAnstossNach(string $nach): ?string
+    {
+        $stmt = $this->pdo->prepare('SELECT MIN(anstoss) FROM `match` WHERE anstoss > ?');
+        $stmt->execute([$nach]);
+        $wert = $stmt->fetchColumn();
+
+        return $wert === false || $wert === null ? null : substr((string) $wert, 0, 10);
+    }
+
+    /**
      * Home matches without a reliable pitch assignment (hint layer in the
      * availability view, CLAUDE.md section 7).
      *
