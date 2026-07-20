@@ -373,6 +373,112 @@ final class EventFeedTest extends DatabaseTestCase
         ));
     }
 
+    // ---- Issue #52: `naechster` als Abbruchbedingung der Terminliste ----
+    //
+    // Die Terminliste darf nicht mehr aus leeren Batches schließen, dass der
+    // Bestand erschöpft ist (bei 31-Tage-Batches reichte die alte Heuristik
+    // nur 93 Tage weit und beendete die Liste mitten in der Winterpause).
+    // Der Feed sagt stattdessen zu, was hinter `bis` noch kommt.
+
+    public function testFeedCarriesEventsAndNextDate(): void
+    {
+        $this->createMatch($this->teamId, ['anstoss' => '2026-09-12 15:00:00']);
+
+        $feed = $this->eventFeedService()->feed(['von' => '2026-08-01', 'bis' => '2026-08-31']);
+
+        self::assertArrayHasKey('events', $feed);
+        self::assertNotSame([], $feed['events']);
+        self::assertSame('2026-09-12', $feed['naechster']);
+    }
+
+    public function testNextDateReachesAcrossAWinterGap(): void
+    {
+        // exakt die Produktiv-Datenlage aus Issue #52: letzter Termin
+        // 15.11.2026, nächster erst 07.03.2027 - 112 Tage Lücke
+        $this->createMatch($this->teamId, ['anstoss' => '2026-11-15 14:00:00']);
+        $this->createMatch($this->teamId, ['anstoss' => '2027-03-07 14:00:00']);
+
+        // der Batch, der über den letzten Termin hinausgeht, ist leer ...
+        $feed = $this->eventFeedService()->feed(['von' => '2026-12-02', 'bis' => '2027-01-02']);
+        self::assertSame([], $feed['events']);
+        // ... liefert aber den Sprungpunkt mit, statt die Liste zu beenden
+        self::assertSame('2027-03-07', $feed['naechster']);
+    }
+
+    public function testNextDateIsNullWhenNothingFollows(): void
+    {
+        $this->createMatch($this->teamId, ['anstoss' => '2026-09-12 15:00:00']);
+
+        // hinter dem letzten Spiel und hinter dem Slot (gültig bis 31.08.)
+        self::assertNull($this->eventFeedService()->naechsterTermin('2026-09-30'));
+    }
+
+    public function testNextDateIgnoresEventsInsideTheLoadedRange(): void
+    {
+        $this->createMatch($this->teamId, ['anstoss' => '2026-09-12 15:00:00']);
+
+        self::assertNull(
+            $this->eventFeedService()->naechsterTermin('2026-09-12'),
+            'ein Spiel AM Grenztag steckt bereits im Batch',
+        );
+    }
+
+    public function testNextDateComesFromTheSlotRuleWhenItIsTheEarliest(): void
+    {
+        // Rückrunden-Slot ab 01.03.2027 (Montags), Spiel erst danach
+        $this->bookingService()->createSlot([
+            'team_ids' => [$this->teamId],
+            'pitch_id' => $this->pitchId,
+            'wochentage' => [1],
+            'beginn' => '18:00',
+            'ende' => '19:30',
+            'gueltig_ab' => '2027-03-01',
+            'gueltig_bis' => '2027-06-30',
+        ], $this->context());
+        $this->createMatch($this->teamId, ['anstoss' => '2027-03-07 14:00:00']);
+
+        self::assertSame('2027-03-01', $this->eventFeedService()->naechsterTermin('2026-12-02'));
+    }
+
+    public function testNextDateAlsoSeesRestrictionsAndVermietungen(): void
+    {
+        $sportheimId = $this->createSportheim($this->venueId);
+        $this->createVermietung($sportheimId, '2027-01-10 18:00:00', '2027-01-10 23:00:00');
+        $this->createMatch($this->teamId, ['anstoss' => '2027-03-07 14:00:00']);
+
+        self::assertSame(
+            '2027-01-10',
+            $this->eventFeedService()->naechsterTermin('2026-12-02'),
+            'die Vermietung liegt vor dem Spiel und ist Teil des zusammengeführten Feeds',
+        );
+    }
+
+    /**
+     * Bewusst OHNE Team-/Bereichs-/Venue-Filter (CLAUDE.md Abschnitt 7):
+     * gefilterte Termine sind eine Teilmenge, die ungefilterte Auskunft
+     * bleibt damit eine gültige untere Schranke. Zu früh kostet einen leeren
+     * Batch, zu spät würde Termine verschlucken.
+     */
+    public function testNextDateIgnoresFiltersAndStaysALowerBound(): void
+    {
+        $anderesTeam = $this->createTeam('D1', 'D');
+        $this->createMatch($anderesTeam, ['anstoss' => '2027-01-10 14:00:00']);
+        $this->createMatch($this->teamId, ['anstoss' => '2027-03-07 14:00:00']);
+
+        $feed = $this->eventFeedService()->feed([
+            'von' => '2026-12-02',
+            'bis' => '2027-01-02',
+            'team' => (string) $this->teamId,
+        ]);
+
+        self::assertSame([], $feed['events'], 'der Filter wirkt auf die Termine');
+        self::assertSame(
+            '2027-01-10',
+            $feed['naechster'],
+            'aber nicht auf die Auskunft - das Spiel des anderen Teams zieht sie nach vorne',
+        );
+    }
+
     public function testExceptionRemovesSingleOccurrence(): void
     {
         $slotId = (int) $this->dumpTable('training_slot')[0]['id'];

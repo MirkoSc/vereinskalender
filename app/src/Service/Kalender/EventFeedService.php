@@ -51,6 +51,56 @@ final readonly class EventFeedService
     }
 
     /**
+     * The full /api/events payload: the events of the requested range plus
+     * `naechster` - the date of the next event AFTER `bis` (Issue #52). The
+     * Terminliste needs a stop condition that does not guess from empty
+     * batches; see naechsterTermin() for what the value guarantees.
+     *
+     * @param array<string, mixed> $query
+     * @return array{events: list<array<string, mixed>>, naechster: ?string}
+     */
+    public function feed(array $query): array
+    {
+        // events() validates von/bis first, so $bis is a valid date below
+        $events = $this->events($query);
+
+        return [
+            'events' => $events,
+            'naechster' => $this->naechsterTermin(trim((string) ($query['bis'] ?? ''))),
+        ];
+    }
+
+    /**
+     * Date of the next event strictly after `$bis`, or null when none
+     * follows at all.
+     *
+     * Two deliberate weakenings, both safe because callers only rely on the
+     * value being a LOWER BOUND (never later than the true next event) and
+     * on null meaning "nothing follows":
+     *
+     * - Training slots contribute via NextEventDate::ausSlots(), which
+     *   ignores slot exceptions (see there).
+     * - The team/bereich/venue filters are NOT applied. Filtered events are
+     *   a subset, so the unfiltered bound stays valid; `venue` could not be
+     *   resolved in SQL anyway (VenueMatcher works at display time).
+     *
+     * Being too early costs the client one extra - empty - batch request.
+     * Being too late would drop existing events off the end of the list,
+     * which is exactly the bug this replaces.
+     */
+    public function naechsterTermin(string $bis): ?string
+    {
+        $nachDatum = $bis . ' 23:59:59';
+
+        return NextEventDate::frueheste([
+            $this->matches->naechsterAnstossNach($nachDatum),
+            $this->restrictions->naechsterBeginnNach($nachDatum),
+            $this->vermietungen->naechsterBeginnNach($nachDatum),
+            NextEventDate::ausSlots($this->slots->findGueltigNach($bis), $bis),
+        ]);
+    }
+
+    /**
      * @param array<string, mixed> $query
      * @return list<array<string, mixed>>
      */
