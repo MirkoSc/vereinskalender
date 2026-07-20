@@ -4,7 +4,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { teamsNachBereich, plaetzeNachVenue } = require('../../public/js/legende-gruppierung.js');
+const { teamsNachBereich, plaetzeNachVenue, raeumeNachSportheim } = require('../../public/js/legende-gruppierung.js');
 
 test('teamsNachBereich gruppiert aktive Teams nach Bereich in der gegebenen Reihenfolge', () => {
     const bereiche = [{ id: 1, name: 'F-Jugend' }, { id: 2, name: 'E-Jugend' }];
@@ -51,5 +51,39 @@ test('plaetzeNachVenue lässt Spielstätten ohne Plätze weg', () => {
 
     assert.deepEqual(plaetzeNachVenue(pitches, venues), [
         { venue: venues[1], pitches: [pitches[0]] },
+    ]);
+});
+
+test('raeumeNachSportheim ordnet Räume und Spielstätte je Sportheim in der gegebenen Reihenfolge zu', () => {
+    const venues = [{ id: 1, name: 'Sportplatz Nord' }, { id: 2, name: 'Sportplatz Süd' }];
+    const sportheime = [
+        { id: 10, venue_id: 2, name: 'Vereinsheim Süd' },
+        { id: 11, venue_id: 1, name: 'Vereinsheim Nord' },
+    ];
+    const raeume = [
+        { id: 100, sportheim_id: 11, kuerzel: 'GR', name: 'Gastraum' },
+        { id: 101, sportheim_id: 10, kuerzel: 'KB', name: 'Kegelbahn' },
+    ];
+
+    assert.deepEqual(raeumeNachSportheim(sportheime, raeume, venues), [
+        { sportheim: sportheime[0], venue: venues[1], raeume: [raeume[1]] },
+        { sportheim: sportheime[1], venue: venues[0], raeume: [raeume[0]] },
+    ]);
+});
+
+test('raeumeNachSportheim behält Sportheime ohne Räume (ganzes Sportheim vermietbar)', () => {
+    const venues = [{ id: 1, name: 'Sportplatz Nord' }];
+    const sportheime = [{ id: 10, venue_id: 1, name: 'Vereinsheim' }];
+
+    assert.deepEqual(raeumeNachSportheim(sportheime, [], venues), [
+        { sportheim: sportheime[0], venue: venues[0], raeume: [] },
+    ]);
+});
+
+test('raeumeNachSportheim liefert venue null, wenn keine passende Spielstätte existiert', () => {
+    const sportheime = [{ id: 10, venue_id: 99, name: 'Verwaist' }];
+
+    assert.deepEqual(raeumeNachSportheim(sportheime, [], []), [
+        { sportheim: sportheime[0], venue: null, raeume: [] },
     ]);
 });
