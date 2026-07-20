@@ -225,7 +225,20 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
 - Sync pro Event über `(import_source_id, ics_uid)`: unbekannt → INSERT;
   bekannt + sync_hash geändert → UPDATE (Verlegung: UID bleibt,
   DTSTART/SEQUENCE ändern sich); unverändert → skip. Nachlauf: im Feed
-  fehlende UIDs → `status='abgesagt'`, NIEMALS hart löschen.
+  fehlende UIDs → `status='abgesagt'`, NIEMALS hart löschen – **beschränkt
+  auf die Zukunft** (Issue #48): abgesagt wird nur ein Spiel, dessen Anstoß
+  NACH dem Importzeitpunkt (`Europe/Berlin`) liegt; bereits begonnene bzw.
+  vergangene Spiele (Grenzfall Anstoß = Importzeitpunkt zählt als
+  „begonnen“) rührt der Nachlauf nie an, unabhängig davon, ob ihre UID noch
+  im Feed steht – manche Feeds lassen vergangene Termine fallen, das ist
+  keine echte Absage. Anstoß statt Anstoß+`MatchDuration`, da für
+  Import-Spiele nur ein geschätztes Ende existiert (Fallback in
+  `MatchDuration`) und eine destruktive Statusänderung nicht an eine
+  Schätzung gekoppelt werden soll; ein laufendes Spiel bleibt so in jedem
+  Fall unangetastet. Das reguläre Insert/Update-Verhalten ist davon
+  unberührt: ein vergangenes Spiel mit geändertem `sync_hash` wird
+  weiterhin aktualisiert, nur das automatische Absagen ist auf die Zukunft
+  beschränkt.
 - Der Sync arbeitet ausschließlich auf `WHERE import_source_id = ?`
   (Kandidaten-Lookup UND Absage-Nachlauf) – **manuelle Spiele
   (`import_source_id IS NULL`) sind für ihn unsichtbar**: kein Update,

@@ -33,6 +33,12 @@ use App\Service\Stats\AlarmMailer;
  * on the next run even if nothing else changed (a pitch-only Updated event
  * that reuses the same sync_hash, so the run after that is idempotent);
  * past matches are never reflowed.
+ *
+ * The cancel follow-up (Issue #48) only ever cancels matches whose kickoff
+ * is strictly after the import moment - a match that has already started
+ * (kickoff <= now, boundary included) is left alone even if its UID is
+ * missing from the feed, since feeds commonly drop past events and that is
+ * not an actual cancellation.
  */
 final readonly class IcsImportService
 {
@@ -47,6 +53,7 @@ final readonly class IcsImportService
         private VenueMatcher $venueMatcher,
         private IcsFeedFetcher $fetcher,
         private ?AlarmMailer $alarmMailer = null,
+        private ?\DateTimeImmutable $now = null,
     ) {
     }
 
@@ -113,6 +120,7 @@ final readonly class IcsImportService
 
         $rules = $this->homePitchRules->findByTeam($teamId);
         $today = new \DateTimeImmutable('today')->format('Y-m-d H:i:s');
+        $nowStr = ($this->now ?? new \DateTimeImmutable('now'))->format('Y-m-d H:i:s');
 
         $inserted = $updated = $skipped = 0;
         $feedUids = [];
@@ -186,13 +194,14 @@ final readonly class IcsImportService
         }
 
         // follow-up: future matches whose UID vanished from the feed are
-        // cancelled (never deleted); past matches are left untouched, some
-        // feeds drop past events
+        // cancelled (never deleted); matches that have already started
+        // (kickoff <= import moment, boundary included) are left untouched,
+        // some feeds drop past events (Issue #48)
         $cancelled = 0;
         foreach ($this->matches->findBySource($sourceId) as $match) {
             if (isset($feedUids[(string) $match['ics_uid']])
                 || (string) $match['status'] === 'abgesagt'
-                || (string) $match['anstoss'] < $today) {
+                || (string) $match['anstoss'] <= $nowStr) {
                 continue;
             }
 
