@@ -480,6 +480,10 @@
     const listeLadeIndikator = document.querySelector('#liste-lade-indikator');
     const listeErschoepftHinweis = document.querySelector('#liste-erschoepft-hinweis');
     const listeSentinel = document.querySelector('#liste-sentinel');
+    // Issue #53: Zeitraum-Anzeige neben der Überschrift "Kalender" statt in
+    // FullCalendars eigener Toolbar - s. Kommentar bei listeTitelAktualisieren
+    // und aktualisiereGridZeitraum weiter unten.
+    const zeitraumEl = document.querySelector('#kalender-zeitraum');
 
     let listeEvents = [];
     let listeGeladenBis = null; // ISO-Datum, bis zu dem bereits vom Server geladen wurde
@@ -530,29 +534,62 @@
     };
 
     // Die View-Range ist absichtlich auf einen statischen 15-Jahres-Horizont
-    // fixiert (s. o.) - FullCalendars eigener Titel ("2026 – 2041") würde
-    // das wörtlich anzeigen und wäre irreführend. Der Titel wird deshalb
-    // hier manuell auf den tatsächlich geladenen Bereich gesetzt, nach jedem
-    // Batch neu (rAF, da FullCalendars eigenes Titel-Update nach refetch-
-    // Events erst im nächsten Frame passiert).
+    // fixiert (s. o.), FullCalendar selbst rendert seit Issue #53 gar keinen
+    // Titel mehr (headerToolbar hat keinen center-Slot) - die Zeitraum-Anzeige
+    // ist ein eigenes Element (#kalender-zeitraum) neben der Überschrift, das
+    // FullCalendar nie berührt. Für die Liste wird es hier manuell auf den
+    // tatsächlich geladenen Bereich gesetzt, nach jedem Batch neu (rAF, damit
+    // der Batch-Merge/Re-Render zuerst durch ist).
+    //
+    // Root Cause des ursprünglichen Issue-#53-Bugs (Teil A): diese Funktion
+    // schrieb vorher direkt in FullCalendars eigenes `.fc-toolbar-title`
+    // (per `textContent`) - ein von Preact verwaltetes Element. Preact wusste
+    // dadurch nichts von unserem extern eingefügten Text-Knoten; beim
+    // nächsten View-Wechsel rendert Preact seinen eigenen (korrekten) Titel
+    // NEBEN diesen Knoten statt ihn zu ersetzen (per DOM-Dump verifiziert:
+    // zwei Text-Kindknoten im selben <h2>, sichtbar als „20. Juli 2026 – 19.
+    // Nov. 202720 – 26. Juli 2026"). Ein eigenes, FullCalendar-fremdes
+    // Element kann diesen Konflikt strukturell nicht mehr haben.
     const listeTitelAktualisieren = () => {
         requestAnimationFrame(() => {
-            const titleEl = document.querySelector('.fc-toolbar-title');
             // Issue #37: mit dem jederzeit erreichbaren Umschalter kann ein
             // noch laufender Hintergrund-Batch (listeLadeKette) erst NACH
             // einem Wechsel weg von der Liste auflösen - `listeAktiv` allein
             // reicht als Schutz nicht (wird teils erst im selben Tick wie
             // dieses rAF gesetzt); die tatsächliche FC-View ist zum Zeitpunkt
             // des rAF-Feuerns bereits verlässlich aktuell.
-            if (!titleEl || !listeAktiv || calendar.view.type !== 'listNachlade') {
+            if (!zeitraumEl || !listeAktiv || calendar.view.type !== 'listNachlade') {
                 return;
             }
             const von = new Date(`${window.VKNachlade.toIsoDate(listeStart())}T00:00:00`);
             const bisIso = listeGeladenBis ?? window.VKNachlade.toIsoDate(listeStart());
             const bis = new Date(`${bisIso}T00:00:00`);
-            const fmt = (d) => d.toLocaleDateString('de-DE', { day: 'numeric', month: 'short', year: 'numeric' });
-            titleEl.textContent = `${fmt(von)} – ${fmt(bis)}`;
+            zeitraumEl.textContent = window.VKKalenderTitel.zeitraumText('liste', von, bis, isMobile);
         });
+    };
+
+    // Grid-Darstellungen (Tag/Woche/Monat): die Zeitraum-Anzeige wird aus
+    // `datesSet` gespeist, NICHT aus dem `events`-Callback - dessen
+    // `info.start`/`info.end` ist der gepolsterte Render-Bereich (bei Monat
+    // z. B. bereits Ende Juni statt 1. Juli, s. PR-Beschreibung), und
+    // `calendar.view.type` ist dort laut Issue-#31-Kommentar oben noch
+    // veraltet. `datesSet` feuert zuverlässig NACH dem eigentlichen
+    // View-Wechsel; `info.view.currentStart`/`currentEnd` liefern exakt die
+    // logischen Grenzen der Darstellung (verifiziert per Probe-Kalender:
+    // Monat = 1.–31. Juli, nicht der gepolsterte 6-Wochen-Grid-Bereich).
+    // `modus` statt `info.view.type` als Quelle, da es zum Zeitpunkt des
+    // datesSet-Feuerns bereits sicher aktuell ist (in setzeModus() synchron
+    // VOR calendar.changeView() gesetzt) und ohnehin die einzige App-weite
+    // Quelle für die aktive Darstellung ist (s. Kommentar bei setzeModus).
+    const aktualisiereGridZeitraum = (currentStart, currentEnd) => {
+        if (!zeitraumEl || modus === 'liste') {
+            return;
+        }
+        // currentEnd ist EXKLUSIV (Mitternacht des Folgetags) - für die
+        // Anzeige zählt der letzte tatsächlich sichtbare Tag.
+        const bisInklusive = new Date(currentEnd);
+        bisInklusive.setDate(bisInklusive.getDate() - 1);
+        zeitraumEl.textContent = window.VKKalenderTitel.zeitraumText(modus, currentStart, bisInklusive, isMobile);
     };
 
     // Einen Batch [von, bisGrenze] laden und in den Cache mergen (No-Op,
@@ -774,9 +811,13 @@
             ansichtmonat: ansichtButton('monat', 'Monat'),
             ansichtliste: ansichtButton('liste', 'Liste'),
         },
+        // Issue #53: kein center-Slot mehr - die Zeitraum-Anzeige lebt jetzt
+        // neben der Überschrift "Kalender" (#kalender-zeitraum), nicht mehr
+        // in FullCalendars eigener Toolbar (spart auf schmalen Viewports
+        // Platz, s. Teil B, und beseitigt den Preact/textContent-Konflikt
+        // aus Teil A - s. Kommentar bei listeTitelAktualisieren).
         headerToolbar: {
             left: 'prev,next today',
-            center: 'title',
             right: 'ansichttag,ansichtwoche,ansichtmonat,ansichtliste',
         },
         // Issue #3: "Heute" als Icon/Kurzform ohne Schriftzug, aber weiterhin
@@ -845,9 +886,10 @@
         // explicit one. datesSet fires on every toolbar re-render (nav,
         // view switch), so re-apply it there too - auch die Aktiv-Markierung
         // der vier Ansichts-Buttons lebt hier aus demselben Grund.
-        datesSet: () => {
+        datesSet: (info) => {
             document.querySelector('.fc-today-button')?.setAttribute('aria-label', 'Heute');
             aktualisiereModusButtons();
+            aktualisiereGridZeitraum(info.view.currentStart, info.view.currentEnd);
         },
     });
     calendar.render();
