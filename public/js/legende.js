@@ -12,6 +12,15 @@
 // zwei Farbpunkte an jedem Termin (kalender.js, Issue #39); Farbe ist nie
 // das einzige Signal (CLAUDE.md Abschnitt 8), jeder Punkt steht neben
 // sichtbarem Text und ist selbst dekorativ (aria-hidden).
+//
+// Issue #47: Sportheime/Räume bekommen eine dritte, eigene Form (Raute) -
+// weder Kreis (Team) noch Quadrat (Spielstätte/Platz), aber klar an die
+// Farbe ihrer Spielstätte angelehnt (Sportheime haben noch keine eigene
+// Farbe, das bleibt der Administration vorbehalten, Issue #36). Ein
+// zugeordnetes Sportheim macht sich bei seinen Plätzen zusätzlich als
+// sichtbarer 🏠-Text bemerkbar (nicht nur Tooltip), passend zum
+// 🏠-Indikator am Termin (kalender.js/vermietung-hinweis.js), dessen
+// Bedeutung der Symbole-Abschnitt am Ende erklärt.
 (() => {
     const punkt = (farbe, form) => {
         const span = document.createElement('span');
@@ -59,8 +68,62 @@
         return section;
     };
 
+    // Sportheim-Eintrag mit eingerückter Raum-Unterliste (Issue #47) - anders
+    // als untergruppe() (eigene Section pro Gruppe) ist das EIN Listeneintrag
+    // mit verschachtelter Liste, weil "Sportheim" selbst ein Eintrag mit
+    // Punkt+Name ist (nicht nur eine Überschrift wie Spielstätte/Bereich).
+    const sportheimEintrag = (sportheim, venue, raeume, farbe) => {
+        const li = document.createElement('li');
+        li.className = 'legende-eintrag legende-eintrag-heim';
+
+        const kopf = document.createElement('div');
+        kopf.className = 'legende-eintrag-kopf';
+        kopf.append(punkt(farbe, 'heim'));
+        const name = document.createElement('span');
+        name.textContent = venue ? `${sportheim.name} (${venue.name})` : sportheim.name;
+        kopf.append(name);
+        li.append(kopf);
+
+        if (raeume.length > 0) {
+            const raeumeListe = document.createElement('ul');
+            raeumeListe.className = 'legende-liste legende-liste-raeume';
+            raeumeListe.append(...raeume.map((raum) => eintrag(farbe, 'heim', raum.kuerzel, raum.name)));
+            li.append(raeumeListe);
+        }
+
+        return li;
+    };
+
+    const symbolAbschnitt = () => {
+        const haus = document.createElement('p');
+        haus.className = 'legende-symbol-erklaerung';
+        const hausPunkt = document.createElement('span');
+        hausPunkt.textContent = '🏠';
+        hausPunkt.setAttribute('aria-hidden', 'true');
+        haus.append(
+            hausPunkt,
+            document.createTextNode(
+                ' an einem Training oder Spiel: das Sportheim des Platzes ist zu diesem '
+                + 'Zeitpunkt vermietet, die Nutzung ist ggf. eingeschränkt.',
+            ),
+        );
+
+        const vermietung = document.createElement('p');
+        vermietung.className = 'legende-symbol-erklaerung';
+        vermietung.append(
+            punkt('var(--auswaerts)', 'venue'),
+            document.createTextNode(
+                ' Vermietungstermine zeigen nur den Spielstätten-Punkt (kein Team) mit dem Titel '
+                + '„Vermietung: <Anlass> (<Räume>)".',
+            ),
+        );
+
+        return abschnitt('Symbole', [haus, vermietung]);
+    };
+
     const render = (root, appData) => {
-        const { teamsNachBereich, plaetzeNachVenue } = window.VKLegendeGruppierung;
+        const { teamsNachBereich, plaetzeNachVenue, raeumeNachSportheim } = window.VKLegendeGruppierung;
+        const sportheimName = (sportheimId) => appData.sportheime.find((s) => s.id === sportheimId)?.name ?? null;
 
         root.replaceChildren();
 
@@ -70,15 +133,34 @@
 
         const plaetzeGruppen = plaetzeNachVenue(appData.pitches, appData.venues).map((gruppe) => untergruppe(
             gruppe.venue.name,
-            gruppe.pitches.map((pitch) => eintrag(pitch.farbe, 'venue', pitch.kuerzel, pitch.name)),
+            gruppe.pitches.map((pitch) => {
+                const heim = pitch.sportheim_id !== null ? sportheimName(pitch.sportheim_id) : null;
+                const name = heim ? `${pitch.name} (🏠 ${heim})` : pitch.name;
+                return eintrag(pitch.farbe, 'venue', pitch.kuerzel, name);
+            }),
         ));
         root.append(abschnitt('Plätze', plaetzeGruppen));
+
+        if (appData.sportheime.length > 0) {
+            const sportheimListe = document.createElement('ul');
+            sportheimListe.className = 'legende-liste';
+            sportheimListe.append(...raeumeNachSportheim(appData.sportheime, appData.sportheimRaeume, appData.venues)
+                .map((gruppe) => sportheimEintrag(
+                    gruppe.sportheim,
+                    gruppe.venue,
+                    gruppe.raeume,
+                    gruppe.venue ? gruppe.venue.farbe : appData.auswaertsFarbe,
+                )));
+            root.append(abschnitt('Sportheime', [sportheimListe]));
+        }
 
         const teamGruppen = teamsNachBereich(appData.teams, appData.bereiche).map((gruppe) => untergruppe(
             gruppe.bereich.name,
             gruppe.teams.map((team) => eintrag(team.farbe, 'team', team.kuerzel, team.name)),
         ));
         root.append(abschnitt('Teams', teamGruppen));
+
+        root.append(symbolAbschnitt());
     };
 
     const dataScript = document.querySelector('#app-data');
