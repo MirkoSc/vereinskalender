@@ -34,6 +34,21 @@ final readonly class TrainingSlotRepository
     }
 
     /**
+     * Slots still valid after `$datum` (date). Feeds the lower bound for the
+     * Terminliste's stop condition (Issue #52) - the occurrence itself is
+     * computed by NextEventDate, which needs the recurrence rule.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function findGueltigNach(string $datum): array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM training_slot WHERE gueltig_bis > ? ORDER BY id');
+        $stmt->execute([$datum]);
+
+        return $stmt->fetchAll();
+    }
+
+    /**
      * Slots whose validity range overlaps [von, bis].
      *
      * @return list<array<string, mixed>>

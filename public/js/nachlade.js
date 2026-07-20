@@ -40,12 +40,37 @@
         return toIsoDate(naechste);
     };
 
-    // Abbruchbedingung (Issue #24): kein festes Zeitlimit mehr - es wird
-    // nachgeladen, bis mehrere Batches in Folge leer bleiben (Annäherung an
-    // "kein Termin mehr in der DB nach dem letzten geladenen liegt", da die
-    // API selbst keinen "Ende erreicht"-Marker liefert).
-    const LEERE_BATCHES_BIS_ERSCHOEPFT = 3;
-    const istErschoepft = (leereBatchesInFolge) => leereBatchesInFolge >= LEERE_BATCHES_BIS_ERSCHOEPFT;
+    // Abbruchbedingung (Issue #52): NICHT mehr aus leeren Batches abgeleitet.
+    // Die frühere Heuristik ("3 leere Batches in Folge = erschöpft") deckte
+    // bei 31-Tage-Batches nur 93 Tage Lücke ab und beendete die Liste
+    // mitten in einer längeren Winterpause - bei letztem Termin 15.11. und
+    // nächstem 07.03. genau einen Batch zu früh.
+    //
+    // Stattdessen liefert `/api/events` je Batch `naechster`: das Datum des
+    // nächsten Termins NACH `bis`, oder null wenn keiner mehr folgt. Nur
+    // null beendet die Kette - eine belastbare Aussage über den Bestand
+    // statt einer Vermutung über die Länge von Lücken.
+    const istErschoepft = (naechster) => naechster === null;
+
+    // Nächster Ladeschritt aus der Server-Auskunft. Liegt `naechster` hinter
+    // dem geladenen Bereich (Lücke), wird die Lücke ÜBERSPRUNGEN statt in
+    // 31-Tage-Schritten abgetastet: der nächste Batch beginnt direkt am
+    // nächsten belegten Tag. Eine beliebig lange Lücke kostet damit genau
+    // einen zusätzlichen Roundtrip - den leeren Batch, der `naechster`
+    // überhaupt erst mitgebracht hat.
+    //
+    // `naechster` ist serverseitig nur eine untere Schranke (s. dort), kann
+    // also gelegentlich zu früh liegen; dann folgt einfach ein weiterer,
+    // ebenfalls leerer Batch. Die Kette bleibt endlich, weil sie
+    // ausschließlich bei null endet.
+    const naechsteLadeGrenzen = (geladenBis, naechster, batchTage) => {
+        if (istErschoepft(naechster)) {
+            return null;
+        }
+        const von = naechster > geladenBis ? naechster : geladenBis;
+
+        return { von, bis: naechsteBatchGrenze(von, batchTage) };
+    };
 
     // Batches können sich überlappen (Retry, schnelles Scrollen mit
     // überholenden Antworten) - Map-Merge nach id verhindert Duplikate;
@@ -65,10 +90,14 @@
     // Spezifikation nur bei einem WECHSEL des Intersection-Zustands, nicht
     // solange ein Element durchgehend sichtbar bleibt. Ohne automatisches
     // Weiterladen bliebe die Liste an einem leeren Batch für immer stehen,
-    // obwohl `istErschoepft` (3 leere Batches in Folge) noch gar nicht
-    // erreicht ist - Issue #46. Deshalb: nach einem leeren, noch nicht
-    // erschöpften Batch selbständig den nächsten laden, ohne auf ein neues
-    // Scroll-Event zu warten.
+    // obwohl der Bestand noch gar nicht erschöpft ist - Issue #46. Deshalb:
+    // nach einem leeren, noch nicht erschöpften Batch selbständig den
+    // nächsten laden, ohne auf ein neues Scroll-Event zu warten.
+    //
+    // Das bleibt auch mit dem Lücken-Sprung (Issue #52) nötig: `naechster`
+    // ist eine untere Schranke, ein Batch kann also trotz Sprung leer
+    // bleiben. Neu ist nur, dass `erschoepft` jetzt eine belastbare Aussage
+    // ist und nicht mehr ein Zähler leerer Batches.
     const sollAutomatischWeiterladen = (batchWarLeer, erschoepft) => batchWarLeer && !erschoepft;
 
     const api = {
@@ -76,6 +105,7 @@
         wochenStart,
         naechsterMonatEnde,
         naechsteBatchGrenze,
+        naechsteLadeGrenzen,
         istErschoepft,
         mergeEvents,
         sollAutomatischWeiterladen,

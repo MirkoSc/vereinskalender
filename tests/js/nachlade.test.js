@@ -6,8 +6,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-    wochenStart, naechsterMonatEnde, naechsteBatchGrenze, istErschoepft, mergeEvents,
-    sollAutomatischWeiterladen,
+    wochenStart, naechsterMonatEnde, naechsteBatchGrenze, naechsteLadeGrenzen, istErschoepft,
+    mergeEvents, sollAutomatischWeiterladen,
 } = require('../../public/js/nachlade.js');
 
 // Issue #26: die Terminliste (Mobil-Default von Platzbelegung/Spielplan)
@@ -58,15 +58,33 @@ test('naechsteBatchGrenze über einen Monatswechsel mit weniger Tagen', () => {
     assert.equal(naechsteBatchGrenze('2026-01-31', 31), '2026-03-03');
 });
 
-test('istErschoepft bleibt false, solange weniger als 3 Batches in Folge leer waren', () => {
-    assert.equal(istErschoepft(0), false);
-    assert.equal(istErschoepft(1), false);
-    assert.equal(istErschoepft(2), false);
+// Issue #52: die Abbruchbedingung liest die Server-Auskunft `naechster`
+// (Datum des nächsten Termins nach `bis`), nicht mehr einen Zähler leerer
+// Batches. Nur "es folgt nachweislich nichts mehr" beendet die Kette.
+test('istErschoepft nur bei naechster === null, nie wegen eines leeren Batches', () => {
+    assert.equal(istErschoepft(null), true);
+    assert.equal(istErschoepft('2027-03-07'), false);
 });
 
-test('istErschoepft wird ab 3 leeren Batches in Folge true - kein festes Zeitlimit', () => {
-    assert.equal(istErschoepft(3), true);
-    assert.equal(istErschoepft(4), true);
+test('naechsteLadeGrenzen überspringt eine Terminlücke in EINEM Schritt', () => {
+    // geladen bis 05.03., nächster Termin laut Server erst 07.03. des
+    // Folgejahres - der nächste Batch beginnt dort, nicht bei 05.03.
+    assert.deepEqual(naechsteLadeGrenzen('2026-12-02', '2027-03-07', 31), {
+        von: '2027-03-07',
+        bis: '2027-04-07',
+    });
+});
+
+test('naechsteLadeGrenzen lädt ohne Lücke nahtlos weiter', () => {
+    // nächster Termin liegt direkt hinter dem geladenen Bereich
+    assert.deepEqual(naechsteLadeGrenzen('2026-08-31', '2026-09-02', 31), {
+        von: '2026-09-02',
+        bis: '2026-10-03',
+    });
+});
+
+test('naechsteLadeGrenzen liefert null, sobald kein Termin mehr folgt', () => {
+    assert.equal(naechsteLadeGrenzen('2026-12-02', null, 31), null);
 });
 
 test('mergeEvents dedupliziert nach id - letzter Stand gewinnt', () => {
@@ -111,6 +129,120 @@ test('sollAutomatischWeiterladen: erschöpft -> nicht weiterladen, auch wenn Bat
     assert.equal(sollAutomatischWeiterladen(true, true), false);
 });
 
+// ---- Issue #52: Nachladen über große Terminlücken ----
+//
+// Fake-Server über einer Liste von Termindaten. Er verhält sich wie
+// EventFeedService::feed(): Termine im Bereich [von, bis] plus `naechster`
+// (Datum des nächsten Termins NACH bis, sonst null). `requests` protokolliert
+// jeden Roundtrip, damit das Akzeptanzkriterium "maximal ein zusätzlicher
+// Roundtrip pro Lücke" prüfbar ist.
+const macheServer = (terminDaten) => {
+    const requests = [];
+    const feed = (von, bis) => {
+        requests.push({ von, bis });
+        const imBereich = terminDaten.filter((d) => d >= von && d <= bis);
+        const dahinter = terminDaten.filter((d) => d > bis);
+
+        return {
+            events: imBereich.map((d) => ({ id: d })),
+            naechster: dahinter.length > 0 ? dahinter[0] : null,
+        };
+    };
+
+    return { feed, requests };
+};
+
+// Ladekette wie in kalender.js (listeLadeKette): erster Batch bis
+// naechsterMonatEnde, danach Schritte gemäß naechsteLadeGrenzen, bis der
+// Server null meldet. `maxRunden` schützt den Test vor einer Endlosschleife -
+// wird es erreicht, ist das selbst schon das Fehlerbild.
+const ladeAlles = (server, start, ersteGrenze, maxRunden = 50) => {
+    let geladenBis = ersteGrenze;
+    let naechster;
+    let events = [];
+
+    const batch = (von, bis) => {
+        const antwort = server.feed(von, bis);
+        events = mergeEvents(events, antwort.events);
+        geladenBis = bis;
+        naechster = antwort.naechster;
+    };
+
+    batch(start, ersteGrenze);
+    let runden = 0;
+    for (;;) {
+        const schritt = naechsteLadeGrenzen(geladenBis, naechster, 31);
+        if (schritt === null) {
+            break;
+        }
+        assert.ok((runden += 1) < maxRunden, 'Nachladen terminiert nicht');
+        batch(schritt.von, schritt.bis);
+    }
+
+    return { events, geladenBis };
+};
+
+// Die Datenlage aus Issue #52: Termine bis 15.11.2026, dann 3,5 Monate
+// Winterpause, nächster Termin 07.03.2027. Die alte Heuristik (3 leere
+// 31-Tage-Batches = erschöpft) deckte nur 93 Tage ab und beendete die Liste
+// beim Batch bis 05.03.2027 - zwei Tage vor dem nächsten Termin.
+test('Terminliste lädt über die Winterpause 15.11. -> 07.03. hinweg (Issue #52)', () => {
+    const server = macheServer([
+        '2026-09-12', '2026-10-24', '2026-11-15', // letzter Termin vor der Pause
+        '2027-03-07', '2027-03-21', '2027-04-11', // Saisonstart im Folgejahr
+    ]);
+
+    const { events } = ladeAlles(server, '2026-07-20', '2026-08-31');
+
+    assert.deepEqual(events.map((e) => e.id), [
+        '2026-09-12', '2026-10-24', '2026-11-15', '2027-03-07', '2027-03-21', '2027-04-11',
+    ]);
+});
+
+test('Die Lücke kostet genau einen zusätzlichen (leeren) Roundtrip', () => {
+    const server = macheServer(['2026-11-15', '2027-03-07']);
+
+    ladeAlles(server, '2026-07-20', '2026-08-31');
+
+    // Der Request, der über den letzten Termin vor der Pause hinausgeht, ist
+    // der einzige leere - danach springt die Kette direkt auf den 07.03.,
+    // statt sich in 31-Tage-Schritten durch die Pause zu tasten.
+    const leere = server.requests.filter((r) => !['2026-11-15', '2027-03-07']
+        .some((d) => d >= r.von && d <= r.bis));
+    assert.equal(leere.length, 1);
+    assert.deepEqual(server.requests.at(-1), { von: '2027-03-07', bis: '2027-04-07' });
+});
+
+test('Auch eine Lücke über ein volles Jahr beendet das Nachladen nicht', () => {
+    const server = macheServer(['2026-08-15', '2028-02-29']);
+
+    const { events } = ladeAlles(server, '2026-07-20', '2026-08-31');
+
+    assert.deepEqual(events.map((e) => e.id), ['2026-08-15', '2028-02-29']);
+});
+
+test('Wirklich keine Termine mehr: Kette endet, kein Endlos-Nachladen', () => {
+    const server = macheServer(['2026-08-15', '2026-09-20']);
+
+    const { events, geladenBis } = ladeAlles(server, '2026-07-20', '2026-08-31');
+
+    assert.deepEqual(events.map((e) => e.id), ['2026-08-15', '2026-09-20']);
+    // letzter Batch deckt den letzten Termin ab; danach meldet der Server
+    // naechster=null -> erschöpft, der Hinweis "keine weiteren Termine" darf
+    // erscheinen (in kalender.js listeErschoepftHinweis).
+    assert.ok(geladenBis >= '2026-09-20');
+    assert.equal(server.feed('2026-07-20', geladenBis).naechster, null);
+});
+
+test('Leerer Bestand: erster Batch meldet bereits erschöpft', () => {
+    const server = macheServer([]);
+
+    const { events } = ladeAlles(server, '2026-07-20', '2026-08-31');
+
+    assert.deepEqual(events, []);
+    assert.equal(server.requests.length, 1);
+});
+
 // Regressionstest für Issue #46: simuliert den mobilen Scroll-Nachlade-Loop
 // (listeWeiterLaden in kalender.js) mit den echten reinen Funktionen gegen
 // einen gefakten Server, dessen November-Batch Termine liefert, der
@@ -121,54 +253,47 @@ test('sollAutomatischWeiterladen: erschöpft -> nicht weiterladen, auch wenn Bat
 // leer bleiben (sollAutomatischWeiterladen). Vor dem Fix wäre die Kette nach
 // dem leeren Dezember-Batch stehen geblieben, da ein unveränderter Sentinel
 // keinen neuen Intersection-Trigger auslöst.
-test('Batchfolge November -> leerer Dezember -> Januar wird trotz leerem Zwischenbatch geladen', () => {
-    const serverBatches = {
-        '2026-11-01_2026-12-02': [{ id: 'nov-1' }],
-        '2026-12-02_2027-01-02': [], // leerer Zwischenmonat-Batch (Winterpause)
-        '2027-01-02_2027-02-02': [{ id: 'jan-1' }],
-    };
-    const fetchBatch = (von, bis) => serverBatches[`${von}_${bis}`] ?? [];
-
-    let listeGeladenBis = '2026-11-01';
+// Weiterhin nötig trotz des Lücken-Sprungs (Issue #52): `naechster` ist nur
+// eine untere Schranke, ein Batch kann also auch nach einem Sprung leer
+// bleiben (z. B. wenn alle Termine eines noch gültigen Trainings-Slots per
+// Ausnahme entfallen). Dann muss derselbe Aufruf weiterladen, statt auf
+// einen Intersection-Trigger zu warten, der nie kommt.
+test('Mobiler Scroll-Trigger lädt nach einem leeren Batch selbständig weiter', () => {
+    // Server meldet einen Termin am 07.03., der Batch davor bleibt leer.
+    const antworten = [
+        { events: [], naechster: '2027-03-07' },
+        { events: [{ id: 'mrz-1' }], naechster: null },
+    ];
     let listeEvents = [];
-    let listeLeereBatches = 0;
+    let listeGeladenBis = '2027-02-02';
+    let listeNaechster = '2027-02-10'; // zu frühe Schranke -> leerer Batch
     let listeErschoepft = false;
 
-    const ladeEinenBatch = (bisGrenze) => {
-        const von = listeGeladenBis;
-        const batch = fetchBatch(von, bisGrenze);
-        listeLeereBatches = batch.length === 0 ? listeLeereBatches + 1 : 0;
-        listeEvents = mergeEvents(listeEvents, batch);
-        listeGeladenBis = bisGrenze;
-        if (istErschoepft(listeLeereBatches)) {
-            listeErschoepft = true;
+    const ladeNaechstenBatch = () => {
+        const schritt = naechsteLadeGrenzen(listeGeladenBis, listeNaechster, 31);
+        if (schritt === null) {
+            return false;
         }
+        const antwort = antworten.shift();
+        listeEvents = mergeEvents(listeEvents, antwort.events);
+        listeGeladenBis = schritt.bis;
+        listeNaechster = antwort.naechster;
+        listeErschoepft = istErschoepft(antwort.naechster);
+
+        return true;
     };
 
     // Entspricht listeWeiterLaden() in kalender.js: EIN Aufruf pro echtem
-    // Scroll-/Intersection-Trigger. sollAutomatischWeiterladen entscheidet,
-    // ob innerhalb desselben Aufrufs ohne weiteren Scroll direkt der nächste
-    // Batch nachgeladen wird.
-    const scrollTrigger = () => {
-        let batchWarLeer;
-        do {
-            const vorLaenge = listeEvents.length;
-            ladeEinenBatch(naechsteBatchGrenze(listeGeladenBis, 31));
-            batchWarLeer = listeEvents.length === vorLaenge;
-        } while (sollAutomatischWeiterladen(batchWarLeer, listeErschoepft));
-    };
+    // Scroll-/Intersection-Trigger.
+    let batchWarLeer;
+    do {
+        const vorLaenge = listeEvents.length;
+        if (!ladeNaechstenBatch()) {
+            break;
+        }
+        batchWarLeer = listeEvents.length === vorLaenge;
+    } while (sollAutomatischWeiterladen(batchWarLeer, listeErschoepft));
 
-    // Erster Scroll: lädt den November-Batch (Termine vorhanden) und stoppt
-    // danach - der Nutzer muss weiterscrollen, um mehr zu sehen.
-    scrollTrigger();
-    assert.deepEqual(listeEvents.map((e) => e.id), ['nov-1']);
-
-    // Zweiter Scroll: startet beim leeren Dezember-Batch. Ohne den Fix bliebe
-    // die Kette genau hier stehen (Sentinel bewegt sich nicht, kein neuer
-    // Trigger) - mit dem Fix lädt derselbe Aufruf automatisch weiter, bis der
-    // Januar-Batch wieder Termine liefert.
-    scrollTrigger();
-    assert.deepEqual(listeEvents.map((e) => e.id), ['nov-1', 'jan-1']);
-    assert.equal(listeErschoepft, false);
-    assert.equal(listeGeladenBis, '2027-02-02');
+    assert.deepEqual(listeEvents.map((e) => e.id), ['mrz-1']);
+    assert.equal(antworten.length, 0);
 });

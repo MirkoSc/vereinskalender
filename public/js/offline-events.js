@@ -178,7 +178,61 @@
         return events;
     };
 
-    const api = { expandiereSlotOccurrences, eventsAusBundle, inKickoffRange, overlapsRange };
+    // Port of EventFeedService::naechsterTermin + NextEventDate (Issue #52):
+    // Datum des nächsten Termins NACH `bis`, oder null wenn keiner mehr
+    // folgt. Damit hat die Terminliste offline dieselbe belastbare
+    // Abbruchbedingung wie online - kein Sonderweg, kein Zusatz-Request
+    // (das Bundle enthält den kompletten Bestand).
+    //
+    // Wie serverseitig eine UNTERE SCHRANKE, keine exakte Auskunft:
+    // Slot-Ausnahmen bleiben unberücksichtigt, da sie Termine nur entfernen
+    // können. Zu früh kostet den Client einen leeren Batch, zu spät würde
+    // Termine verschlucken - deshalb die Asymmetrie.
+    const naechsterTermin = (bundle, bis) => {
+        const abDatum = formatDate(addDays(parseDate(bis), 1));
+        let frueheste = null;
+        const kandidat = (datum) => {
+            if (datum !== null && (frueheste === null || datum < frueheste)) {
+                frueheste = datum;
+            }
+        };
+
+        for (const spiel of bundle.spiele) {
+            const datum = spiel.start.slice(0, 10);
+            if (datum >= abDatum) {
+                kandidat(datum);
+            }
+        }
+        // Sperrungen/Vermietungen: nur NEUE Anfänge zählen - eine bereits
+        // laufende reicht zwar in spätere Zeiträume, steckt aber schon im
+        // aktuellen Batch (overlapsRange).
+        for (const eintrag of [...bundle.sperrungen, ...(bundle.vermietungen ?? [])]) {
+            const datum = eintrag.start.slice(0, 10);
+            if (datum >= abDatum) {
+                kandidat(datum);
+            }
+        }
+        for (const slot of bundle.slots) {
+            if (slot.gueltig_bis < abDatum) {
+                continue;
+            }
+            const start = slot.gueltig_ab > abDatum ? slot.gueltig_ab : abDatum;
+            const startDate = parseDate(start);
+            for (const weekday of slot.wochentage) {
+                const offset = (weekday - isoWeekday(startDate) + 7) % 7;
+                const datum = formatDate(addDays(startDate, offset));
+                if (datum <= slot.gueltig_bis) {
+                    kandidat(datum);
+                }
+            }
+        }
+
+        return frueheste;
+    };
+
+    const api = {
+        expandiereSlotOccurrences, eventsAusBundle, inKickoffRange, overlapsRange, naechsterTermin,
+    };
 
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = api;

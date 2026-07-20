@@ -396,7 +396,11 @@
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
-            return (await response.json()).events;
+            const daten = await response.json();
+            // `naechster` (Issue #52): Datum des nächsten Termins nach `bis`,
+            // null = danach kommt nichts mehr. Trägt die Abbruchbedingung der
+            // Terminliste; die Grid-Ansichten ignorieren das Feld.
+            return { events: daten.events, naechster: daten.naechster ?? null };
         } catch (error) {
             const bundle = await window.VKOffline?.load();
             if (!bundle) {
@@ -433,7 +437,14 @@
                     }
                     return String(e.venue_id) === filters.venue;
                 });
-            return bundleEvents;
+            // Issue #52: dieselbe Auskunft wie online, aus dem kompletten
+            // Bundle berechnet - offline gibt es dadurch KEIN abweichendes
+            // Abbruchverhalten. Wie serverseitig ohne Team-/Bereichs-/
+            // Venue-Filter (untere Schranke, s. offline-events.js).
+            return {
+                events: bundleEvents,
+                naechster: window.VKOfflineEvents.naechsterTermin(bundle, bis),
+            };
         }
     };
 
@@ -472,7 +483,11 @@
 
     let listeEvents = [];
     let listeGeladenBis = null; // ISO-Datum, bis zu dem bereits vom Server geladen wurde
-    let listeLeereBatches = 0;
+    // Issue #52: Datum des nächsten Termins hinter listeGeladenBis, wie vom
+    // letzten Batch gemeldet (null = Bestand erschöpft). Vor dem ersten
+    // Batch noch unbekannt - undefined, damit es nie versehentlich als
+    // "erschöpft" gelesen wird.
+    let listeNaechster;
     let listeErschoepft = false;
     let listeAktiv = false; // true solange die Liste die aktuell aktive View ist
     let listeLaedt = false;
@@ -499,7 +514,7 @@
     const listeZuruecksetzen = () => {
         listeEvents = [];
         listeGeladenBis = null;
-        listeLeereBatches = 0;
+        listeNaechster = undefined;
         listeErschoepft = false;
         listeGeneration += 1;
         if (listeErschoepftHinweis) {
@@ -540,22 +555,21 @@
         });
     };
 
-    // Ein Batch bis `bisGrenze` laden und in den Cache mergen (No-Op, falls
-    // bereits bis dorthin geladen wurde). Der Ladeindikator wird SOFORT beim
-    // Aufruf sichtbar (Issue #31, Akzeptanzkriterium "sofort sichtbar") -
+    // Einen Batch [von, bisGrenze] laden und in den Cache mergen (No-Op,
+    // falls bereits bis dorthin geladen wurde). Der Ladeindikator wird SOFORT
+    // beim Aufruf sichtbar (Issue #31, Akzeptanzkriterium "sofort sichtbar") -
     // nicht erst nachdem der Fetch fertig ist.
-    const ladeEinenBatch = async (params, bisGrenze) => {
-        const von = listeGeladenBis ?? window.VKNachlade.toIsoDate(listeStart());
+    const ladeEinenBatch = async (params, von, bisGrenze) => {
         if (bisGrenze <= von) {
             return;
         }
         listeIndikatorSetzen(true);
         try {
-            const batch = await fetchEventsRange(von, bisGrenze, params);
-            listeLeereBatches = batch.length === 0 ? listeLeereBatches + 1 : 0;
-            listeEvents = window.VKNachlade.mergeEvents(listeEvents, batch);
+            const { events, naechster } = await fetchEventsRange(von, bisGrenze, params);
+            listeEvents = window.VKNachlade.mergeEvents(listeEvents, events);
             listeGeladenBis = bisGrenze;
-            if (window.VKNachlade.istErschoepft(listeLeereBatches)) {
+            listeNaechster = naechster;
+            if (window.VKNachlade.istErschoepft(naechster)) {
                 listeErschoepft = true;
                 if (listeErschoepftHinweis) {
                     listeErschoepftHinweis.hidden = false;
@@ -566,10 +580,26 @@
         }
     };
 
-    const listeNaechsteGrenze = () => window.VKNachlade.naechsteBatchGrenze(
+    // Nächster Ladeschritt laut Server-Auskunft: {von, bis} oder null, wenn
+    // hinter dem geladenen Bereich nachweislich nichts mehr liegt. Überspringt
+    // Terminlücken in einem Schritt (Issue #52).
+    const listeNaechsterSchritt = () => window.VKNachlade.naechsteLadeGrenzen(
         listeGeladenBis ?? window.VKNachlade.toIsoDate(listeStart()),
+        listeNaechster,
         LIST_BATCH_TAGE,
     );
+
+    // Einen von listeNaechsterSchritt() vorgegebenen Batch laden; liefert
+    // false, wenn es nichts mehr zu laden gibt.
+    const ladeNaechstenBatch = async (params) => {
+        const schritt = listeNaechsterSchritt();
+        if (schritt === null) {
+            return false;
+        }
+        await ladeEinenBatch(params, schritt.von, schritt.bis);
+
+        return true;
+    };
 
     const listeNeuRendern = () => {
         calendar.refetchEvents();
@@ -593,7 +623,11 @@
             if (!nochAktuell()) {
                 return;
             }
-            await ladeEinenBatch(params, window.VKNachlade.naechsterMonatEnde(new Date()));
+            await ladeEinenBatch(
+                params,
+                window.VKNachlade.toIsoDate(listeStart()),
+                window.VKNachlade.naechsterMonatEnde(new Date()),
+            );
             if (!nochAktuell()) {
                 return;
             }
@@ -602,7 +636,9 @@
                 return;
             }
             while (listeAktiv && !listeErschoepft && nochAktuell()) {
-                await ladeEinenBatch(params, listeNaechsteGrenze());
+                if (!await ladeNaechstenBatch(params)) {
+                    return;
+                }
                 if (!nochAktuell()) {
                     return;
                 }
@@ -629,7 +665,9 @@
             let batchWarLeer;
             do {
                 const vorLaenge = listeEvents.length;
-                await ladeEinenBatch(params, listeNaechsteGrenze());
+                if (!await ladeNaechstenBatch(params)) {
+                    break;
+                }
                 batchWarLeer = listeEvents.length === vorLaenge;
             } while (listeAktiv && window.VKNachlade.sollAutomatischWeiterladen(batchWarLeer, listeErschoepft));
             listeNeuRendern();
@@ -792,7 +830,10 @@
             try {
                 const von = info.startStr.slice(0, 10);
                 const bis = info.endStr.slice(0, 10);
-                success(merkeVermietungen(applyClientFilters(await fetchEventsRange(von, bis, params))).map(toFcEvent));
+                // Grid-Ansichten zeigen ein festes Fenster - `naechster`
+                // (Issue #52) braucht nur die nachladende Terminliste.
+                const { events } = await fetchEventsRange(von, bis, params);
+                success(merkeVermietungen(applyClientFilters(events)).map(toFcEvent));
             } catch (error) {
                 failure(error);
             }

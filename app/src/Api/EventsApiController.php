@@ -27,7 +27,7 @@ final readonly class EventsApiController
         $this->stats->increment('api', 'events');
 
         try {
-            return Response::json(['events' => $this->eventFeed->events($request->query)]);
+            return Response::json($this->eventFeed->feed($request->query));
         } catch (ValidationException $e) {
             return Response::json(['fehler' => $e->getErrors()], 400);
         }
