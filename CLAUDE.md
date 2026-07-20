@@ -389,7 +389,16 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   (Escape nativ, Klick außerhalb eigens verdrahtet – andere Dialoge der App
   bieten das bewusst nicht). Farbpunkte teilen sich die Kontrast-Technik
   der Termin-Punkte (Issue #39): Team = Kreis, Spielstätte/Platz = Quadrat,
-  Text immer daneben.
+  Sportheim/Raum = Raute (Issue #47, eigene Form – Sportheime haben noch
+  keine eigene Farbe, daher die Farbe ihrer Spielstätte), Text immer
+  daneben. Gruppe „Sportheime" (je Sportheim eingerückt seine Räume, nur
+  aktive, in gepflegter `sortierung`) nutzt dieselbe `appData` wie
+  Spielstätten/Plätze/Teams (`stammdaten()` liefert `sportheime`/
+  `sportheimRaeume` bereits mit); ein Platz mit `sportheim_id` zeigt sein
+  Sportheim zusätzlich als 🏠-Text in der Plätze-Gruppe. Ein
+  Symbole-Abschnitt erklärt den 🏠-Indikator an Terminen (Sportheim gerade
+  vermietet) und die Vermietungs-Darstellung (nur Spielstätten-Punkt, kein
+  Team).
 - **PWA/Offline**: Service Worker cached App-Shell; `GET /api/offline-bundle`
   (format-versioniert, aktuell 4 – Issue #36 hat `sportheime`/
   `sportheim_raeume`/`vermietungen`-Listen ergänzt und `pitch.sportheim_id`

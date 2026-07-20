@@ -947,6 +947,48 @@ progress {
     border-radius: 3px;
 }
 
+/* Issue #47: Sportheim/Raum bekommen eine dritte, von Kreis (Team) und
+   Quadrat (Spielstätte/Platz) klar unterscheidbare Form - eine Raute
+   (gedrehtes Quadrat), in der Farbe der zugehörigen Spielstätte, da
+   Sportheime noch keine eigene Farbe haben (Issue #36, bewusst nicht Teil
+   dieses Issues). */
+.legende-punkt-heim {
+    border-radius: 2px;
+    transform: rotate(45deg);
+}
+
+.legende-eintrag-heim {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.35rem;
+}
+
+.legende-eintrag-kopf {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.legende-liste-raeume {
+    margin-left: 1.5rem;
+    font-size: 0.9rem;
+}
+
+.legende-symbol-erklaerung {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin: 0 0 0.5rem;
+}
+
+.legende-symbol-erklaerung .legende-punkt {
+    margin-top: 0.2rem;
+}
+
+.legende-symbol-erklaerung:last-child {
+    margin-bottom: 0;
+}
+
 .legende-compact summary {
     cursor: pointer;
     font-weight: 600;
