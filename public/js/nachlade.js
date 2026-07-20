@@ -58,8 +58,27 @@
         return [...map.values()];
     };
 
+    // Mobil (Scroll-Nachladen, Issue #24/#31) lädt ein IntersectionObserver-
+    // Trigger pro Aufruf nur EINEN Batch. War der leer (z. B. Winterpause um
+    // den Jahreswechsel), wächst die DOM-Liste nicht - der Sentinel bleibt an
+    // derselben Stelle im Viewport, und ein IntersectionObserver feuert per
+    // Spezifikation nur bei einem WECHSEL des Intersection-Zustands, nicht
+    // solange ein Element durchgehend sichtbar bleibt. Ohne automatisches
+    // Weiterladen bliebe die Liste an einem leeren Batch für immer stehen,
+    // obwohl `istErschoepft` (3 leere Batches in Folge) noch gar nicht
+    // erreicht ist - Issue #46. Deshalb: nach einem leeren, noch nicht
+    // erschöpften Batch selbständig den nächsten laden, ohne auf ein neues
+    // Scroll-Event zu warten.
+    const sollAutomatischWeiterladen = (batchWarLeer, erschoepft) => batchWarLeer && !erschoepft;
+
     const api = {
-        toIsoDate, wochenStart, naechsterMonatEnde, naechsteBatchGrenze, istErschoepft, mergeEvents,
+        toIsoDate,
+        wochenStart,
+        naechsterMonatEnde,
+        naechsteBatchGrenze,
+        istErschoepft,
+        mergeEvents,
+        sollAutomatischWeiterladen,
     };
 
     if (typeof module !== 'undefined' && module.exports) {

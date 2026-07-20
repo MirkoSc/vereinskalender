@@ -613,16 +613,25 @@
         }
     };
 
-    // Scroll ans Listenende (mobil): genau einen weiteren Batch nachladen
-    // und direkt unterhalb anhängen (refetchEvents ändert nur die
-    // Event-Quelle, nicht die View-Range/das Scroll-DOM - Issue #31).
+    // Scroll ans Listenende (mobil): mindestens einen weiteren Batch
+    // nachladen und direkt unterhalb anhängen (refetchEvents ändert nur die
+    // Event-Quelle, nicht die View-Range/das Scroll-DOM - Issue #31). War ein
+    // Batch leer, hängt sich nichts unterhalb des Sentinels an - ein
+    // IntersectionObserver feuert dann nicht erneut (Issue #46), deshalb
+    // hier selbst weiterladen, bis wieder Termine gefunden werden oder die
+    // Kette wirklich erschöpft ist (sollAutomatischWeiterladen).
     const listeWeiterLaden = async () => {
         if (!listeAktiv || calendar.view.type !== 'listNachlade' || listeErschoepft || listeLaedt) {
             return;
         }
         const params = window.VKKalenderEvents.baueEventsParams(filters);
         try {
-            await ladeEinenBatch(params, listeNaechsteGrenze());
+            let batchWarLeer;
+            do {
+                const vorLaenge = listeEvents.length;
+                await ladeEinenBatch(params, listeNaechsteGrenze());
+                batchWarLeer = listeEvents.length === vorLaenge;
+            } while (listeAktiv && window.VKNachlade.sollAutomatischWeiterladen(batchWarLeer, listeErschoepft));
             listeNeuRendern();
         } catch (error) {
             console.error('Terminliste: Nachladen fehlgeschlagen', error);
