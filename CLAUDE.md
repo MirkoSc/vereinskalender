@@ -375,6 +375,36 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   Hinweis („Sportheim vermietet: <Anlass>, Nutzung ggf. eingeschränkt")
   steht im Detail-Dialog (`public/js/vermietung-hinweis.js`, reiner
   Overlap-Abgleich auf den bereits geladenen Events, kein Zusatz-Request).
+- **Zeitraum-Anzeige** (Issue #53): steht neben der Überschrift „Kalender"
+  (`#kalender-zeitraum`), NICHT mehr in FullCalendars eigener Toolbar –
+  `headerToolbar` hat seit Issue #53 keinen `center`-Slot mehr. Grund: die
+  Terminliste (Issue #31/#52) setzte den sichtbaren Bereich schon vorher
+  manuell in `.fc-toolbar-title`, weil ihre View-Range technisch fix auf
+  einen 15-Jahres-Horizont steht; ein direktes `textContent`-Schreiben in
+  dasselbe, von FullCalendar (Preact-basiert) verwaltete Element ließ beim
+  Wechsel weg von der Liste Preacts eigenen, korrekten Titel NEBEN dem
+  extern gesetzten Rest stehen statt ihn zu ersetzen (zwei Text-Kindknoten
+  im selben Element – der eigentliche Bug hinter Issue #53 Teil A). Die
+  Anzeige ist deshalb ein von FullCalendar nie berührtes eigenes Element;
+  `public/js/kalender-titel.js` liefert dafür reinen, DOM-freien Text je
+  Darstellung (Tag/Monat einzelnes Datum, Woche/Liste ein Bereich, mobil
+  kompaktes Zahlenformat wie „18.–24.07.2026"). Gespeist wird sie für
+  Tag/Woche/Monat aus `datesSet` (NICHT aus dem `events`-Callback – dessen
+  `info.start/info.end` ist bei Monat der gepolsterte 6-Wochen-Grid-Bereich,
+  nicht der 1.–31.; `calendar.view.type` ist dort laut obigem Kommentar noch
+  veraltet) über `info.view.currentStart/currentEnd` (die logischen,
+  ungepolsterten View-Grenzen) plus den bereits vorhandenen `modus`-State;
+  für die Liste weiterhin manuell aus dem geladenen Bereich
+  (`listeGeladenBis`), gegen ein spätes Zurückschreiben eines noch
+  laufenden Hintergrund-Batches nach einem Wechsel weg von der Liste
+  bewacht durch denselben `listeAktiv`/`calendar.view.type`-Check wie zuvor.
+  Feste `min-height` auf `#kalender-zeitraum` verhindert einen Layoutsprung
+  beim Darstellungswechsel. FullCalendars eigene Toolbar
+  (`.fc-header-toolbar`) bricht auf schmalen Viewports (360–430 px) sauber
+  in zwei Zeilen um statt – wie zuvor – horizontal zu scrollen (Issue #3
+  führte den Scroll-Ansatz ein, Issue #53 ersetzt ihn: der Titel-Slot war
+  dort der größte Platzverbraucher, ohne ihn passen Navigation und die vier
+  Umschalter-Buttons ohne Scrollbalken).
 - **Terminliste mit Nachladen**: `listNachlade` ist eine der vier
   Darstellungen (Issue #37, per Umschalter erreichbar, nicht mehr an eine
   Ansicht/Bildschirmbreite gebunden); ihr sichtbarer Bereich beginnt beim
