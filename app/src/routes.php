@@ -41,6 +41,7 @@ return static function (Router $router, Container $c): void {
     $router->get('/api/events', static fn(Request $r, array $p): Response => $c->eventsApiController()->events($r));
     $router->get('/api/verfuegbarkeit', static fn(Request $r, array $p): Response => $c->eventsApiController()->verfuegbarkeit($r));
     $router->get('/api/offline-bundle', static fn(Request $r, array $p): Response => $c->eventsApiController()->offlineBundle($r));
+    $router->get('/api/sperrungen/{id:\d+}', static fn(Request $r, array $p): Response => $c->eventsApiController()->restriction($r, $p));
     $router->get('/api/push/vapid', static fn(Request $r, array $p): Response => $c->pushApiController()->vapidKey($r));
 
     // Also the self-test target of the updater step chain (milestone 5).
@@ -86,6 +87,7 @@ return static function (Router $router, Container $c): void {
     $router->post('/api/slots/{id:\d+}/ausfall', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->addException($r, $p)));
     $router->post('/api/ausnahmen/{id:\d+}/loeschen', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->deleteException($r, $p)));
     $router->post('/api/sperrungen', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->createRestriction($r)));
+    $router->post('/api/sperrungen/{id:\d+}', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->updateRestriction($r, $p)));
     $router->post('/api/sperrungen/{id:\d+}/loeschen', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->deleteRestriction($r, $p)));
     $router->post('/api/spiele/{id:\d+}/platz', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->assignPitch($r, $p)));
     $router->post('/api/spiele/pruefen', $publicWrite(fn(Request $r, array $p) => $c->bookingApiController()->checkMatch($r)));

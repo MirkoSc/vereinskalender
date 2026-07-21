@@ -6,6 +6,7 @@ namespace App\Api;
 
 use App\Http\Request;
 use App\Http\Response;
+use App\Repository\PitchRestrictionRepository;
 use App\Repository\UsageStatRepository;
 use App\Service\Kalender\AvailabilityService;
 use App\Service\Kalender\EventFeedService;
@@ -19,6 +20,7 @@ final readonly class EventsApiController
         private AvailabilityService $availability,
         private OfflineBundleService $offlineBundle,
         private UsageStatRepository $stats,
+        private PitchRestrictionRepository $restrictions,
     ) {
     }
 
@@ -55,5 +57,30 @@ final readonly class EventsApiController
         $this->stats->increment('offline_bundle');
 
         return Response::json($this->offlineBundle->build());
+    }
+
+    /**
+     * Single restriction, full picture (unclipped von/bis, CLAUDE.md section
+     * 5: reading is always public) - feeds the edit dialog from the
+     * Verfügbarkeitsansicht (Issue #64), whose day-by-day timeline segments
+     * only ever carry the clipped-to-that-day time window.
+     *
+     * @param array<string, string> $params
+     */
+    public function restriction(Request $request, array $params): Response
+    {
+        $restriction = $this->restrictions->find((int) $params['id']);
+        if ($restriction === null) {
+            return Response::json(['fehler' => ['id' => 'Einschränkung nicht gefunden.']], 404);
+        }
+
+        return Response::json([
+            'id' => (int) $restriction['id'],
+            'pitch_id' => (int) $restriction['pitch_id'],
+            'von' => str_replace(' ', 'T', (string) $restriction['von']),
+            'bis' => str_replace(' ', 'T', (string) $restriction['bis']),
+            'art' => (string) $restriction['art'],
+            'grund' => (string) $restriction['grund'],
+        ]);
     }
 }

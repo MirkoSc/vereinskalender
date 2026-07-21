@@ -542,6 +542,7 @@ final class Container
             $this->eventStore(),
             $this->pitchRestrictionRepository(),
             $this->pitchRepository(),
+            $this->bookingService(),
         ));
     }
 
@@ -619,6 +620,7 @@ final class Container
             $this->availabilityService(),
             $this->offlineBundleService(),
             $this->usageStatRepository(),
+            $this->pitchRestrictionRepository(),
         ));
     }
 
