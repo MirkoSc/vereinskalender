@@ -236,11 +236,19 @@
 
     // "Alle Plätze" (Issue #6/#11): Farbe allein reicht nicht (Farbe nie
     // einziges Signal) - Platz-Kürzel bzw. "Auswärts" als Text vor den Titel.
-    const eventTitle = (props) => {
-        if (!pitchGruppierungAktiv()) {
-            return props.titel;
-        }
-        const praefix = window.VKKalenderPitch.pitchEventPraefix(props);
+    // Issue #58: eigenes Element statt in den Titel-String verwoben, damit
+    // CSS Präfix und Titel unabhängig voneinander beschneiden kann
+    // (Kürzungsreihenfolge, s. eventContent/app.css).
+    const eventPraefix = (props) => (
+        pitchGruppierungAktiv() ? window.VKKalenderPitch.pitchEventPraefix(props) : null
+    );
+
+    // Issue #58: der vollständige, unbeschnittene Text fürs title-/
+    // aria-label - unabhängig davon, was CSS am Ende per Ellipsis kürzt oder
+    // bei extremer Enge ganz weglässt (Farbe ist nie das einzige Signal,
+    // CLAUDE.md Abschnitt 8).
+    const eventVollerTitel = (props) => {
+        const praefix = eventPraefix(props);
         return praefix ? `${praefix}: ${props.titel}` : props.titel;
     };
 
@@ -334,15 +342,38 @@
             wrapper.append(punkte);
         }
 
-        // Issue #57: Titel hier aus den Props ableiten, NICHT aus
+        // Issue #57: Titel/Präfix hier aus den Props ableiten, NICHT aus
         // arg.event.title - das käme aus dem Event-Datensatz und trüge damit
         // das Platz-Präfix aus der Darstellung, unter der zuletzt GEFETCHT
-        // wurde (s. Kommentar bei toFcEvent). Die Textregel selbst
-        // (eventTitle) ist unverändert.
-        const titel = document.createElement('span');
-        titel.className = 'fc-event-title ev-titel';
-        titel.textContent = eventTitle(props) || ' ';
-        wrapper.append(titel);
+        // wurde (s. Kommentar bei toFcEvent).
+        //
+        // Issue #58: Präfix und Titel als getrennte Kind-Elemente statt eines
+        // einzelnen Strings - app.css beschneidet sie darüber unabhängig
+        // voneinander (Kürzungsreihenfolge: Farbpunkte immer sichtbar, dann
+        // schrumpft der Titel per Ellipsis fast allein bis er bei 0 ankommt,
+        // erst danach folgt der Präfix, s. flex-shrink-Werte in app.css).
+        // Das Wrapper-Element trägt title/aria-label mit dem vollen Text,
+        // damit nichts verloren geht, egal was CSS am Ende kürzt.
+        const titelWrapper = document.createElement('span');
+        titelWrapper.className = 'fc-event-title ev-titel';
+        const vollerTitel = eventVollerTitel(props);
+        titelWrapper.title = vollerTitel;
+        titelWrapper.setAttribute('aria-label', vollerTitel);
+
+        const praefix = eventPraefix(props);
+        if (praefix) {
+            const praefixEl = document.createElement('span');
+            praefixEl.className = 'ev-praefix';
+            praefixEl.textContent = `${praefix}:`;
+            titelWrapper.append(praefixEl);
+        }
+
+        const titelText = document.createElement('span');
+        titelText.className = 'ev-titel-text';
+        titelText.textContent = props.titel || ' ';
+        titelWrapper.append(titelText);
+
+        wrapper.append(titelWrapper);
 
         // Issue #36: dezenter Hinweis am Termin, wenn sein Platz zu einem
         // gerade vermieteten Sportheim gehört (voller Hinweis im Detail-Dialog).
