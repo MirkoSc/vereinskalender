@@ -19,6 +19,7 @@ final class IcsExporterTest extends DatabaseTestCase
             new \App\Repository\TrainingSlotRepository($pdo),
             new \App\Repository\SlotExceptionRepository($pdo),
             new \App\Repository\PitchRepository($pdo),
+            new \App\Repository\SettingRepository($pdo),
             '2026-10-01',
             '2099-12-31',
         );
@@ -48,6 +49,21 @@ final class IcsExporterTest extends DatabaseTestCase
         self::assertStringContainsString('X-PUBLISHED-TTL:PT6H', $ics);
         // August = CEST: 15:00 Berlin = 13:00 UTC
         self::assertStringContainsString('DTSTART:20990808T130000Z', $ics);
+    }
+
+    public function testCalendarNameIncludesTheConfiguredAppName(): void
+    {
+        $settings = new \App\Repository\SettingRepository($this->pdo());
+        $settings->set('app_name', 'SG Musterstadt');
+        $teamId = $this->createTeam('E1');
+        $venueId = $this->createVenue();
+        $pitchId = $this->createPitch($venueId);
+
+        $matchFeed = $this->exporter()->matchesFeed($teamId);
+        $pitchFeed = $this->exporter()->pitchFeed($pitchId);
+
+        self::assertStringContainsString('X-WR-CALNAME:SG Musterstadt: Spielplan E1', $matchFeed);
+        self::assertStringContainsString('X-WR-CALNAME:SG Musterstadt: Belegung', $pitchFeed);
     }
 
     public function testMatchFeedUsesExplicitEndeWithTwoHourFallback(): void

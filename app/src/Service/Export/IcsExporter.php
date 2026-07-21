@@ -6,6 +6,7 @@ namespace App\Service\Export;
 
 use App\Repository\MatchRepository;
 use App\Repository\PitchRepository;
+use App\Repository\SettingRepository;
 use App\Repository\SlotExceptionRepository;
 use App\Repository\TeamRepository;
 use App\Repository\TrainingSlotRepository;
@@ -36,6 +37,7 @@ final readonly class IcsExporter
         private TrainingSlotRepository $slots,
         private SlotExceptionRepository $exceptions,
         private PitchRepository $pitches,
+        private SettingRepository $settings,
         private ?string $horizontVon = null,
         private ?string $horizontBis = null,
     ) {
@@ -74,9 +76,10 @@ final readonly class IcsExporter
             );
         }
 
+        $appName = $this->settings->get('app_name', 'Vereinskalender');
         $name = $teamId !== null
-            ? 'Spielplan ' . ($teamNames[$teamId] ?? ('Team ' . $teamId))
-            : 'Spielplan (alle Teams)';
+            ? $appName . ': Spielplan ' . ($teamNames[$teamId] ?? ('Team ' . $teamId))
+            : $appName . ': Spielplan (alle Teams)';
 
         return self::calendar($name, $events);
     }
@@ -122,7 +125,9 @@ final readonly class IcsExporter
             );
         }
 
-        return self::calendar('Belegung ' . $pitchName, $events);
+        $appName = $this->settings->get('app_name', 'Vereinskalender');
+
+        return self::calendar($appName . ': Belegung ' . $pitchName, $events);
     }
 
     /**

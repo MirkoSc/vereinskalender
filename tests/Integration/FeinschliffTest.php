@@ -118,6 +118,7 @@ final class FeinschliffTest extends DatabaseTestCase
         $mailer->alert('updatefehler', 'Update kaputt', 'Details');
 
         self::assertCount(2, $sent, 'second import alert on the same day is throttled');
+        self::assertSame('[Vereinskalender] Import kaputt', $sent[0], 'Issue #62: subject prefix from the app_name setting default');
 
         // without a configured address nothing is sent
         $settings->set('alarm_email', '');

@@ -29,7 +29,8 @@ final class SettingsController extends AdminController
         return $this->render('admin/einstellungen', [
             'title' => 'Einstellungen',
             'values' => [
-                'vereinsname' => $this->settings->get('vereinsname', 'Vereinskalender'),
+                'app_name' => $this->settings->get('app_name', 'Vereinskalender'),
+                'app_name_kurz' => $this->settings->get('app_name_kurz', ''),
                 'nutzungszeiten_von' => $this->settings->get('nutzungszeiten_von', '08:00'),
                 'nutzungszeiten_bis' => $this->settings->get('nutzungszeiten_bis', '22:00'),
                 'auswaerts_farbe' => $this->settings->get('auswaerts_farbe', '#57606a'),
@@ -68,9 +69,14 @@ final class SettingsController extends AdminController
     {
         $fehler = [];
 
-        $vereinsname = trim((string) ($request->post['vereinsname'] ?? ''));
-        if ($vereinsname === '' || mb_strlen($vereinsname) > 100) {
-            $fehler[] = 'Vereinsname ist erforderlich (max. 100 Zeichen).';
+        $appName = trim((string) ($request->post['app_name'] ?? ''));
+        if ($appName === '' || mb_strlen($appName) > 100) {
+            $fehler[] = 'App-Name ist erforderlich (max. 100 Zeichen).';
+        }
+
+        $appNameKurz = trim((string) ($request->post['app_name_kurz'] ?? ''));
+        if (mb_strlen($appNameKurz) > 30) {
+            $fehler[] = 'App-Name (kurz): max. 30 Zeichen.';
         }
 
         $von = trim((string) ($request->post['nutzungszeiten_von'] ?? ''));
@@ -98,7 +104,8 @@ final class SettingsController extends AdminController
         if ($fehler !== []) {
             $this->session->flash(implode(' ', $fehler));
         } else {
-            $this->settings->set('vereinsname', $vereinsname);
+            $this->settings->set('app_name', $appName);
+            $this->settings->set('app_name_kurz', $appNameKurz);
             $this->settings->set('nutzungszeiten_von', $von);
             $this->settings->set('nutzungszeiten_bis', $bis);
             $this->settings->set('auswaerts_farbe', $farbe);
