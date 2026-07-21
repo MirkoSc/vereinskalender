@@ -583,6 +583,41 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   !important` (wie die `--fc-event-*`-Variablen oben, Abschnitt 8 Beginn).
   Vollständiger Text bleibt über `title`/`aria-label` am `.ev-titel`-Element
   und den Detail-Dialog erreichbar.
+- **Die Kürzungsreihenfolge braucht eine begrenzte Breite** (Issue #67 –
+  die Regel aus #58 war unvollständig): `flex-shrink` schrumpft nur gegen
+  eine Vorgabe. In Tag/Woche/Monat liefert die Grid-Geometrie sie (der
+  Termin-Block bekommt seine Breite aus Spalte/Zelle), in der **Terminliste
+  nicht**: FullCalendar rendert sie als `table.fc-list-table` mit
+  `table-layout: auto`, wo sich die Spalten am INHALT sizen. Das
+  `white-space: nowrap` von `.ev-titel-text`/`.ev-praefix` macht deren
+  min-content-Breite gleich der vollen Textlänge, und diese Breite ist für
+  eine Auto-Layout-Tabelle eine harte Untergrenze, die ungebremst nach oben
+  wandert (Zelle → Spalte → Tabelle). `overflow: hidden` auf den Kindern
+  stoppt das nicht – es begrenzt die Darstellung, nicht den Platzbedarf, den
+  die Zelle nach oben meldet. Die Tabelle wurde damit breiter als ihr
+  `.fc-scroller` (der nur vertikal scrollt, `overflow-x: visible`), der
+  Überschuss lief bis zu `body`/`html` durch: der gemeldete Scrollbalken saß
+  **am Dokument**, nicht am Termin und nicht am Scroller (bei 360 px:
+  Tabelle 863 px in einem 343-px-Viewport). Die #58-Regeln griffen dabei
+  durchaus – `flex-direction: row` und `min-width: 0` waren aktiv –, sie
+  liefen nur ins Leere. Fix: `max-width: 0` auf
+  `td.fc-list-event-title` deckelt den Beitrag der Zelle zur Spaltenbreite;
+  die Spalte bekommt nur noch den Rest nach den beiden Inhalts-Spalten
+  (Uhrzeit/Grafik, von FullCalendar per `width: 1px` + nowrap schmal
+  gehalten), der Flex-Container hat endlich eine definite Breite und die
+  Kürzungsreihenfolge wirkt. Bewusst **nicht** `table-layout: fixed`: das
+  zieht die Spaltenbreiten aus der ersten Zeile, und FullCalendars `<thead>`
+  hängt per `position: absolute; left: -10000px` außerhalb des Flusses –
+  fixed fiele auf die erste Body-Zeile zurück (`.fc-list-day` mit
+  `colspan=3`, also EINE Zelle) und teilte alle drei Spalten gleich breit
+  auf. Da der Farbpunkt der Liste bei uns ohnehin ausgeblendet ist (die
+  Punkte stehen im Titel), verliert die Grafik-Spalte zusätzlich ihre
+  Polsterung – seit die Titel-Spalte nur noch den Rest bekommt, ginge die
+  direkt vom Titel ab. Regressionsprüfung ist manuell (Prüfliste im PR zu
+  #67: 320/360/430/768/>1100 px × Tag/Woche/Monat/Liste, Kriterium
+  `document.documentElement.scrollWidth === clientWidth`) – die Ursache
+  liegt in CSS-Layout, nicht in einer Entscheidungsfunktion, für die sich
+  ein Unit-Test wie bei `platzFarbDarstellung()` (Issue #57) lohnen würde.
 - Cache-Busting: Assets `?v=<VERSION>`, SW-Cache-Name enthält Version.
 - **Vereinswappen**: Admin-Upload (nur PNG – GD kann kein SVG rastern, einzige
   auf Shared Hosting garantiert vorhandene Bild-Erweiterung), Ablage in
