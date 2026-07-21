@@ -50,6 +50,26 @@ final class StatControllerTest extends DatabaseTestCase
         self::assertSame(1, $stats->summary('feature_' . $metrik)['heute']);
     }
 
+    /**
+     * @return list<array{string}>
+     */
+    public static function typFilterMetrikenProvider(): array
+    {
+        return [['filter_typ_spiel'], ['filter_typ_training']];
+    }
+
+    #[DataProvider('typFilterMetrikenProvider')]
+    public function testTypFilterMetrikenSindAkzeptiertUndGezaehlt(string $metrik): void
+    {
+        $stats = new UsageStatRepository($this->pdo());
+        $controller = new StatController($stats);
+
+        $response = $controller->beacon(new Request(HttpMethod::Post, '/api/stat', post: ['metrik' => $metrik]));
+
+        self::assertSame(200, $response->status);
+        self::assertSame(1, $stats->summary('feature_' . $metrik)['heute']);
+    }
+
     public function testUnknownMetricIsRejected(): void
     {
         $controller = new StatController(new UsageStatRepository($this->pdo()));
