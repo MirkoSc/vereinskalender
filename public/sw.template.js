@@ -2,6 +2,9 @@
 // so the cache name changes with every release (CLAUDE.md section 9).
 
 const CACHE = 'vereinskalender-__VERSION__';
+// Issue #62: filled in server-side (PublicController::serviceWorker()) with
+// the app_name setting, JSON-encoded so it's a safe JS string literal.
+const APP_NAME = __APP_NAME__;
 
 const APP_SHELL = [
     '/',
@@ -52,6 +55,28 @@ self.addEventListener('activate', (event) => {
 // fetch() folgt ihm transparent).
 const ALT_ROUTEN = ['/belegung', '/spielplan'];
 
+// Issue #66: /abonnieren is deliberately NOT in APP_SHELL - its feed links
+// need a live network, so instead of an uncached-page browser error it gets
+// its own friendly offline response.
+const OFFLINE_ABONNIEREN_HTML = `<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Offline – ${APP_NAME}</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem auto; max-width: 32rem; color: #1c1e21; background: #f4f6f4; }
+  a { color: #328551; }
+</style>
+</head>
+<body>
+<h1>Offline</h1>
+<p>Kalender abonnieren geht nur online - die Abo-Links werden hier live erzeugt.</p>
+<p><a href="/kalender">Zurück zum Kalender</a></p>
+</body>
+</html>
+`;
+
 // App shell: network first (fresh colors/data), cache fallback offline.
 // API requests are NOT cached here - offline data comes from the
 // IndexedDB bundle (js/offline.js).
@@ -76,10 +101,19 @@ self.addEventListener('fetch', (event) => {
                 }
                 return response;
             })
-            .catch(() => caches.match(
-                ALT_ROUTEN.includes(url.pathname) ? '/kalender' : event.request,
-                { ignoreSearch: true },
-            )),
+            .catch(() => {
+                if (url.pathname === '/abonnieren') {
+                    return new Response(OFFLINE_ABONNIEREN_HTML, {
+                        status: 200,
+                        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+                    });
+                }
+
+                return caches.match(
+                    ALT_ROUTEN.includes(url.pathname) ? '/kalender' : event.request,
+                    { ignoreSearch: true },
+                );
+            }),
     );
 });
 
@@ -91,7 +125,7 @@ self.addEventListener('push', (event) => {
     } catch {
         // ignore malformed payloads
     }
-    event.waitUntil(self.registration.showNotification(data.titel || 'Vereinskalender', {
+    event.waitUntil(self.registration.showNotification(data.titel || APP_NAME, {
         body: data.text || '',
         icon: '/icon.svg',
         data: { url: data.url || '/' },

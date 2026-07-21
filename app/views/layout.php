@@ -4,7 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#328551">
-    <title><?= e($title ?? 'Vereinskalender') ?></title>
+    <?php $seitentitel = ($title ?? '') !== '' ? $title . ' – ' . $appName : $appName; ?>
+    <title><?= e($seitentitel) ?></title>
     <link rel="stylesheet" href="/css/app.css?v=<?= e($version) ?>">
     <link rel="manifest" href="/manifest.webmanifest">
     <link rel="icon" href="/icon.svg" type="image/svg+xml">
@@ -22,7 +23,7 @@
 <header class="site-header">
     <h1><a href="/" class="brand">
         <img src="<?= $wappenVorhanden ? '/icon/logo.png?v=' . e($wappenVersion) : '/icon.svg' ?>" alt="" class="brand-logo">
-        Vereinskalender
+        <?= e($appName) ?>
     </a></h1>
     <nav class="main-nav">
         <a href="/kalender">Kalender</a>
@@ -35,6 +36,7 @@
     <?= $content ?>
 </main>
 <footer class="site-footer">
+    <span class="footer-brand"><?= e($appName) ?></span>
     <a href="/impressum">Impressum</a>
     <a href="/datenschutz">Datenschutz</a>
 </footer>

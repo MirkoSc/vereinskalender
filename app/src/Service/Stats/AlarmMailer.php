@@ -45,7 +45,8 @@ final readonly class AlarmMailer
             return;
         }
 
-        if (($this->mailer)($to, '[Vereinskalender] ' . $subject, $body)) {
+        $appName = $this->settings->get('app_name', 'Vereinskalender');
+        if (($this->mailer)($to, '[' . $appName . '] ' . $subject, $body)) {
             $this->settings->set($throttleKey, $heute);
         }
     }

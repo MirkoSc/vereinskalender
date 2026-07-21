@@ -16,6 +16,7 @@ final readonly class View
         private string $version,
         private bool $wappenVorhanden = false,
         private string $wappenVersion = '0',
+        private string $appName = 'Vereinskalender',
     ) {
     }
 
@@ -34,6 +35,7 @@ final readonly class View
                 'version' => $this->version,
                 'wappenVorhanden' => $this->wappenVorhanden,
                 'wappenVersion' => $this->wappenVersion,
+                'appName' => $this->appName,
             ],
         );
     }

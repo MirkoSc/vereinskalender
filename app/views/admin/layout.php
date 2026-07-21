@@ -5,12 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex">
     <meta name="csrf-token" content="<?= e($csrf) ?>">
-    <title><?= e($title ?? 'Admin') ?> – Vereinskalender</title>
+    <title><?= e($title ?? 'Admin') ?> – <?= e($appName) ?></title>
     <link rel="stylesheet" href="/css/app.css?v=<?= e($version) ?>">
 </head>
 <body>
 <header class="site-header admin-header">
-    <h1>Vereinskalender · Admin</h1>
+    <h1><?= e($appName) ?> · Admin</h1>
     <?php if ($showNav ?? false): ?>
         <nav class="admin-nav">
             <a href="/admin">Übersicht</a>
