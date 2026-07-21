@@ -107,9 +107,11 @@
         beacon('filternutzung');
         localStorage.setItem('kalender_platz', filters.pitch);
         renderFilterUi();
-        if (isWide) {
-            calendar.refetchResources();
-        }
+        // Issue #57: unbedingt - die Spaltenliste hängt am Platzfilter, nicht
+        // an der Breite (s. aktuelleRessourcen). Der frühere Breiten-Vorbehalt
+        // konnte eine veraltete Liste stehen lassen, sobald die Breite sich
+        // zwischen zwei Filterwechseln geändert hatte.
+        calendar.refetchResources();
         if (modus === 'liste') {
             listeFilterGeaendert();
             return;
@@ -165,10 +167,12 @@
     // gefilterter Einzelplatz die fehlenden Spalten. Client-side only:
     // /api/events hat keinen Platzfilter, jedes Event trägt pitch_id/
     // pitch_farbe/pitch_name/pitch_kuerzel bereits im Events-Feed.
-    // Snapshot once, like the existing isMobile check below: nichts hier
-    // reagiert live auf eine Fenstergrößenänderung - ein Reload wendet die
-    // neue Breite an.
-    const isWide = window.matchMedia('(min-width: 1100px)').matches;
+    // Issue #57: LIVE gelesen, nicht mehr einmalig gesnapshottet. Der alte
+    // Snapshot überlebte das Ziehen der Fensterbreite über die Schwelle -
+    // FullCalendar re-renderte, aber View-Wahl, Ressourcen-Spalten und die
+    // Platzfarb-Regel blieben auf dem Wert vom Seitenaufruf stehen.
+    const breitMedia = window.matchMedia('(min-width: 1100px)');
+    const istBreit = () => breitMedia.matches;
     const pitchSelect = document.querySelector('#filter-pitch');
     if (pitchSelect) {
         for (const pitch of appData.pitches) {
@@ -187,7 +191,16 @@
         });
     }
     const pitchGruppierungAktiv = () => window.VKKalenderPitch.pitchGruppierungAktiv(
-        window.VKKalenderAnsicht.hatResourceSpalten(modus, isWide),
+        window.VKKalenderAnsicht.hatResourceSpalten(modus, istBreit()),
+        filters.pitch,
+    );
+
+    // Issue #57: die eine Stelle, die "Darstellung × Breite × Platzfilter"
+    // auswertet - IMMER frisch beim Rendern eines Termins aufgerufen, nie
+    // vorberechnet (s. Kommentar bei eventContent/eventDidMount).
+    const platzFarbDarstellung = () => window.VKKalenderPitch.platzFarbDarstellung(
+        modus,
+        window.VKKalenderAnsicht.hatResourceSpalten(modus, istBreit()),
         filters.pitch,
     );
 
@@ -202,28 +215,24 @@
 
     // ---- calendar ----
 
-    // Der Termin-HINTERGRUND: Sperrungen behalten ihre Art-Farbe
-    // (gesperrt/eingeschränkt); die "Alle Plätze"-Gruppierung in Grid-
-    // Ansichten (Ersatz für fehlende Ressourcen-Spalten, Issue #6/#11,
-    // außerhalb der Terminliste - Issue #40) faerbt weiterhin nach Platz.
-    // Der frühere Team/Spielstätte-Umschalter ist mit Issue #39 entfallen:
-    // beide Farben sind jetzt gleichzeitig als zwei Punkte am Termin
-    // sichtbar (s. eventContent), der Hintergrund bleibt sonst neutral.
-    const eventColor = (props) => {
-        if (props.typ === 'sperrung') {
-            // same CSS custom properties as app.css, not a second literal (Issue #1)
-            return props.art === 'gesperrt' ? 'var(--color-danger)' : 'var(--color-warning)';
-        }
-        // Issue #36: Vermietungen haben keinen Platz - eigener Look über
-        // die .ev-vermietung-Klasse (app.css) statt Platzfarbe.
-        if (props.typ === 'vermietung') {
-            return null;
-        }
-        if (window.VKKalenderPitch.pitchFarbeAktiv(pitchGruppierungAktiv(), modus === 'liste')) {
-            return window.VKKalenderPitch.pitchEventFarbe(props);
-        }
-        return null;
-    };
+    // Sperrungen behalten ihre Art-Farbe (gesperrt/eingeschränkt). Sie hängt
+    // AUSSCHLIESSLICH am Termin selbst, nie an Darstellung/Breite/Filter -
+    // deshalb darf sie als einzige Farbe im Event-Datensatz mitgeliefert
+    // werden (toFcEvent) und kann beim Darstellungswechsel nicht veralten.
+    const sperrungColor = (props) => (
+        // same CSS custom properties as app.css, not a second literal (Issue #1)
+        props.art === 'gesperrt' ? 'var(--color-danger)' : 'var(--color-warning)'
+    );
+
+    // Die Platzfarbe am Termin (Issue #6/#11). Rein aus den Event-Props -
+    // OB und WIE sie erscheint, entscheidet platzFarbDarstellung() beim
+    // Rendern. Sperrungen (eigene Art-Farbe) und Vermietungen (kein Platz,
+    // eigener Look über .ev-vermietung in app.css) haben nie eine.
+    const platzFarbe = (props) => (
+        props.typ === 'sperrung' || props.typ === 'vermietung'
+            ? null
+            : window.VKKalenderPitch.pitchEventFarbe(props)
+    );
 
     // "Alle Plätze" (Issue #6/#11): Farbe allein reicht nicht (Farbe nie
     // einziges Signal) - Platz-Kürzel bzw. "Auswärts" als Text vor den Titel.
@@ -248,13 +257,26 @@
         return props.venue_name ?? appData.venues.find((v) => v.id === props.venue_id)?.name ?? 'Spielstätte';
     };
 
+    // Ein Farbpunkt - Form macht die Bedeutung (app.css, Legende Issue #38),
+    // das Label wiederholt sie für Screenreader und Tooltip.
+    const punkt = (klasse, farbe, label) => {
+        const el = document.createElement('span');
+        el.className = `ev-punkt ${klasse}`;
+        el.style.backgroundColor = farbe;
+        el.setAttribute('role', 'img');
+        el.setAttribute('aria-label', label);
+        el.title = label;
+        return el;
+    };
+
     // Zwei Farbpunkte (Team + Spielstätte) statt des früheren Umschalters
     // (Issue #39): fest in dieser Reihenfolge, an jedem Termin gleichzeitig
     // sichtbar, unabhängig von Ansicht/Breite - auch in der Terminliste
     // (Issue #40 galt nur für den alten Ein-Farbe-Modus). Sperrungen haben
     // kein Team (indikatorFarben liefert dafür null) und bleiben unverändert
     // bei ihrer Art-Farbe. Reihenfolge ist an die künftige Legende (Issue
-    // #34) gebunden - hier nicht ändern, ohne dort mitzuziehen.
+    // #34) gebunden - hier nicht ändern, ohne dort mitzuziehen. Im Monat
+    // kommt ein dritter Punkt für den Platz dazu (Issue #57, s. u.).
     const eventPunkte = (props) => {
         const farben = window.VKKalenderFarbe.indikatorFarben(props);
         if (!farben) {
@@ -265,23 +287,24 @@
 
         // Issue #36: Vermietungen haben kein Team - nur der Spielstätten-Punkt
         if (farben.team !== null) {
-            const teamPunkt = document.createElement('span');
-            teamPunkt.className = 'ev-punkt ev-punkt-team';
-            teamPunkt.style.backgroundColor = farben.team;
-            teamPunkt.setAttribute('role', 'img');
-            teamPunkt.setAttribute('aria-label', `Team: ${props.team_name ?? ''}`);
-            teamPunkt.title = `Team: ${props.team_name ?? ''}`;
-            punkte.append(teamPunkt);
+            punkte.append(punkt('ev-punkt-team', farben.team, `Team: ${props.team_name ?? ''}`));
         }
 
-        const venuePunkt = document.createElement('span');
-        venuePunkt.className = 'ev-punkt ev-punkt-venue';
-        venuePunkt.style.backgroundColor = farben.venue;
-        venuePunkt.setAttribute('role', 'img');
-        venuePunkt.setAttribute('aria-label', `Spielstätte: ${venueName(props)}`);
-        venuePunkt.title = `Spielstätte: ${venueName(props)}`;
+        punkte.append(punkt('ev-punkt-venue', farben.venue, `Spielstätte: ${venueName(props)}`));
 
-        punkte.append(venuePunkt);
+        // Issue #57: dritter Punkt NUR im Monat - dort rendert FullCalendar
+        // zeitgebundene Termine als Dot-Events ohne Block-Fläche, ein
+        // Hintergrund in Platzfarbe käme also nie an (verifiziert:
+        // computedBg rgba(0,0,0,0)). Das Text-Präfix mit dem Platz-Kürzel
+        // bleibt davon unberührt - Farbe ist nie das einzige Signal
+        // (CLAUDE.md Abschnitt 8). Form wie der Spielstätten-Punkt
+        // (Quadrat), passend zur Legende (Issue #38).
+        const platz = platzFarbe(props);
+        if (platz !== null && platzFarbDarstellung() === 'punkt') {
+            const label = window.VKKalenderPitch.pitchEventPraefix(props);
+            punkte.append(punkt('ev-punkt-pitch', platz, `Platz: ${label ?? 'offen'}`));
+        }
+
         return punkte;
     };
 
@@ -311,9 +334,14 @@
             wrapper.append(punkte);
         }
 
+        // Issue #57: Titel hier aus den Props ableiten, NICHT aus
+        // arg.event.title - das käme aus dem Event-Datensatz und trüge damit
+        // das Platz-Präfix aus der Darstellung, unter der zuletzt GEFETCHT
+        // wurde (s. Kommentar bei toFcEvent). Die Textregel selbst
+        // (eventTitle) ist unverändert.
         const titel = document.createElement('span');
         titel.className = 'fc-event-title ev-titel';
-        titel.textContent = arg.event.title || ' ';
+        titel.textContent = eventTitle(props) || ' ';
         wrapper.append(titel);
 
         // Issue #36: dezenter Hinweis am Termin, wenn sein Platz zu einem
@@ -331,12 +359,50 @@
         return { domNodes: [wrapper] };
     };
 
+    // Der Termin-HINTERGRUND in Platzfarbe (Issue #6/#11) - beim MOUNT des
+    // Termin-Elements gesetzt, nicht im Event-Datensatz (Issue #57).
+    //
+    // Root Cause von Issue #57: Farbe und Titel wurden in toFcEvent()
+    // eingebacken, also zum FETCH-Zeitpunkt aus dem damaligen modus/der
+    // damaligen Breite berechnet. setzeModus() wechselt aber nur die View -
+    // und FullCalendar fetcht mit lazyFetching ausschließlich nach, wenn die
+    // neue Range über die geladene HINAUSGEHT (Vendor-Bundle:
+    // `t.start<e.fetchRange.start||t.end>e.fetchRange.end`). Jeder Wechsel in
+    // eine ENGERE Range (Monat→Woche, Monat→Tag, Woche→Tag, Liste→alles)
+    // benutzte die gecachten Event-Objekte weiter und zeigte damit die Farbe
+    // der vorherigen Darstellung - reproduziert: Monat→Woche ließ auf Desktop
+    // `background-color: rgb(26,127,55)` in der Ressourcen-Wochenansicht
+    // stehen, wo die Spalte den Platz bereits trägt. Ein Reload half nur,
+    // weil er frisch fetchte.
+    //
+    // eventDidMount feuert dagegen bei JEDEM Rendern des Termin-Elements -
+    // auch beim Wechsel auf gecachte Events, nach Nachladen und nach
+    // Filterwechsel. Die Entscheidung fällt damit immer auf dem aktuellen
+    // Stand von Darstellung × Breite × Platzfilter.
+    const eventDidMount = (info) => {
+        if (platzFarbDarstellung() !== 'hintergrund') {
+            return;
+        }
+        const farbe = platzFarbe(info.event.extendedProps);
+        if (farbe === null) {
+            return;
+        }
+        info.el.style.backgroundColor = farbe;
+        info.el.style.borderColor = farbe;
+    };
+
     // Ressourcen-Spalte je Event: der zugeordnete Platz, sonst die
     // synthetische "Auswärts"-Spalte (Issue #37) - ohne bekannte resourceId
     // würde FullCalendar das Event in Ressourcen-Views lautlos verwerfen.
+    //
+    // Issue #57: Was von Darstellung/Breite/Platzfilter abhängt (Platzfarbe,
+    // Platz-Präfix im Titel), gehört NICHT hierher - der Datensatz überlebt
+    // den Darstellungswechsel, die Entscheidung darf das nicht. `title` bleibt
+    // der rohe Titel (FullCalendar nutzt ihn intern u. a. zum Sortieren), die
+    // Anzeige baut eventContent daraus frisch.
     const toFcEvent = (e) => ({
         id: e.id,
-        title: eventTitle(e),
+        title: e.titel,
         start: e.start,
         end: e.ende,
         // Issue #36: Vermietungen haben keine pitch_id - eigene Spalte statt
@@ -344,7 +410,7 @@
         resourceId: e.typ === 'vermietung'
             ? RESOURCE_SPORTHEIM_ID
             : (e.pitch_id !== null ? String(e.pitch_id) : RESOURCE_AUSWAERTS_ID),
-        color: eventColor(e) ?? undefined,
+        color: e.typ === 'sperrung' ? sperrungColor(e) : undefined,
         display: e.typ === 'sperrung' ? 'background' : 'auto',
         classNames: [`ev-${e.typ}`, e.status === 'abgesagt' ? 'ev-abgesagt' : ''].filter(Boolean),
         extendedProps: e,
@@ -358,7 +424,7 @@
     // diesen Platz - Auswärtsspiele haben nie eine pitch_id und fallen dabei
     // automatisch heraus.
     const applyPitchFilter = (events) => (
-        !window.VKKalenderAnsicht.hatResourceSpalten(modus, isWide) && filters.pitch !== ''
+        !window.VKKalenderAnsicht.hatResourceSpalten(modus, istBreit()) && filters.pitch !== ''
             ? events.filter((e) => String(e.pitch_id) === filters.pitch)
             : events
     );
@@ -750,12 +816,16 @@
     // Alle Plätze + eine synthetische "Auswärts"-Spalte für Spiele ohne
     // pitch_id (Issue #37); bei gewähltem Einzelplatz nur dessen Spalte (bzw.
     // die Auswärts-Spalte, falls "Auswärts" selbst gewählt wäre - aktuell
-    // nicht wählbar, das Dropdown listet nur echte Plätze). Nur relevant in
-    // den Ressourcen-Views (Tag/Woche, breit) - sonst leer.
+    // nicht wählbar, das Dropdown listet nur echte Plätze).
+    //
+    // Issue #57: bewusst NICHT mehr an die Breite gekoppelt (vorher: schmal =
+    // leere Liste). FullCalendar cacht das Ergebnis; wurde es schmal als leer
+    // geliefert, verwarf eine später aktivierte Ressourcen-View sämtliche
+    // Events lautlos (unbekannte resourceId) - ein zweiter Fehlermodus derselben
+    // Wurzel wie die Farben: eine breitenabhängige Entscheidung, einmal
+    // eingefroren. Ansichten ohne Spalten ignorieren die Liste ohnehin, die
+    // Kosten sind ein Array aus dem bereits geladenen appData.
     const aktuelleRessourcen = () => {
-        if (!isWide) {
-            return [];
-        }
         const alle = [
             ...appData.pitches.map((p) => ({ id: String(p.id), title: `${p.name} (${p.venue_name})` })),
             { id: RESOURCE_AUSWAERTS_ID, title: 'Auswärts' },
@@ -787,7 +857,7 @@
         localStorage.setItem('kalender_ansicht', modus);
         beacon(window.VKKalenderAnsicht.statMetrik(modus));
         aktualisiereModusButtons();
-        calendar.changeView(window.VKKalenderAnsicht.fcViewName(modus, isWide));
+        calendar.changeView(window.VKKalenderAnsicht.fcViewName(modus, istBreit()));
     };
 
     const ansichtButton = (m, text) => ({ text, hint: text, click: () => setzeModus(m) });
@@ -804,7 +874,7 @@
         // Issue #6/#37: Platz-Spalten (Ressourcen-Views) nur ab der Desktop-
         // Sidebar-Schwelle (~1100px) in Tag/Woche; darunter bzw. in Monat/
         // Liste ersetzt die Platz-Auswahl (Dropdown) die Spalten.
-        initialView: window.VKKalenderAnsicht.fcViewName(modus, isWide),
+        initialView: window.VKKalenderAnsicht.fcViewName(modus, istBreit()),
         customButtons: {
             ansichttag: ansichtButton('tag', 'Tag'),
             ansichtwoche: ansichtButton('woche', 'Woche'),
@@ -880,6 +950,7 @@
             }
         },
         eventContent,
+        eventDidMount,
         eventClick: (info) => showDetail(info.event.extendedProps),
         // FullCalendar's buttonHints only sets the hover title, not
         // aria-label; the icon-only "Heute" button (Issue #3) needs an
@@ -893,6 +964,21 @@
         },
     });
     calendar.render();
+
+    // Issue #57: Breite live nachziehen. Tag/Woche wechseln beim Über- bzw.
+    // Unterschreiten der Schwelle zwischen Ressourcen- und normaler
+    // Zeitraster-View; damit ändert sich auch, ob der Hintergrund die
+    // Platzfarbe trägt (Spalten vs. Farbe). Monat/Liste kennen keine Spalten -
+    // dort ist der View-Name breitenunabhängig und changeView() bliebe ein
+    // No-op, deshalb der Vergleich statt eines bedingungslosen Aufrufs.
+    breitMedia.addEventListener('change', () => {
+        const ziel = window.VKKalenderAnsicht.fcViewName(modus, istBreit());
+        if (ziel === calendar.view.type) {
+            return;
+        }
+        calendar.changeView(ziel);
+    });
+
     aktualisiereModusButtons();
     beacon(window.VKKalenderAnsicht.statMetrik(modus));
 

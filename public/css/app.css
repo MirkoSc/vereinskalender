@@ -370,6 +370,14 @@ dialog.sheet::backdrop {
     border-radius: 2px;
 }
 
+/* Issue #57: Platz-Punkt in der Monatsansicht (dort kommt ein Hintergrund in
+   Platzfarbe nicht an - dayGridMonth rendert Dot-Events ohne Block-Fläche).
+   Quadrat wie der Spielstätten-Punkt, passend zur Legende (Issue #38:
+   Spielstätte/Platz = Quadrat). */
+.ev-punkt-pitch {
+    border-radius: 2px;
+}
+
 .ev-titel {
     flex: 1 1 auto;
     min-width: 0;
