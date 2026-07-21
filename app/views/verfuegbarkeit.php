@@ -70,8 +70,9 @@
 
 <dialog id="interval-dialog" class="sheet">
     <div id="interval-content"></div>
-    <div class="dialog-actions" id="interval-actions"></div>
-    <button type="button" class="linklike" id="interval-close">Schließen</button>
+    <div class="dialog-actions termin-actions" id="interval-actions">
+        <button type="button" class="button secondary" id="interval-close" aria-label="Dialog schließen">Schließen</button>
+    </div>
 </dialog>
 
 <dialog id="name-dialog" class="sheet">

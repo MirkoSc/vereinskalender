@@ -115,8 +115,9 @@
 
 <dialog id="detail-dialog" class="sheet">
     <div id="detail-content"></div>
-    <div class="dialog-actions" id="detail-actions"></div>
-    <button type="button" class="linklike" id="detail-close">Schließen</button>
+    <div class="dialog-actions termin-actions" id="detail-actions">
+        <button type="button" class="button secondary" id="detail-close" aria-label="Dialog schließen">Schließen</button>
+    </div>
 </dialog>
 
 <dialog id="booking-dialog" class="sheet">

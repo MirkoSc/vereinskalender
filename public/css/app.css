@@ -2,16 +2,19 @@
  * Vereinsfarben: alle Farben der Anwendung sind hier als CSS Custom
  * Properties definiert (Issue #1). Palette abgeleitet aus Grau (neutrale
  * Flächen/Text), leichtem Grün (Primär/Aktionen) und leichtem Gelb
- * (Akzent/Hervorhebung). --color-accent-bg/--color-warning-bg und
- * --color-on-accent sind bewusst modus-unabhängig, da sie ausschließlich
- * mit fester weißer Schrift kombiniert werden (Buttons, Icon, Banner);
- * alle übrigen Farben sind je Modus auf WCAG-AA-Kontrast (>= 4.5:1 Text,
- * >= 3:1 Rahmen/große Schrift) gegen --color-bg abgestimmt, siehe PR-
- * Beschreibung für die gemessenen Werte.
+ * (Akzent/Hervorhebung). --color-accent-bg/--color-warning-bg/
+ * --color-danger-bg und --color-on-accent sind bewusst modus-unabhängig,
+ * da sie ausschließlich mit fester weißer Schrift kombiniert werden
+ * (Buttons, Icon, Banner); alle übrigen Farben sind je Modus auf
+ * WCAG-AA-Kontrast (>= 4.5:1 Text, >= 3:1 Rahmen/große Schrift) gegen
+ * --color-bg abgestimmt, siehe PR-Beschreibung für die gemessenen Werte.
+ * --color-danger-bg (#a82d24) gegen --color-on-accent (#ffffff): 6.8:1,
+ * damit über AA (4.5:1) unabhängig vom Modus (Issue #68).
  */
 :root {
     --color-accent-bg: #328551;
     --color-warning-bg: #8d651b;
+    --color-danger-bg: #a82d24;
     --color-on-accent: #ffffff;
 
     --color-bg: #f4f6f4;
@@ -940,6 +943,40 @@ button.linklike {
 
 button.linklike.danger {
     color: var(--color-danger);
+}
+
+/* Issue #68: gemeinsame Button-Leiste im Termin-Detaildialog (alle
+   Termintypen) - "Schließen" und Lösch-Aktionen sind echte, farblich
+   abgesetzte Buttons statt linklike-Text, damit sie als Button erkennbar
+   sind und ein Touch-Ziel >= 44px haben (min-height unten). Destruktive
+   Aktionen bleiben zusätzlich über ihr Textlabel erkennbar, nicht nur über
+   Farbe (CLAUDE.md Abschnitt 8: "Farbe ist nie das einzige Signal"). */
+.button.secondary {
+    background: color-mix(in srgb, var(--color-text) 12%, var(--color-bg));
+    color: var(--color-text);
+}
+
+.button.danger {
+    background: var(--color-danger-bg);
+    color: var(--color-on-accent);
+}
+
+.termin-actions .button {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+@media (max-width: 767px) {
+    .termin-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .termin-actions .button {
+        width: 100%;
+    }
 }
 
 .inline-form {
