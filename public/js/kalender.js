@@ -1253,6 +1253,25 @@
             detailContent.append(zeile('Art', props.art === 'gesperrt' ? 'Gesperrt' : 'Eingeschränkt'));
             detailContent.append(zeile('Grund', props.grund));
 
+            // Issue #64: öffentlich bearbeitbar (Ebene 2) wie ein manuelles
+            // Spiel/eine Vermietung - props trägt bereits den vollen,
+            // ungeclippten Zeitraum (EventSerializer::sperrung()).
+            const editButton = document.createElement('button');
+            editButton.type = 'button';
+            editButton.className = 'button';
+            editButton.textContent = 'Bearbeiten';
+            editButton.addEventListener('click', () => {
+                detailDialog.close();
+                openRestrictionDialog({
+                    id: props.restriction_id,
+                    pitch_id: props.pitch_id,
+                    art: props.art,
+                    grund: props.grund,
+                    von: props.start,
+                    bis: props.ende,
+                });
+            });
+
             const deleteButton = document.createElement('button');
             deleteButton.type = 'button';
             deleteButton.className = 'button danger';
@@ -1269,7 +1288,7 @@
                     alert(VK.fehlerText(result.data));
                 }
             });
-            detailActions.append(deleteButton);
+            detailActions.append(editButton, deleteButton);
         } else if (props.typ === 'vermietung') {
             detailContent.append(zeile('Sportheim', props.sportheim_name));
             detailContent.append(zeile('Räume', props.raum_text));
@@ -1573,6 +1592,81 @@
             } else {
                 vermietungFeedback.className = 'error-message';
                 vermietungFeedback.textContent = VK.fehlerText(result.data);
+            }
+        } catch {
+            // name dialog cancelled
+        }
+    });
+
+    // ---- restriction dialog (Issue #64) ----
+    // Bearbeiten öffentlich (Ebene 2) wie ein manuelles Spiel/eine
+    // Vermietung; Anlegen bleibt der Verfügbarkeitsansicht vorbehalten
+    // (CLAUDE.md Abschnitt 8: das "+ Eintragen"-Sheet kennt nur Belegung/
+    // Spiel/Vermietung), daher hier kein "new"-Aufruf mit props === null.
+    const restrictionDialog = document.querySelector('#restriction-dialog');
+    const restrictionForm = document.querySelector('#restriction-form');
+    const restrictionFeedback = document.querySelector('#restriction-feedback');
+    const restrictionTitle = document.querySelector('#restriction-title');
+    const restrictionSubmit = document.querySelector('#restriction-submit');
+    const restrictionCancel = document.querySelector('#restriction-cancel');
+    const restrictionPitchSelect = document.querySelector('#restriction-pitch');
+    for (const pitch of appData.pitches) {
+        restrictionPitchSelect.add(new Option(`${pitch.name} (${pitch.venue_name})`, String(pitch.id)));
+    }
+
+    const openRestrictionDialog = (props) => {
+        restrictionForm.reset();
+        restrictionFeedback.textContent = '';
+        restrictionFeedback.className = '';
+        restrictionCancel.textContent = 'Abbrechen';
+        restrictionTitle.textContent = 'Sperrung/Einschränkung bearbeiten';
+        restrictionSubmit.textContent = 'Speichern';
+
+        restrictionForm.elements.restriction_id.value = String(props.id);
+        restrictionForm.elements.pitch_id.value = String(props.pitch_id);
+        restrictionForm.elements.art.value = props.art;
+        // datetime-local erwartet 'YYYY-MM-DDTHH:MM'
+        restrictionForm.elements.von.value = props.von.slice(0, 16);
+        restrictionForm.elements.bis.value = props.bis.slice(0, 16);
+        restrictionForm.elements.grund.value = props.grund;
+
+        restrictionDialog.showModal();
+    };
+
+    restrictionCancel.addEventListener('click', () => restrictionDialog.close());
+
+    // wie beim Anlegen kein Konflikt-/Warnungs-Check (eine Sperrung blockiert
+    // nie sich selbst); betrifft die Änderung bereits bestehende Termine,
+    // liefert der Server das als reinen Hinweis zurück, der Dialog bleibt
+    // dafür offen statt sofort zu schließen.
+    restrictionForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const data = Object.fromEntries(new FormData(restrictionForm));
+
+        try {
+            const result = await VK.post(`/api/sperrungen/${data.restriction_id}`, data);
+            if (result.ok) {
+                calendar.refetchEvents();
+                const betroffene = result.data.betroffene ?? [];
+                if (betroffene.length > 0) {
+                    restrictionFeedback.className = 'warning-message';
+                    const intro = document.createElement('p');
+                    intro.textContent = 'Hinweis: folgende bereits bestehende Termine sind jetzt betroffen (sie bleiben wie gespeichert):';
+                    const liste = document.createElement('ul');
+                    liste.className = 'konflikt-liste';
+                    for (const text of betroffene) {
+                        const li = document.createElement('li');
+                        li.textContent = text;
+                        liste.append(li);
+                    }
+                    restrictionFeedback.replaceChildren(intro, liste);
+                    restrictionCancel.textContent = 'Schließen';
+                    return;
+                }
+                restrictionDialog.close();
+            } else {
+                restrictionFeedback.className = 'error-message';
+                restrictionFeedback.textContent = VK.fehlerText(result.data);
             }
         } catch {
             // name dialog cancelled
