@@ -8,6 +8,7 @@ use App\Domain\AggregateType;
 use App\Domain\EventContext;
 use App\Domain\EventType;
 use App\Domain\RestrictionArt;
+use App\Domain\VermietungArt;
 use App\Repository\MatchRepository;
 use App\Repository\PitchRepository;
 use App\Repository\PitchRestrictionRepository;
@@ -883,8 +884,12 @@ final readonly class BookingService
         \DateTimeImmutable $vermietungStart,
         \DateTimeImmutable $vermietungEnd,
     ): Conflict {
+        // Issue #63: wording follows the art - "Sportheim vermietet" would be
+        // wrong for a cleaning slot or a meeting. The Conflict typ stays
+        // 'vermietung': that is the hint category, not the art.
         $message = sprintf(
-            'Sportheim vermietet: %s, Nutzung ggf. eingeschränkt (%s %s–%s Uhr).',
+            '%s: %s, Nutzung ggf. eingeschränkt (%s %s–%s Uhr).',
+            VermietungArt::fromPayload($vermietung['art'] ?? null)->hinweis(),
             (string) $vermietung['titel'],
             self::germanDate($datum),
             $vermietungStart->format('H:i'),

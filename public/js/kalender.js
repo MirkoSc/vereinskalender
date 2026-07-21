@@ -42,6 +42,16 @@
     };
     const pitchLabel = (id) => appData.pitches.find((p) => String(p.id) === id)?.name ?? `Platz #${id}`;
 
+    // Issue #63: Labels der Sportheim-Termin-Arten kommen aus appData
+    // (PublicController::stammdaten() reicht das PHP-Enum durch) - kein
+    // zweiter Pflegeort im Frontend, offline identisch verfügbar.
+    const vermietungArten = appData.vermietungArten ?? [];
+    const artName = (wert) => vermietungArten.find((a) => a.wert === wert)?.label ?? wert;
+    const artHinweis = (wert) => vermietungArten.find((a) => a.wert === wert)?.hinweis
+        ?? 'Sportheim belegt';
+    const artLabel = (wert) => String(wert ?? '').split(',').filter((a) => a !== '')
+        .map(artName).join(', ');
+
     // Platzfilter gilt in jeder Ansicht (Issue #6/#11/#37) - in den
     // Ressourcen-Views (Tag/Woche, breit) reduziert er die Platz-Spalten,
     // sonst filtert er die Termine direkt (applyPitchFilter).
@@ -51,7 +61,12 @@
         { key: 'venue', default: '', label: (wert) => `Ort: ${venueLabel(wert)}` },
         { key: 'pitch', default: '', label: (wert) => `Platz: ${pitchLabel(wert)}` },
         { key: 'manuell', default: '', label: (wert) => (wert === 'nur' ? 'Nur manuelle Termine' : 'Ohne manuelle Termine') },
-        { key: 'vermietung', default: '', label: (wert) => (wert === 'nur' ? 'Nur Vermietungen' : 'Ohne Vermietungen') },
+        { key: 'vermietung', default: '', label: (wert) => (wert === 'nur' ? 'Nur Sportheim-Termine' : 'Ohne Sportheim-Termine') },
+        // Issue #63: schränkt NUR die Sportheim-Termine auf einzelne Arten
+        // ein (kommaseparierte Mehrfachauswahl). Eigener Filter statt weiterer
+        // Stufen von `vermietung`, damit dessen alte Werte ''/'ohne'/'nur'
+        // ihre Bedeutung behalten und geteilte Alt-Links unverändert wirken.
+        { key: 'art', default: '', label: (wert) => `Sportheim-Termine: ${artLabel(wert)}` },
         // Issue #56: dreistufiger Termintyp-Filter, rein clientseitig wie
         // manuell/vermietung - /api/events kennt ihn nicht (s. baueEventsParams).
         { key: 'typ', default: '', label: (wert) => (wert === 'spiel' ? 'Nur Spiele' : 'Nur Trainings') },
@@ -104,6 +119,7 @@
 
     const renderFilterUi = () => {
         const abweichungen = window.VKFilter.aktiveAbweichungen(filters, filterDefinitionen);
+        renderArtChips();
         filterChips.replaceChildren();
         for (const chip of abweichungen) {
             const li = document.createElement('li');
@@ -164,6 +180,46 @@
     venueSelect.addEventListener('change', () => setzeFilter('venue', venueSelect.value));
     manuellSelect.addEventListener('change', () => setzeFilter('manuell', manuellSelect.value));
     vermietungSelect.addEventListener('change', () => setzeFilter('vermietung', vermietungSelect.value));
+
+    // Issue #63: Art-Chips (Mehrfachauswahl) zu den Sportheim-Terminen.
+    // Bewusst KEIN #filter-art-Select: die Konvention "#filter-<key> ist ein
+    // Select" aus setzeFilter/#filter-reset bleibt damit unangetastet, der
+    // Wert wird ausschließlich über setzeFilter('art', ...) geführt. Die
+    // Reihe wird aus appData gerendert, damit eine neue Art im PHP-Enum
+    // ohne Frontend-Änderung erscheint.
+    const artRow = document.querySelector('#filter-art-row');
+    const artChips = document.querySelector('#filter-art-chips');
+    const gewaehlteArten = () => filters.art.split(',').filter((a) => a !== '');
+    const toggleArt = (wert) => {
+        const aktiv = gewaehlteArten();
+        const neu = aktiv.includes(wert) ? aktiv.filter((a) => a !== wert) : [...aktiv, wert];
+        // kanonische Reihenfolge (wie im Enum), damit derselbe Zustand immer
+        // denselben teilbaren Link ergibt
+        setzeFilter('art', vermietungArten.map((a) => a.wert).filter((w) => neu.includes(w)).join(','));
+    };
+    if (artChips) {
+        for (const art of vermietungArten) {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'chip-toggle';
+            chip.dataset.art = art.wert;
+            chip.textContent = art.label;
+            chip.addEventListener('click', () => toggleArt(art.wert));
+            artChips.append(chip);
+        }
+    }
+    // "Ohne Sportheim-Termine" hat bereits alle ausgeblendet - eine
+    // Art-Auswahl wäre dort gegenstandslos.
+    const renderArtChips = () => {
+        if (!artChips) {
+            return;
+        }
+        const aktiv = gewaehlteArten();
+        for (const chip of artChips.children) {
+            chip.setAttribute('aria-pressed', String(aktiv.includes(chip.dataset.art)));
+        }
+        artRow.hidden = filters.vermietung === 'ohne';
+    };
     // Issue #56: zusätzlich zur generischen 'filternutzung' (onFilterChange)
     // je gewählter Stufe eine eigene Metrik - analog den Ansicht-Metriken -
     // damit das Dashboard "Nur Spiele" von "Nur Trainings" unterscheiden kann.
@@ -418,14 +474,19 @@
         wrapper.append(titelWrapper);
 
         // Issue #36: dezenter Hinweis am Termin, wenn sein Platz zu einem
-        // gerade vermieteten Sportheim gehört (voller Hinweis im Detail-Dialog).
-        if (window.VKVermietungHinweis.findeUeberschneidende(vermietungenAktuell, props).length > 0) {
+        // gerade belegten Sportheim gehört (voller Hinweis im Detail-Dialog).
+        // Issue #63: Wortlaut je Art - "Sportheim vermietet" wäre beim Putzen
+        // schlicht falsch. Bei mehreren Überschneidungen unterschiedlicher
+        // Arten nennt der Kurztext sie alle.
+        const ueberschneidende = window.VKVermietungHinweis.findeUeberschneidende(vermietungenAktuell, props);
+        if (ueberschneidende.length > 0) {
+            const texte = [...new Set(ueberschneidende.map((v) => artHinweis(v.art ?? 'vermietung')))];
             const hinweis = document.createElement('span');
             hinweis.className = 'ev-vermietung-hinweis';
             hinweis.textContent = '🏠';
             hinweis.setAttribute('role', 'img');
-            hinweis.setAttribute('aria-label', 'Sportheim vermietet');
-            hinweis.title = 'Sportheim vermietet - Nutzung ggf. eingeschränkt';
+            hinweis.setAttribute('aria-label', texte.join(', '));
+            hinweis.title = `${texte.join(', ')} - Nutzung ggf. eingeschränkt`;
             wrapper.append(hinweis);
         }
 
@@ -491,7 +552,14 @@
                 : (e.pitch_id !== null ? String(e.pitch_id) : RESOURCE_AUSWAERTS_ID),
         color: e.typ === 'sperrung' ? sperrungColor(e) : undefined,
         display: e.typ === 'sperrung' ? 'background' : 'auto',
-        classNames: [`ev-${e.typ}`, e.status === 'abgesagt' ? 'ev-abgesagt' : ''].filter(Boolean),
+        // Issue #63: zusätzlich die Art als Klasse, damit CSS Sportheim-
+        // Termine bei Bedarf je Art differenzieren kann (der gedeckte
+        // Grund-Look hängt weiter am typ).
+        classNames: [
+            `ev-${e.typ}`,
+            e.typ === 'vermietung' ? `ev-art-${e.art ?? 'vermietung'}` : '',
+            e.status === 'abgesagt' ? 'ev-abgesagt' : '',
+        ].filter(Boolean),
         extendedProps: e,
     });
 
@@ -511,9 +579,12 @@
     // Alle clientseitigen Filter zusammen anwenden (auch im Offline-Pfad, da
     // fetchEventsRange auch dort schon fertige Event-Objekte liefert).
     const applyClientFilters = (events) => window.VKKalenderEvents.typFilterAnwenden(
-        window.VKKalenderEvents.vermietungFilterAnwenden(
-            window.VKKalenderEvents.manuellFilterAnwenden(applyPitchFilter(events), filters.manuell),
-            filters.vermietung,
+        window.VKKalenderEvents.artFilterAnwenden(
+            window.VKKalenderEvents.vermietungFilterAnwenden(
+                window.VKKalenderEvents.manuellFilterAnwenden(applyPitchFilter(events), filters.manuell),
+                filters.vermietung,
+            ),
+            filters.art,
         ),
         filters.typ,
     );
@@ -1137,7 +1208,7 @@
             for (const v of window.VKVermietungHinweis.findeUeberschneidende(vermietungenAktuell, props)) {
                 const hinweis = document.createElement('p');
                 hinweis.className = 'warning-message';
-                hinweis.textContent = `⚠ Sportheim vermietet: ${v.anlass} (${v.raum_text}), Nutzung ggf. eingeschränkt.`;
+                hinweis.textContent = `⚠ ${artHinweis(v.art ?? 'vermietung')}: ${v.anlass} (${v.raum_text}), Nutzung ggf. eingeschränkt.`;
                 detailContent.append(hinweis);
             }
         }
@@ -1313,6 +1384,7 @@
             });
             detailActions.append(editButton, deleteButton);
         } else if (props.typ === 'vermietung') {
+            detailContent.append(zeile('Art', artName(props.art ?? 'vermietung')));
             detailContent.append(zeile('Sportheim', props.sportheim_name));
             detailContent.append(zeile('Räume', props.raum_text));
             if (props.kontakt) {
@@ -1323,8 +1395,8 @@
             }
 
             // öffentlich bearbeitbar/löschbar wie ein manuelles Spiel
-            // (CLAUDE.md Abschnitt 6/3): Vermietungen blockieren nie, daher
-            // kein Konflikt-/Warnungs-Check im Dialog.
+            // (CLAUDE.md Abschnitt 6/3): Sportheim-Termine blockieren nie -
+            // in KEINER Art -, daher kein Konflikt-/Warnungs-Check im Dialog.
             const editButton = document.createElement('button');
             editButton.type = 'button';
             editButton.className = 'button';
@@ -1337,9 +1409,9 @@
             const deleteButton = document.createElement('button');
             deleteButton.type = 'button';
             deleteButton.className = 'button danger';
-            deleteButton.textContent = 'Vermietung löschen';
+            deleteButton.textContent = 'Sportheim-Termin löschen';
             deleteButton.addEventListener('click', async () => {
-                if (!confirm('Diese Vermietung endgültig löschen?')) {
+                if (!confirm('Diesen Sportheim-Termin endgültig löschen?')) {
                     return;
                 }
                 const result = await VK.post(`/api/vermietungen/${props.vermietung_id}/loeschen`).catch(() => null);
@@ -1571,9 +1643,11 @@
         vermietungFeedback.className = '';
 
         const isEdit = props !== null;
-        vermietungTitle.textContent = isEdit ? 'Vermietung bearbeiten' : 'Vermietung eintragen';
+        vermietungTitle.textContent = isEdit ? 'Sportheim-Termin bearbeiten' : 'Sportheim-Termin eintragen';
 
         vermietungForm.elements.vermietung_id.value = isEdit ? String(props.vermietung_id) : '';
+        // Issue #63: Default 'vermietung' - der mit Abstand häufigste Fall
+        vermietungForm.elements.art.value = isEdit ? (props.art ?? 'vermietung') : 'vermietung';
         vermietungForm.elements.sportheim_id.value = isEdit ? String(props.sportheim_id) : '';
         renderVermietungRaeume(vermietungForm.elements.sportheim_id.value, isEdit ? props.raum_ids : []);
         // datetime-local erwartet 'YYYY-MM-DDTHH:MM', start/ende liefern das

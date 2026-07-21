@@ -40,7 +40,10 @@ final readonly class OfflineBundleService
     // Issue #65: bumped to 5 - spiele now carry a spielfrei flag and
     // settings carries spielfrei_farbe; an older cached bundle would still
     // render a bye as an away match.
-    public const int FORMAT = 5;
+    // Issue #63: bumped to 6 - vermietungen now carry an art
+    // (vermietung/putzen/sitzung) and their titel is prefixed with it; an
+    // older cached bundle would label a cleaning slot as a rental.
+    public const int FORMAT = 6;
 
     public function __construct(
         private TrainingSlotRepository $slots,

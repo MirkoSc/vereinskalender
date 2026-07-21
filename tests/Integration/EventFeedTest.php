@@ -429,6 +429,30 @@ final class EventFeedTest extends DatabaseTestCase
         ), 'a team filter hides Vermietungen (no team)');
     }
 
+    /**
+     * Issue #63: the feed carries the art, and the title prefix names it -
+     * "Vermietung: Grundreinigung" would misdescribe a cleaning slot. The
+     * prefix is baked server-side so the offline bundle (which ships
+     * vermietungen pre-serialized) shows the same label without a port.
+     */
+    public function testFeedCarriesArtAndPrefixesTitlePerArt(): void
+    {
+        $sportheimId = $this->createSportheim($this->venueId);
+        $this->createVermietung($sportheimId, '2026-08-04 08:00:00', '2026-08-04 10:00:00', 'Grundreinigung', [], 'putzen');
+        $this->createVermietung($sportheimId, '2026-08-04 18:00:00', '2026-08-04 20:00:00', 'Vorstandssitzung', [], 'sitzung');
+        $this->createVermietung($sportheimId, '2026-08-04 20:30:00', '2026-08-04 22:00:00', 'Geburtstagsfeier', [], 'vermietung');
+
+        $alle = $this->eventFeedService()->events(['von' => '2026-08-01', 'bis' => '2026-08-09']);
+        $vermietungen = array_values(array_filter($alle, static fn(array $e): bool => $e['typ'] === 'vermietung'));
+
+        self::assertSame(['putzen', 'sitzung', 'vermietung'], array_column($vermietungen, 'art'));
+        self::assertSame([
+            'Putzen: Grundreinigung (gesamtes Sportheim)',
+            'Sitzung: Vorstandssitzung (gesamtes Sportheim)',
+            'Vermietung: Geburtstagsfeier (gesamtes Sportheim)',
+        ], array_column($vermietungen, 'titel'));
+    }
+
     public function testVermietungMatchesVenueFilter(): void
     {
         $sportheimId = $this->createSportheim($this->venueId);

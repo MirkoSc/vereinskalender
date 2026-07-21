@@ -5,7 +5,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-    baueEventsParams, manuellFilterAnwenden, vermietungFilterAnwenden, typFilterAnwenden,
+    baueEventsParams, manuellFilterAnwenden, vermietungFilterAnwenden,
+    artFilterAnwenden, typFilterAnwenden,
 } = require('../../public/js/kalender-events.js');
 
 test('baueEventsParams liefert eine leere Query ohne aktive Filter (Issue #37: kein typ mehr, EventFeedService liefert alles)', () => {
@@ -100,6 +101,84 @@ test('vermietungFilterAnwenden: "nur" zeigt ausschließlich Vermietungen', () =>
         vermietungFilterAnwenden([vermietung, belegung, sperrung], 'nur'),
         [vermietung],
     );
+});
+
+// Issue #63: Art-Filter der Sportheim-Termine (Mehrfachauswahl, rein
+// clientseitig). Er schränkt AUSSCHLIESSLICH Sportheim-Termine ein - alles
+// andere passiert ihn unverändert.
+
+const vermietung = (art) => ({ typ: 'vermietung', art });
+
+test('baueEventsParams lässt art weg (Issue #63: clientseitiger Filter)', () => {
+    const params = baueEventsParams({ team: '5', bereich: '', venue: '', pitch: '', vermietung: 'nur', art: 'putzen' });
+    assert.equal(params.toString(), 'team=5');
+});
+
+test('artFilterAnwenden: leerer Wert zeigt alle Arten', () => {
+    const events = [vermietung('vermietung'), vermietung('putzen'), vermietung('sitzung')];
+    assert.deepEqual(artFilterAnwenden(events, ''), events);
+});
+
+test('artFilterAnwenden: einzelne Art blendet die übrigen Arten aus', () => {
+    const v = vermietung('vermietung');
+    const p = vermietung('putzen');
+    const s = vermietung('sitzung');
+
+    assert.deepEqual(artFilterAnwenden([v, p, s], 'putzen'), [p]);
+});
+
+test('artFilterAnwenden: Mehrfachauswahl (kommasepariert)', () => {
+    const v = vermietung('vermietung');
+    const p = vermietung('putzen');
+    const s = vermietung('sitzung');
+
+    assert.deepEqual(artFilterAnwenden([v, p, s], 'putzen,sitzung'), [p, s]);
+});
+
+test('artFilterAnwenden: Trainings/Spiele/Sperrungen bleiben unberührt', () => {
+    const belegung = { typ: 'belegung' };
+    const spiel = { typ: 'spiel' };
+    const sperrung = { typ: 'sperrung' };
+    const p = vermietung('putzen');
+    const s = vermietung('sitzung');
+
+    assert.deepEqual(
+        artFilterAnwenden([belegung, spiel, sperrung, p, s], 'putzen'),
+        [belegung, spiel, sperrung, p],
+    );
+});
+
+test('artFilterAnwenden: Sportheim-Termin ohne art zählt als "vermietung" (Alt-Bundle)', () => {
+    const ohneArt = { typ: 'vermietung' };
+
+    assert.deepEqual(artFilterAnwenden([ohneArt], 'vermietung'), [ohneArt]);
+    assert.deepEqual(artFilterAnwenden([ohneArt], 'putzen'), []);
+});
+
+// Issue #63: geteilte Alt-Links tragen keinen art-Parameter. Der Stufen-
+// Filter muss deshalb exakt weiterwirken wie vor der Einführung der Arten.
+
+test('Alt-Link ?vermietung=nur (ohne art) zeigt weiterhin ALLE Sportheim-Termine', () => {
+    const v = vermietung('vermietung');
+    const p = vermietung('putzen');
+    const s = vermietung('sitzung');
+    const belegung = { typ: 'belegung' };
+
+    const gefiltert = artFilterAnwenden(
+        vermietungFilterAnwenden([v, p, s, belegung], 'nur'),
+        '',
+    );
+    assert.deepEqual(gefiltert, [v, p, s]);
+});
+
+test('Alt-Link ?vermietung=ohne (ohne art) blendet weiterhin ALLE Arten aus', () => {
+    const belegung = { typ: 'belegung' };
+
+    const gefiltert = artFilterAnwenden(
+        vermietungFilterAnwenden([vermietung('vermietung'), vermietung('putzen'), belegung], 'ohne'),
+        '',
+    );
+    assert.deepEqual(gefiltert, [belegung]);
 });
 
 // Issue #56: Filter "Termintyp" (dreistufig: Alle/Nur Spiele/Nur Trainings,
