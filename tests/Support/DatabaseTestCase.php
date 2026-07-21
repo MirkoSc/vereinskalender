@@ -293,6 +293,27 @@ abstract class DatabaseTestCase extends TestCase
         )->aggregateId;
     }
 
+    /**
+     * @param array<string, mixed> $overrides
+     */
+    protected function createRestriction(int $pitchId, array $overrides = []): int
+    {
+        return $this->eventStore()->append(
+            \App\Domain\AggregateType::PitchRestriction,
+            null,
+            \App\Domain\EventType::Created,
+            [
+                'pitch_id' => $pitchId,
+                'von' => '2026-08-04 00:00:00',
+                'bis' => '2026-08-05 00:00:00',
+                'art' => 'gesperrt',
+                'grund' => 'Platzpflege',
+                ...$overrides,
+            ],
+            $this->context(),
+        )->aggregateId;
+    }
+
     protected function icsImportService(\App\Service\Import\IcsFeedFetcher $fetcher, ?\DateTimeImmutable $now = null): \App\Service\Import\IcsImportService
     {
         $pdo = $this->pdo();
@@ -372,6 +393,7 @@ abstract class DatabaseTestCase extends TestCase
             $this->eventStore(),
             new \App\Repository\PitchRestrictionRepository($pdo),
             new \App\Repository\PitchRepository($pdo),
+            $this->bookingService(),
         );
     }
 

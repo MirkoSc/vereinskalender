@@ -10,11 +10,12 @@ use App\Domain\StoredEvent;
 use App\Repository\NotificationQueueRepository;
 
 /**
- * Write-path consumer of the event log (CLAUDE.md section 9): a created
- * pitch_restriction (both arts) and a match update with a changed kickoff
- * or new status 'abgesagt' enqueue notifications. Called by the EventStore
- * BEFORE the projection is applied so the old match state is still
- * readable for comparison.
+ * Write-path consumer of the event log (CLAUDE.md section 9): a created or
+ * updated pitch_restriction (both arts) and a match update with a changed
+ * kickoff or new status 'abgesagt' enqueue notifications. A restriction
+ * DELETE deliberately does not notify (Issue #64, analog manual matches).
+ * Called by the EventStore BEFORE the projection is applied so the old
+ * match state is still readable for comparison.
  */
 final readonly class NotificationTrigger
 {
@@ -27,7 +28,7 @@ final readonly class NotificationTrigger
     public function afterEventInsert(StoredEvent $event): void
     {
         if ($event->aggregateType === AggregateType::PitchRestriction
-            && $event->eventType === EventType::Created) {
+            && ($event->eventType === EventType::Created || $event->eventType === EventType::Updated)) {
             $this->queue->enqueue('platzsperrung', [
                 'pitch_id' => (int) ($event->payload['pitch_id'] ?? 0),
                 'art' => (string) ($event->payload['art'] ?? ''),
