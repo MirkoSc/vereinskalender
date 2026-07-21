@@ -257,7 +257,11 @@
     const intervalDialog = document.querySelector('#interval-dialog');
     const intervalContent = document.querySelector('#interval-content');
     const intervalActions = document.querySelector('#interval-actions');
-    document.querySelector('#interval-close').addEventListener('click', () => intervalDialog.close());
+    // Issue #68: dieselbe Button-Leisten-Mechanik wie im Kalender-
+    // Detaildialog (kalender.js) - "Schließen" wird bei jedem Aufruf neu
+    // ans Ende der Leiste gehängt, nachdem replaceChildren() sie geleert hat.
+    const intervalClose = document.querySelector('#interval-close');
+    intervalClose.addEventListener('click', () => intervalDialog.close());
 
     const showInterval = (pitch, datum, segment) => {
         intervalContent.replaceChildren();
@@ -274,7 +278,7 @@
         if (segment.restriction_id) {
             const deleteButton = document.createElement('button');
             deleteButton.type = 'button';
-            deleteButton.className = 'linklike danger';
+            deleteButton.className = 'button danger';
             deleteButton.textContent = 'Sperrung/Einschränkung löschen';
             deleteButton.addEventListener('click', async () => {
                 if (!confirm('Diese Sperrung/Einschränkung löschen?')) {
@@ -290,6 +294,8 @@
             });
             intervalActions.append(deleteButton);
         }
+
+        intervalActions.append(intervalClose);
 
         intervalDialog.showModal();
     };
