@@ -13,6 +13,10 @@ use App\Domain\Occurrence;
  * venue_id, pitch_farbe/pitch_kuerzel. Pure, no database access - all
  * lookups go through the maps passed to the constructor, so it can be
  * reused for a live DB row or an offline-bundle row alike.
+ *
+ * Issue #65: a match flagged spielfrei is its own category, resolved ahead
+ * of the venue_begriff/pitch/auswaerts chain - venue_id stays null and
+ * venue_farbe is the dedicated spielfrei color, never the away color.
  */
 final readonly class EventSerializer
 {
@@ -29,6 +33,7 @@ final readonly class EventSerializer
         private array $venuesById,
         private VenueMatcher $venueMatcher,
         private string $auswaertsFarbe,
+        private string $spielfreiFarbe = '#775c3c',
         private array $sportheimeById = [],
         private array $raeumeById = [],
     ) {
@@ -135,13 +140,15 @@ final readonly class EventSerializer
 
         $pitchId = $matchRow['pitch_id'] !== null ? (int) $matchRow['pitch_id'] : null;
         $pitch = $pitchId !== null ? ($this->pitchesById[$pitchId] ?? null) : null;
+        $spielfrei = (int) ($matchRow['spielfrei'] ?? 0) === 1;
 
         // display-time venue resolution (retroactive keywords); a match
         // occupying a pitch is by definition at that pitch's venue, so this
         // is the fallback when ort_text matches no begriff (e.g. an empty
-        // ort_text on a manual match)
-        $venueId = $this->venueMatcher->match((string) $matchRow['ort_text'])
-            ?? ($pitch !== null ? (int) $pitch['venue_id'] : null);
+        // ort_text on a manual match). Spielfrei (Issue #65) is its own
+        // category ahead of this chain - a bye has no venue at all.
+        $venueId = $spielfrei ? null : ($this->venueMatcher->match((string) $matchRow['ort_text'])
+            ?? ($pitch !== null ? (int) $pitch['venue_id'] : null));
 
         $start = new \DateTimeImmutable((string) $matchRow['anstoss']);
         $ende = $matchRow['ende'] !== null ? (string) $matchRow['ende'] : null;
@@ -160,9 +167,11 @@ final readonly class EventSerializer
             'team_farbe' => (string) $team['farbe'],
             'venue_id' => $venueId,
             'venue_name' => $venueId !== null ? (string) ($this->venuesById[$venueId]['name'] ?? '') : null,
-            'venue_farbe' => $venueId !== null
-                ? (string) ($this->venuesById[$venueId]['farbe'] ?? $this->auswaertsFarbe)
-                : $this->auswaertsFarbe,
+            'venue_farbe' => match (true) {
+                $spielfrei => $this->spielfreiFarbe,
+                $venueId !== null => (string) ($this->venuesById[$venueId]['farbe'] ?? $this->auswaertsFarbe),
+                default => $this->auswaertsFarbe,
+            },
             'pitch_id' => $pitchId,
             'pitch_name' => $pitchId !== null ? (string) ($this->pitchesById[$pitchId]['name'] ?? '') : null,
             'pitch_kuerzel' => $pitch !== null ? (string) $pitch['kuerzel'] : null,
@@ -172,6 +181,7 @@ final readonly class EventSerializer
             'pitch_sportheim_id' => $pitch !== null && $pitch['sportheim_id'] !== null ? (int) $pitch['sportheim_id'] : null,
             'gegner' => (string) $matchRow['gegner'],
             'heimspiel' => (int) $matchRow['heimspiel'] === 1,
+            'spielfrei' => $spielfrei,
             'ort_text' => (string) $matchRow['ort_text'],
             'status' => (string) $matchRow['status'],
         ];

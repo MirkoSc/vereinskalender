@@ -118,7 +118,16 @@
             ),
         );
 
-        return abschnitt('Symbole', [haus, vermietung]);
+        // Issue #65: eigene Kategorie neben Auswärts, kein Auswärtsspiel -
+        // erkannt an leerer LOCATION + konfiguriertem Begriff im Feed.
+        const spielfrei = document.createElement('p');
+        spielfrei.className = 'legende-symbol-erklaerung';
+        spielfrei.append(
+            punkt('var(--spielfrei)', 'venue'),
+            document.createTextNode(' Spielfrei: für dieses Team ist an diesem Termin kein Spiel angesetzt.'),
+        );
+
+        return abschnitt('Symbole', [haus, vermietung, spielfrei]);
     };
 
     const render = (root, appData) => {
@@ -129,6 +138,8 @@
 
         const spielstaetten = appData.venues.map((venue) => eintrag(venue.farbe, 'venue', null, venue.name));
         spielstaetten.push(eintrag(appData.auswaertsFarbe, 'venue', null, 'Auswärts'));
+        // Issue #65: eigene Kategorie neben Auswärts, statt mit ihr verwechselt zu werden.
+        spielstaetten.push(eintrag(appData.spielfreiFarbe, 'venue', null, 'Spielfrei'));
         root.append(abschnitt('Spielstätten', [liste(spielstaetten)]));
 
         const plaetzeGruppen = plaetzeNachVenue(appData.pitches, appData.venues).map((gruppe) => untergruppe(

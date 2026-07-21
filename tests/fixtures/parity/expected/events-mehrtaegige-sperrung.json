@@ -70,6 +70,7 @@
         "venue_adresse": "Waldweg 5",
         "gegner": "Turnier",
         "heimspiel": true,
+        "spielfrei": false,
         "ort_text": "Sportanlage TSV Nachbarort",
         "status": "geplant"
     },

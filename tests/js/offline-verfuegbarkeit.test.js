@@ -75,3 +75,15 @@ test('a home match without a matched venue produces no hint (silently dropped)',
         }
     }
 });
+
+test('a bye occupies no pitch and produces no hint (Issue #65)', () => {
+    // match-107: spielfrei, no venue, no pitch, otherwise isolated day
+    const result = berechne(bundle, '2026-09-07', '2026-09-07');
+    for (const venue of result.venues) {
+        assert.deepEqual(venue.hinweise, []);
+        for (const pitch of venue.plaetze) {
+            const tag = pitch.tage.find((t) => t.datum === '2026-09-07');
+            assert.deepEqual(tag.intervalle, [{ von: '08:00', bis: '22:00', zustand: 'frei' }]);
+        }
+    }
+});

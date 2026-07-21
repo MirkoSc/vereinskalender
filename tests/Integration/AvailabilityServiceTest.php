@@ -182,6 +182,33 @@ final class AvailabilityServiceTest extends DatabaseTestCase
         self::assertSame('FC Gegner', $hinweise[0]['gegner']);
     }
 
+    /**
+     * Issue #65: a bye occupies no pitch and produces no hint - heimspiel is
+     * deliberately forced true here to prove the exclusion is unconditional
+     * on the spielfrei flag itself, not just a side effect of heimspiel/
+     * pitch_id/venue_id happening to be false/null/null for an
+     * auto-detected bye.
+     */
+    public function testSpielfreiProducesNoIntervalAndNoHint(): void
+    {
+        $this->createBegriff($this->venueId, 'Musterstadt');
+        $this->createMatch($this->teamId, [
+            'anstoss' => '2026-08-04 15:00:00',
+            'heimspiel' => true,
+            'pitch_id' => null,
+            'ort_text' => '',
+            'spielfrei' => true,
+        ]);
+
+        $result = $this->availabilityService()->compute('2026-08-04', '2026-08-04');
+
+        self::assertSame([], $result['venues'][0]['hinweise'], 'no hint for a bye');
+        self::assertSame(
+            [['von' => '08:00', 'bis' => '22:00', 'zustand' => 'frei']],
+            $this->dayIntervals($result, '2026-08-04'),
+        );
+    }
+
     public function testManualMatchBlocksPitchUntilExplicitEnde(): void
     {
         // tournament 10:00-16:00: with only the +2h fallback the pitch would

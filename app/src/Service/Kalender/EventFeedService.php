@@ -27,7 +27,9 @@ use App\Service\ValidationException;
  * display time through the VenueMatcher, away matches get the global away
  * color. Serialization itself lives in EventSerializer (shared with the
  * offline bundle); this service loads rows, expands slots, and applies the
- * typ/team/bereich/venue filters on the serialized events.
+ * typ/team/bereich/venue filters on the serialized events. venue=spielfrei
+ * (Issue #65) is a third special value alongside heim/auswaerts; a bye also
+ * has venue_id null, so venue=auswaerts explicitly excludes it.
  */
 final readonly class EventFeedService
 {
@@ -144,7 +146,8 @@ final readonly class EventFeedService
             $raeume[(int) $raum['id']] = $raum;
         }
         $auswaertsFarbe = $this->settings->get('auswaerts_farbe', '#57606a');
-        $serializer = new EventSerializer($teams, $pitches, $venues, $this->venueMatcher, $auswaertsFarbe, $sportheime, $raeume);
+        $spielfreiFarbe = $this->settings->get('spielfrei_farbe', '#775c3c');
+        $serializer = new EventSerializer($teams, $pitches, $venues, $this->venueMatcher, $auswaertsFarbe, $spielfreiFarbe, $sportheime, $raeume);
 
         // a multi-team booking matches when ANY of its teams matches
         $matchesTeams = function (array $teamIds) use ($teamFilter, $bereichIdFilter, $teams): bool {
@@ -163,11 +166,16 @@ final readonly class EventFeedService
 
             return true;
         };
-        $matchesVenue = function (?int $venueId) use ($venueFilter): bool {
+        // $spielfrei is only ever true for a match event (Issue #65); the
+        // other serialized types default it to false, which keeps them out
+        // of venue=spielfrei and out of the "no longer includes byes"
+        // exclusion below without touching their call sites.
+        $matchesVenue = function (?int $venueId, bool $spielfrei = false) use ($venueFilter): bool {
             return match ($venueFilter) {
                 '' => true,
                 'heim' => $venueId !== null,
-                'auswaerts' => $venueId === null,
+                'auswaerts' => !$spielfrei && $venueId === null,
+                'spielfrei' => $spielfrei,
                 default => $venueId === (int) $venueFilter,
             };
         };
@@ -209,7 +217,8 @@ final readonly class EventFeedService
         if ($typ === '' || $typ === 'spiel' || $typ === 'belegung') {
             foreach ($this->matches->findInRange($von . ' 00:00:00', $bis . ' 23:59:59') as $match) {
                 $event = $serializer->spiel($match);
-                if ($event === null || !$matchesTeams([$event['team_id']]) || !$matchesVenue($event['venue_id'])) {
+                if ($event === null || !$matchesTeams([$event['team_id']])
+                    || !$matchesVenue($event['venue_id'], $event['spielfrei'])) {
                     continue;
                 }
 

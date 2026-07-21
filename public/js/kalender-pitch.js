@@ -20,9 +20,14 @@
         : props.pitch_farbe ?? 'var(--color-text-muted)');
 
     // Farbe ist nie das einzige Signal (CLAUDE.md Abschnitt 8): Text-Präfix
-    // vor den Titel. Auswärts als eigene Gruppe; sonst Platz-Kürzel, mit
-    // Namen-Fallback für Plätze ohne gepflegtes Kürzel (Issue #11).
+    // vor den Titel. Spielfrei (Issue #65) und Auswärts als je eigene Gruppe -
+    // ein Bye hat ebenfalls kein heimspiel, deshalb VOR der Auswärts-Prüfung
+    // abgefragt; sonst Platz-Kürzel, mit Namen-Fallback für Plätze ohne
+    // gepflegtes Kürzel (Issue #11).
     const pitchEventPraefix = (props) => {
+        if (props.typ === 'spiel' && props.spielfrei) {
+            return 'Spielfrei';
+        }
         if (props.typ === 'spiel' && !props.heimspiel) {
             return 'Auswärts';
         }
