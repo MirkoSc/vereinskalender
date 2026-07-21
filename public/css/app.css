@@ -341,9 +341,39 @@ dialog.sheet::backdrop {
    Monats-Punkt sichtbar. */
 .ev-inhalt {
     display: flex;
+    /* Issue #58 - Fund der eigentlichen Ursache des gemeldeten Überlaufs:
+       FullCalendars eigenes `.fc-v-event .fc-event-main-frame{flex-direction:
+       column;height:100%}` (Tag/Woche, zwei Klassen = Spezifität 0,2,0) schlug
+       unser einfaches `.ev-inhalt{display:flex}` (eine Klasse = 0,1,0) und
+       kippte die Zeile in eine SPALTE - ohne Haupt-Achse in der Breite
+       schrumpft dort nichts mehr, jedes Kind (Uhrzeit/Punkte/Titel) nimmt
+       seine natürliche Breite und ragt über den Block hinaus, unabhängig von
+       jeder Ellipsis-Regel auf den Kindern. `!important` wie bei den
+       --fc-event-*-Variablen oben (Zeile 39ff.) statt eines Spezifitäts-
+       Wettrüstens gegen alle FC-internen Selektoren (Monat/Liste setzen den
+       Bug so nicht, aber ohne `!important` bliebe die Regel fragil gegenüber
+       künftigen FC-Versionen). */
+    flex-direction: row !important;
     align-items: center;
     gap: 0.3rem;
     min-width: 0;
+    /* beschneiden statt überlaufen - die letzte Sicherung, falls ein Kind
+       trotz eigener Regeln (s. u.) einmal breiter ausfällt. */
+    overflow: hidden;
+}
+
+/* Issue #58: Uhrzeit ist nicht Teil der festgelegten Kürzungsreihenfolge
+   (die gilt für Präfix/Titel, s. .ev-titel unten) - sie kann als
+   Start-Ende-Bereich ("17:00 - 18:30") selbst breiter sein als eine schmale
+   geteilte Spalte. flex-shrink:0 allein hätte hier hart am Elementrand
+   abgeschnitten (kein Ellipsis, s. Issue) statt zu beschneiden; stattdessen
+   wie Präfix/Titel: schrumpfen mit Ellipsis statt überlaufen. */
+.ev-inhalt .fc-event-time {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .ev-punkte {
@@ -378,9 +408,51 @@ dialog.sheet::backdrop {
     border-radius: 2px;
 }
 
+/* Issue #58: Termininhalte dürfen nie über den Block hinausragen - beschnitten
+   statt übergelaufen. Kürzungsreihenfolge (bewusst, s. Issue): Farbpunkte
+   bleiben immer sichtbar (.ev-punkte, flex-shrink:0 oben) - das kompakteste
+   Signal. Titel und Präfix teilen sich den Rest über einen stark
+   unterschiedlichen flex-shrink (9999 vs. 1 - Standard-Trick für eine
+   Schrumpf-REIHENFOLGE statt eines proportionalen Verhältnisses): der Titel
+   gibt praktisch die gesamte Schrumpfung zuerst her, bis er bei 0 ankommt
+   (min-width:0) - erst danach greift überhaupt etwas vom Präfix-Anteil.
+   Ausprobiert wurde zunächst `container-type: inline-size` +
+   `@container`-Regel, um den Präfix unterhalb einer festen Breite ganz
+   auszublenden: das kollidiert aber mit Flexbox-Containment - ein
+   size-contained Flex-Kind mit flex-grow ignoriert dabei die verfügbare
+   Breite und bleibt bei 0 hängen, obwohl Platz da wäre (reproduziert im
+   Monatsraster: Event 211px breit, Titel blieb trotzdem 0px). Der
+   flex-shrink-Ansatz braucht keine Breitenmessung und bricht daher an
+   dieser Stelle nicht. Der Präfix bekommt dieselbe
+   Ellipsis-Behandlung wie der Titel (nicht flex-shrink:0) - für den
+   Extremfall eines sehr langen Platznamen-Fallbacks (Alt-Plätze ohne
+   Kürzel, CLAUDE.md Abschnitt 3) beschneidet auch er sich selbst statt hart
+   am Elementrand überzulaufen. Der vollständige Text bleibt in jedem Fall
+   über title/aria-label (in kalender.js gesetzt) und den Detail-Dialog
+   erreichbar. */
 .ev-titel {
+    display: flex;
+    align-items: baseline;
+    gap: 0.2rem;
     flex: 1 1 auto;
     min-width: 0;
+    overflow: hidden;
+}
+
+.ev-praefix {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ev-titel-text {
+    flex: 1 9999 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .ev-belegung .fc-list-event-dot,

@@ -548,6 +548,31 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   Hosting all-inkl.
 - **Farbe ist nie das einzige Signal**: Events tragen immer Text
   (Team-Kürzel/Ortsname), Zustände immer ein Label. Abnahmekriterium.
+- **Termininhalte werden beschnitten, nie überlaufen** (Issue #58): bei
+  geteilter Spaltenbreite (mehrere zeitgleiche Termine in Tag/Woche) oder
+  engen Monats-/Listenzellen reicht der Platz oft nicht für Farbpunkte,
+  Uhrzeit, Platz-Kürzel-Präfix und Titel gleichzeitig. Kürzungsreihenfolge:
+  Farbpunkte bleiben immer sichtbar (`.ev-punkte`, `flex-shrink:0` -
+  kompaktestes Signal), Titel und Präfix teilen sich den Rest über
+  `flex-shrink: 9999` (Titel) vs. `1` (Präfix) statt eines gleichmäßigen
+  Verhältnisses - der Titel gibt praktisch die gesamte Schrumpfung zuerst
+  her (bis Ellipsis bei 0 ankommt), erst danach greift überhaupt etwas vom
+  Präfix. `container-type: inline-size` + `@container` (naheliegender erster
+  Versuch, um den Präfix unterhalb einer festen Breite ganz auszublenden)
+  scheitert an einer Flexbox-Containment-Falle: ein size-contained Flex-Kind
+  mit `flex-grow` ignoriert dabei die tatsächlich verfügbare Breite und
+  bleibt bei 0 hängen, obwohl Platz da wäre - reproduziert im Monatsraster
+  (Event 211px breit, Titel blieb trotzdem bei 0px). Zweite, subtilere
+  Ursache des ursprünglich gemeldeten Überlaufs: FullCalendars eigenes
+  `.fc-v-event .fc-event-main-frame{flex-direction:column}` (zwei Klassen,
+  höhere Spezifität als unser einklassiges `.ev-inhalt`) kippte die
+  Content-Zeile in Tag/Woche in eine SPALTE - ohne horizontale Haupt-Achse
+  schrumpft dort nichts mehr, jedes Kind nimmt seine natürliche Breite und
+  ragt über den Block hinaus, unabhängig von jeder Ellipsis-Regel auf den
+  Kindern selbst. `.ev-inhalt` erzwingt seither `flex-direction: row
+  !important` (wie die `--fc-event-*`-Variablen oben, Abschnitt 8 Beginn).
+  Vollständiger Text bleibt über `title`/`aria-label` am `.ev-titel`-Element
+  und den Detail-Dialog erreichbar.
 - Cache-Busting: Assets `?v=<VERSION>`, SW-Cache-Name enthält Version.
 - **Vereinswappen**: Admin-Upload (nur PNG – GD kann kein SVG rastern, einzige
   auf Shared Hosting garantiert vorhandene Bild-Erweiterung), Ablage in
