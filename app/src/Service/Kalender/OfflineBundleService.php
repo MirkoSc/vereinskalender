@@ -37,7 +37,10 @@ final readonly class OfflineBundleService
     // lists (the Sportheim-Vermietung termin type) and pitches now carry
     // sportheim_id; older cached bundles are treated as "no data"
     // (VKOffline.load()) and get replaced on the next online visit.
-    public const int FORMAT = 4;
+    // Issue #65: bumped to 5 - spiele now carry a spielfrei flag and
+    // settings carries spielfrei_farbe; an older cached bundle would still
+    // render a bye as an away match.
+    public const int FORMAT = 5;
 
     public function __construct(
         private TrainingSlotRepository $slots,
@@ -86,7 +89,8 @@ final readonly class OfflineBundleService
             $raeumeById[(int) $raum['id']] = $raum;
         }
         $auswaertsFarbe = $this->settings->get('auswaerts_farbe', '#57606a');
-        $serializer = new EventSerializer($teamsById, $pitchesById, $venuesById, $this->venueMatcher, $auswaertsFarbe, $sportheimeById, $raeumeById);
+        $spielfreiFarbe = $this->settings->get('spielfrei_farbe', '#775c3c');
+        $serializer = new EventSerializer($teamsById, $pitchesById, $venuesById, $this->venueMatcher, $auswaertsFarbe, $spielfreiFarbe, $sportheimeById, $raeumeById);
 
         $spiele = [];
         foreach ($this->matches->findAll() as $match) {
@@ -164,6 +168,7 @@ final readonly class OfflineBundleService
             'vermietungen' => array_map($serializer->vermietung(...), $this->vermietungen->findAll()),
             'settings' => [
                 'auswaerts_farbe' => $auswaertsFarbe,
+                'spielfrei_farbe' => $spielfreiFarbe,
                 'nutzungszeiten_von' => $this->settings->get('nutzungszeiten_von', '08:00'),
                 'nutzungszeiten_bis' => $this->settings->get('nutzungszeiten_bis', '22:00'),
             ],

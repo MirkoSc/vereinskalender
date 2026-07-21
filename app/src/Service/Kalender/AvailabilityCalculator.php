@@ -35,7 +35,7 @@ final class AvailabilityCalculator
      *     teams: list<array<string, mixed>>,
      *     venues: list<array<string, mixed>>,
      *     pitches: list<array<string, mixed>>,
-     *     settings: array{auswaerts_farbe: string, nutzungszeiten_von: string, nutzungszeiten_bis: string},
+     *     settings: array{auswaerts_farbe: string, spielfrei_farbe: string, nutzungszeiten_von: string, nutzungszeiten_bis: string},
      * }
      * @return array<string, mixed>
      */
@@ -71,6 +71,13 @@ final class AvailabilityCalculator
         $hinweiseByVenue = [];
         foreach ($daten['spiele'] as $spiel) {
             if (!self::inKickoffRange($spiel, $von, $bis)) {
+                continue;
+            }
+            // Issue #65: a bye occupies no pitch and produces no hint - true
+            // today by construction anyway (pitch_id/venue_id are null,
+            // heimspiel is false), made an explicit, testable invariant here
+            // rather than relying on that as a coincidence.
+            if (($spiel['spielfrei'] ?? false) === true) {
                 continue;
             }
             $pitchId = $spiel['pitch_id'] !== null ? (int) $spiel['pitch_id'] : null;

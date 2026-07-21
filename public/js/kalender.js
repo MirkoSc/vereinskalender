@@ -37,6 +37,7 @@
     const venueLabel = (wert) => {
         if (wert === 'heim') return 'Nur Heim';
         if (wert === 'auswaerts') return 'Nur Auswärts';
+        if (wert === 'spielfrei') return 'Nur Spielfrei';
         return appData.venues.find((v) => String(v.id) === wert)?.name ?? `Ort #${wert}`;
     };
     const pitchLabel = (id) => appData.pitches.find((p) => String(p.id) === id)?.name ?? `Platz #${id}`;
@@ -246,6 +247,10 @@
     // Issue #36: eigene synthetische Spalte für Vermietungen (kein Platz,
     // sondern das Sportheim) - analog RESOURCE_AUSWAERTS_ID.
     const RESOURCE_SPORTHEIM_ID = 'sportheim';
+    // Issue #65: Spielfrei-Termine haben ebenfalls keine pitch_id, dürfen
+    // aber nie in der Auswärts-Spalte landen - eigene synthetische Spalte,
+    // analog RESOURCE_SPORTHEIM_ID.
+    const RESOURCE_SPIELFREI_ID = 'spielfrei';
 
     // ---- calendar ----
 
@@ -293,6 +298,9 @@
     // bei Belegungen, nur bei Auswärtsspielen) greift die Auswärtsfarbe
     // bereits serverseitig (EventSerializer); hier nur noch das Label dazu.
     const venueName = (props) => {
+        if (props.spielfrei) {
+            return 'Spielfrei';
+        }
         if (props.venue_id === null) {
             return 'Auswärts';
         }
@@ -472,9 +480,15 @@
         end: e.ende,
         // Issue #36: Vermietungen haben keine pitch_id - eigene Spalte statt
         // der "Auswärts"-Spalte, die sonst für Termine ohne Platz greift.
+        // Issue #65: Spielfrei-Termine ebenso - auch sie haben keine pitch_id,
+        // dürfen aber nie als Auswärtsspiel erscheinen; VOR der pitch_id-
+        // Prüfung abgefragt, weil ein Spielfrei-Termin per Definition ohnehin
+        // nie eine pitch_id trägt.
         resourceId: e.typ === 'vermietung'
             ? RESOURCE_SPORTHEIM_ID
-            : (e.pitch_id !== null ? String(e.pitch_id) : RESOURCE_AUSWAERTS_ID),
+            : e.spielfrei
+                ? RESOURCE_SPIELFREI_ID
+                : (e.pitch_id !== null ? String(e.pitch_id) : RESOURCE_AUSWAERTS_ID),
         color: e.typ === 'sperrung' ? sperrungColor(e) : undefined,
         display: e.typ === 'sperrung' ? 'background' : 'auto',
         classNames: [`ev-${e.typ}`, e.status === 'abgesagt' ? 'ev-abgesagt' : ''].filter(Boolean),
@@ -567,7 +581,12 @@
                         return e.venue_id !== null;
                     }
                     if (filters.venue === 'auswaerts') {
-                        return e.venue_id === null;
+                        // Issue #65: ein Bye hat ebenfalls venue_id null,
+                        // zählt aber nicht als Auswärtsspiel.
+                        return !e.spielfrei && e.venue_id === null;
+                    }
+                    if (filters.venue === 'spielfrei') {
+                        return e.spielfrei === true;
                     }
                     return String(e.venue_id) === filters.venue;
                 });
@@ -898,6 +917,7 @@
             ...appData.pitches.map((p) => ({ id: String(p.id), title: `${p.name} (${p.venue_name})` })),
             { id: RESOURCE_AUSWAERTS_ID, title: 'Auswärts' },
             { id: RESOURCE_SPORTHEIM_ID, title: 'Sportheim' },
+            { id: RESOURCE_SPIELFREI_ID, title: 'Spielfrei' },
         ];
         return filters.pitch !== '' ? alle.filter((r) => r.id === filters.pitch) : alle;
     };
@@ -1173,7 +1193,10 @@
             detailActions.append(editButton, ausfallButton, deleteButton);
         } else if (props.typ === 'spiel') {
             detailContent.append(zeile('Gegner', props.gegner));
-            detailContent.append(zeile('Heim/Auswärts', props.heimspiel ? 'Heimspiel' : 'Auswärtsspiel'));
+            detailContent.append(zeile(
+                'Heim/Auswärts',
+                props.spielfrei ? 'Spielfrei' : (props.heimspiel ? 'Heimspiel' : 'Auswärtsspiel'),
+            ));
             detailContent.append(zeile('Ort', props.venue_name ?? props.ort_text ?? '–'));
             const spielMapsLink = mapsLink(props);
             if (spielMapsLink !== null) {

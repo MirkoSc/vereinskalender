@@ -250,6 +250,11 @@ final readonly class MatchService
             'ende' => $ende,
             'gegner' => $gegner,
             'heimspiel' => $heimspiel,
+            // Manual matches always require a pitch or an ort_text
+            // (validated above), so the empty-LOCATION half of the
+            // spielfrei detection rule can never hold here (Issue #65) -
+            // there is no admin checkbox for it, it is import-only.
+            'spielfrei' => false,
             'ort_text' => $ortText,
             'pitch_id' => $pitchId,
             'pitch_manuell' => $pitchId !== null,
@@ -276,6 +281,7 @@ final readonly class MatchService
             'ende' => $match['ende'] !== null ? (string) $match['ende'] : null,
             'gegner' => (string) $match['gegner'],
             'heimspiel' => (int) $match['heimspiel'] === 1,
+            'spielfrei' => (int) $match['spielfrei'] === 1,
             'ort_text' => (string) $match['ort_text'],
             'pitch_id' => $match['pitch_id'] !== null ? (int) $match['pitch_id'] : null,
             'pitch_manuell' => (int) $match['pitch_manuell'] === 1,

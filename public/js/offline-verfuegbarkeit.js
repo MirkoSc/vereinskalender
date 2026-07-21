@@ -219,6 +219,11 @@
             if (!inKickoffRange(spiel, von, bis)) {
                 continue;
             }
+            // Issue #65: a bye occupies no pitch and produces no hint,
+            // mirrors AvailabilityCalculator::compute() byte-for-byte.
+            if (spiel.spielfrei === true) {
+                continue;
+            }
             const pitchId = spiel.pitch_id;
             const abgesagt = spiel.status === 'abgesagt';
 

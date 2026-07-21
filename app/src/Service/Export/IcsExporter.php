@@ -65,11 +65,17 @@ final readonly class IcsExporter
             $ende = $match['ende'] !== null ? (string) $match['ende'] : null;
             $kuerzel = $teamNames[(int) $match['team_id']] ?? '';
 
+            // Issue #65: a bye stays in the feed (relevant to subscribers)
+            // with a canonical title, independent of the feed's own wording.
+            $summary = (int) ($match['spielfrei'] ?? 0) === 1
+                ? trim($kuerzel . ': Spielfrei')
+                : trim($kuerzel . ': ' . (string) $match['gegner']);
+
             $events[] = self::vevent(
                 uid: sprintf('match-%d@%s', (int) $match['id'], self::UID_DOMAIN),
                 start: $start,
                 end: MatchDuration::effectiveEnd((string) $match['anstoss'], $ende),
-                summary: trim($kuerzel . ': ' . (string) $match['gegner']),
+                summary: $summary,
                 location: (string) $match['ort_text'],
                 sequence: (int) $match['ics_sequence'],
                 cancelled: (string) $match['status'] === 'abgesagt',

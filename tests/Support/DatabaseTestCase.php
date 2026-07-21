@@ -326,6 +326,7 @@ abstract class DatabaseTestCase extends TestCase
             new \App\Repository\TeamHomePitchRepository($pdo),
             \App\Service\Kalender\VenueMatcher::fromDatabase($pdo),
             $fetcher,
+            new \App\Repository\SettingRepository($pdo),
             now: $now,
         );
     }

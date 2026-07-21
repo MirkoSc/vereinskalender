@@ -53,6 +53,7 @@
             <option value="">Alle Orte</option>
             <option value="heim">Nur Heim</option>
             <option value="auswaerts">Nur Auswärts</option>
+            <option value="spielfrei">Nur Spielfrei</option>
         </select>
     </label>
 

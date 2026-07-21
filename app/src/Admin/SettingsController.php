@@ -34,6 +34,8 @@ final class SettingsController extends AdminController
                 'nutzungszeiten_von' => $this->settings->get('nutzungszeiten_von', '08:00'),
                 'nutzungszeiten_bis' => $this->settings->get('nutzungszeiten_bis', '22:00'),
                 'auswaerts_farbe' => $this->settings->get('auswaerts_farbe', '#57606a'),
+                'spielfrei_begriffe' => $this->settings->get('spielfrei_begriffe', 'Spielfrei'),
+                'spielfrei_farbe' => $this->settings->get('spielfrei_farbe', '#775c3c'),
                 'alarm_email' => $this->settings->get('alarm_email', ''),
                 'ip_aufbewahrung_tage' => $this->settings->get('ip_aufbewahrung_tage', '90'),
             ],
@@ -91,6 +93,18 @@ final class SettingsController extends AdminController
             $fehler[] = 'Auswärts-Farbe: bitte aus der Palette wählen.';
         }
 
+        // leer ist gültig - schaltet die Spielfrei-Erkennung im nächsten
+        // Importlauf einfach ab (Issue #65), kein Pflichtfeld.
+        $spielfreiBegriffe = trim((string) ($request->post['spielfrei_begriffe'] ?? ''));
+        if (mb_strlen($spielfreiBegriffe) > 255) {
+            $fehler[] = 'Spielfrei-Begriffe: max. 255 Zeichen.';
+        }
+
+        $spielfreiFarbe = trim((string) ($request->post['spielfrei_farbe'] ?? ''));
+        if (!Palette::isValid($spielfreiFarbe)) {
+            $fehler[] = 'Spielfrei-Farbe: bitte aus der Palette wählen.';
+        }
+
         $email = trim((string) ($request->post['alarm_email'] ?? ''));
         if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
             $fehler[] = 'Alarm-E-Mail ist ungültig.';
@@ -109,6 +123,8 @@ final class SettingsController extends AdminController
             $this->settings->set('nutzungszeiten_von', $von);
             $this->settings->set('nutzungszeiten_bis', $bis);
             $this->settings->set('auswaerts_farbe', $farbe);
+            $this->settings->set('spielfrei_begriffe', $spielfreiBegriffe);
+            $this->settings->set('spielfrei_farbe', $spielfreiFarbe);
             $this->settings->set('alarm_email', $email);
             $this->settings->set('ip_aufbewahrung_tage', (string) $tage);
             $this->session->flash('Einstellungen gespeichert.');

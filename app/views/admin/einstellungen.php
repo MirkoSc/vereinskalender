@@ -30,6 +30,25 @@
                 <?php endforeach; ?>
             </div>
         </fieldset>
+        <label>Spielfrei-Begriffe (kommagetrennt, case-insensitive; leer = Erkennung aus)
+            <input type="text" name="spielfrei_begriffe" value="<?= e($values['spielfrei_begriffe']) ?>" maxlength="255">
+        </label>
+        <p class="hint">
+            Ein Feed-Termin ohne Ort, dessen Titel einen dieser Begriffe enthält,
+            gilt als spielfrei statt als Auswärtsspiel.
+        </p>
+        <fieldset>
+            <legend>Spielfrei-Farbe</legend>
+            <div class="palette">
+                <?php foreach (Palette::COLORS as $hex => $label): ?>
+                    <label class="palette-option" title="<?= e($label) ?>">
+                        <input type="radio" name="spielfrei_farbe" value="<?= e($hex) ?>" <?= $values['spielfrei_farbe'] === $hex ? 'checked' : '' ?>>
+                        <span class="swatch" style="background: <?= e($hex) ?>"></span>
+                        <span class="palette-label"><?= e($label) ?></span>
+                    </label>
+                <?php endforeach; ?>
+            </div>
+        </fieldset>
         <label>Alarm-E-Mail (leer = keine Alarm-Mails; max. 1 Mail pro Thema und Tag)
             <input type="email" name="alarm_email" value="<?= e($values['alarm_email']) ?>">
         </label>

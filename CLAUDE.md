@@ -106,13 +106,16 @@ sind KEINE Projektionen.
   gesetzt; der Import schreibt immer NULL; Anzeige, Konfliktprüfung,
   Verfügbarkeit und ICS-Export nutzen ende, sonst Fallback Anstoß + 2 Std.
   – zentral in `MatchDuration`; Alt-Events ohne Feld werden beim Replay
-  deterministisch auf NULL gehoben), gegner, heimspiel, ort_text
-  (ICS-LOCATION roh), pitch_id NULL (nur Heimspiele), pitch_manuell (true =
-  manuelle Platz-Zuordnung, der Import fasst pitch_id dann nie an;
-  Alt-Events ohne Feld werden beim Replay deterministisch auf false
-  gehoben, Upcasting analog pitch.farbe), status ('geplant'|'abgesagt'),
-  import_source_id NULL, ics_uid, ics_sequence, sync_hash.
-  **UNIQUE(import_source_id, ics_uid)**.
+  deterministisch auf NULL gehoben), gegner, heimspiel, spielfrei (Issue
+  #65: kein Spiel, sondern ein spielfreier Feed-Termin – leere LOCATION
+  UND konfigurierbarer Begriff im SUMMARY, s. Abschnitt 6; Alt-Events ohne
+  Feld werden beim Replay deterministisch auf false gehoben, Upcasting
+  analog pitch_manuell), ort_text (ICS-LOCATION roh), pitch_id NULL (nur
+  Heimspiele), pitch_manuell (true = manuelle Platz-Zuordnung, der Import
+  fasst pitch_id dann nie an; Alt-Events ohne Feld werden beim Replay
+  deterministisch auf false gehoben, Upcasting analog pitch.farbe),
+  status ('geplant'|'abgesagt'), import_source_id NULL, ics_uid,
+  ics_sequence, sync_hash. **UNIQUE(import_source_id, ics_uid)**.
   **Manuelle Spiele** (Freundschaftsspiele, Turniere): Kennzeichnung
   `import_source_id IS NULL` (ics_uid ''), API-Feld `manuell`. Anlegen/
   Bearbeiten/Löschen öffentlich (Ebene 2) als Events, Löschen =
@@ -155,7 +158,10 @@ sind KEINE Projektionen.
 - **event**: siehe Abschnitt 4 – Quelle der Wahrheit.
 - **setting** (key/value): Konfiguration in der DB, nicht in Dateien
   (landet so im Backup). U. a. Auswärts-Farbe, Nutzungszeiten, Update-Kanal,
-  Admin-Mail, App-Name/App-Name-Kurz (Issue #62).
+  Admin-Mail, App-Name/App-Name-Kurz (Issue #62), Spielfrei-Begriffe/
+  Spielfrei-Farbe (Issue #65, kommagetrennte Begriffsliste statt eigenem
+  Aggregat – im Unterschied zu venue_begriff global und ungeordnet, der
+  erste Treffer genügt).
 
 ## 4. Event Sourcing (Kern-Invarianten)
 
@@ -269,6 +275,22 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   nie umgehängt. Unsichere Zuordnungen erscheinen in der
   Verfügbarkeitsansicht als Hinweis-Layer „Heimspiel, Platz offen" – nie
   stillschweigend „frei".
+- **Spielfrei-Erkennung** (Issue #65): ein Feed-Termin ist spielfrei statt
+  ein Spiel, wenn BEIDE Bedingungen gelten – leere LOCATION UND ein Treffer
+  aus dem Setting `spielfrei_begriffe` (kommagetrennt, case-insensitive,
+  mehrere erlaubt) im rohen SUMMARY; eine der beiden Bedingungen allein
+  genügt nicht (ein Auswärtsspiel ohne gepflegte LOCATION ist kein
+  Spielfrei). Anders als der Platz-Reflow wird `spielfrei` bei JEDEM Lauf
+  für JEDEN Feed-Eintrag neu abgeleitet, auch für vergangene: die Flagge
+  klassifiziert unveränderlichen Feed-Inhalt, ihre Neuableitung korrigiert
+  also eine Fehlinterpretation statt Historie umzuschreiben (anders als ein
+  gespeicherter Platz, der protokolliert, wo tatsächlich gespielt wurde).
+  Der Begriff steckt NICHT in `sync_hash`; die Skip-Bedingung prüft deshalb
+  zusätzlich `spielfrei === gespeichertes spielfrei`, analog der
+  Zusatzklausel beim Platz-Reflow – eine reine Begriffs-Änderung erreicht
+  so trotz gleichem Hash jede betroffene Zeile, ein zweiter Lauf danach ist
+  idempotent. Ein manuelles Spiel kann nie spielfrei sein (Pflicht: Platz
+  ODER ort_text, die leere-LOCATION-Bedingung greift dort also nie).
 - Fehler pro Quelle isolieren; Fehlertext in import_source, Anzeige im Admin.
 
 ## 7. Anzeigemodi, Farben, Filter
@@ -312,13 +334,16 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   immer sichtbar (Issue #37). In den Ressourcen-Views (Tag/Woche, ab der
   Desktop-Sidebar-Schwelle ~1100 px) reduziert ein gewählter Einzelplatz die
   Platz-SPALTEN auf genau diesen Platz (inkl. der synthetischen „Auswärts"-
-  Spalte für Spiele ohne `pitch_id`); in jeder anderen Kombination (Monat,
-  Liste, schmale Tag-/Wochenansicht) filtert er stattdessen die Termine
-  direkt. Ohne Einzelplatz-Auswahl trägt „Alle Plätze" die Platzfarbe als
-  Ersatz für die fehlenden Spalten an den Termin – mit Platz-Kürzel (Fallback
-  Platzname) als Text-Präfix vor dem Titel; Auswärtsspiele (nie eine
-  `pitch_id`) bilden dabei die eigene Gruppe „Auswärts" mit der globalen
-  Auswärtsfarbe. **Wie** die Farbe erscheint, hängt an der Darstellung
+  und, Issue #65, „Spielfrei"-Spalte für Spiele ohne `pitch_id`); in jeder
+  anderen Kombination (Monat, Liste, schmale Tag-/Wochenansicht) filtert er
+  stattdessen die Termine direkt. Ohne Einzelplatz-Auswahl trägt „Alle
+  Plätze" die Platzfarbe als Ersatz für die fehlenden Spalten an den Termin –
+  mit Platz-Kürzel (Fallback Platzname) als Text-Präfix vor dem Titel;
+  Auswärtsspiele (nie eine `pitch_id`) bilden dabei die eigene Gruppe
+  „Auswärts" mit der globalen Auswärtsfarbe, Spielfrei-Termine (ebenfalls nie
+  eine `pitch_id`, Issue #65) analog die eigene Gruppe „Spielfrei" mit der
+  Spielfrei-Farbe – beide dürfen nicht ineinander aufgehen, obwohl beide
+  `pitch_id IS NULL` haben. **Wie** die Farbe erscheint, hängt an der Darstellung
   (Issue #57, eine Entscheidungsstelle:
   `VKKalenderPitch.platzFarbDarstellung(modus, hatResourceSpalten, pitchFilter)`):
   Tag/Woche ohne Ressourcen-Spalten färben den Termin-HINTERGRUND; der Monat
@@ -376,15 +401,20 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   (`#kalender-leer-hinweis`, aus den bereits geladenen/gefilterten Events pro
   Darstellung abgeleitet - kein Zusatz-Request).
 - Spielstätten-Auflösung zur **Anzeigezeit** im einen `VenueMatcher`-Service
-  (Anzeige UND Import): erster `venue_begriff` nach sortierung,
-  case-insensitive in `ort_text` → venue + Farbe; kein Treffer, aber Platz
-  zugeordnet → Venue des Platzes (ein Spiel auf einem Platz ist per
-  Definition an dessen Spielstätte, z. B. manuelles Spiel mit leerem
-  ort_text); sonst → auswärts (Setting-Farbe).
+  (Anzeige UND Import): Spielfrei (Issue #65, am `spielfrei`-Feld erkannt,
+  s. Abschnitt 6) → eigene Kategorie OHNE Venue-Auflösung, geht der Kette
+  voraus; sonst erster `venue_begriff` nach sortierung, case-insensitive in
+  `ort_text` → venue + Farbe; kein Treffer, aber Platz zugeordnet → Venue des
+  Platzes (ein Spiel auf einem Platz ist per Definition an dessen
+  Spielstätte, z. B. manuelles Spiel mit leerem ort_text); sonst → auswärts
+  (Setting-Farbe). `VenueMatcher` selbst kennt nur Begriff→Venue und bleibt
+  unverändert – die Kategorie-Entscheidung fällt in `EventSerializer::spiel()`.
 - Filter: `team=<id>`, `bereich=<id>` (numerische Bereichs-ID; alte geteilte
   Links mit dem früheren Enum-String G/F/E/D/C/Herren funktionieren
   übergangsweise weiter – aufgelöst über `bereich.kuerzel`, Issue #27),
-  `venue=<id>`, `venue=heim`, `venue=auswaerts`. Mehr-Team-Slots matchen,
+  `venue=<id>`, `venue=heim`, `venue=auswaerts`, `venue=spielfrei` (Issue
+  #65 – ein spielfreier Termin hat ebenfalls `venue_id=null`, `venue=
+  auswaerts` schließt ihn deshalb explizit aus). Mehr-Team-Slots matchen,
   wenn EIN Team den Filter erfüllt; API liefert `team_ids` zusätzlich zu
   `team_id` (= erstes Team, bestimmt Farbe).
 - Vereinssicht „Bei uns" = voreingestellte Filterkombination (Heimspiele +
@@ -411,7 +441,11 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   `GPL-My-Project-Is-Open-Source`, Projekt ist GPLv3) inkl. einer
   synthetischen „Auswärts"-Spalte für Spiele ohne `pitch_id` sowie einer
   synthetischen „Sportheim"-Spalte (Issue #36) für Vermietungen (die keinen
-  Platz, sondern ein Sportheim betreffen); Monat und Liste haben nie
+  Platz, sondern ein Sportheim betreffen) und einer synthetischen
+  „Spielfrei"-Spalte (Issue #65) für spielfreie Termine – auch sie haben
+  keine `pitch_id`, dürfen aber nie in der Auswärts-Spalte erscheinen (ein
+  Event mit unbekannter `resourceId` wird von FullCalendar in
+  Ressourcen-Views sonst lautlos verworfen); Monat und Liste haben nie
   Spalten. Der Button „+ Eintragen" öffnet ein Auswahl-Sheet („Belegung
   eintragen" / „Spiel eintragen" / „Vermietung eintragen") statt getrennter
   Toolbar-Buttons. Vermietungen zeigen als Termin nur den
@@ -480,7 +514,10 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   Touch-Ziele ≥ 44 px.
 - **Legende** (Issue #38): EINE Komponente für Spielstätten-, Platz- und
   Team-Kürzel/-Farben (Teams gruppiert nach Bereich, dazu die globale
-  Auswärts-Farbe; nur aktive Bereiche/Teams). Serverseitig gibt es dafür
+  Auswärts-Farbe und, Issue #65, die Spielfrei-Farbe als eigener Eintrag
+  neben Auswärts – beide Sonderwerte sonst leicht verwechselbar, da beide
+  keine echte Spielstätte haben; nur aktive Bereiche/Teams). Serverseitig
+  gibt es dafür
   keine eigene Route/kein eigenes Template mit Namen/Farben – `public/js/
   legende.js` füllt jeden `[data-legende]`-Container aus derselben
   `appData`, die auch Kalender-/Verfügbarkeitsansicht aus `#app-data` lesen
@@ -501,12 +538,14 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   `sportheimRaeume` bereits mit); ein Platz mit `sportheim_id` zeigt sein
   Sportheim zusätzlich als 🏠-Text in der Plätze-Gruppe. Ein
   Symbole-Abschnitt erklärt den 🏠-Indikator an Terminen (Sportheim gerade
-  vermietet) und die Vermietungs-Darstellung (nur Spielstätten-Punkt, kein
-  Team).
+  vermietet), die Vermietungs-Darstellung (nur Spielstätten-Punkt, kein
+  Team) und den Spielfrei-Punkt (Issue #65: kein Auswärtsspiel, für dieses
+  Team ist an diesem Termin schlicht kein Spiel angesetzt).
 - **PWA/Offline**: Service Worker cached App-Shell; `GET /api/offline-bundle`
-  (format-versioniert, aktuell 4 – Issue #36 hat `sportheime`/
+  (format-versioniert, aktuell 5 – Issue #36 hat `sportheime`/
   `sportheim_raeume`/`vermietungen`-Listen ergänzt und `pitch.sportheim_id`
-  aufgenommen) liefert den **kompletten Datenbestand**
+  aufgenommen, Issue #65 hat `spiele[].spielfrei` und
+  `settings.spielfrei_farbe` ergänzt) liefert den **kompletten Datenbestand**
   (Issue #25): alle Spiele, Sperrungen und Vermietungen bereits serialisiert
   (Feed-Shape, inkl. Platz-/Vereinszuordnung über
   `VenueMatcher`/`MatchDuration`), Trainings-Slots dagegen als **Regeln**
@@ -792,8 +831,9 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   DST-Wochenenden, überlappender Slots, mehrtägiger vor dem Zeitraum
   beginnender Sperrung, sowie – Issue #36 – Sportheime/Räume/Vermietungen
   inkl. einer raumbezogenen und einer Ganzhaus-Vermietung, eines Platzes mit
-  sportheim_id und eines eigenen `vermietung`-Falls) prüfen, dass die
-  clientseitigen Ports
+  sportheim_id und eines eigenen `vermietung`-Falls, sowie – Issue #65 –
+  eines isolierten Spielfrei-Falls in einer ansonsten leeren Woche) prüfen,
+  dass die clientseitigen Ports
   (`public/js/offline-events.js`, `public/js/offline-verfuegbarkeit.js`)
   byte-identisch zur PHP-Referenz (`SlotExpander`/`EventSerializer`,
   `AvailabilityCalculator`) sind – `tests/Kalender/ParityFixturesTest.php`
@@ -801,6 +841,19 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   tests/js`, Teil der CI) laufen gegen dieselben committeten
   `expected/*.json`; bei Algorithmus-Änderungen `generate.php` neu laufen
   lassen und den Diff bewusst reviewen.
+- **Spielfrei-Erkennung** (Issue #65): Erkennung (leere LOCATION + Begriff im
+  SUMMARY → spielfrei, nur eine der beiden Bedingungen erfüllt → kein
+  Spielfrei, Groß-/Kleinschreibung, mehrere kommagetrennte Begriffe, leere
+  Begriffs-Einstellung erkennt nichts – Regressionstest gegen den
+  `mb_stripos($s, '')`-Fallstrick); Begriffs-Änderung klassifiziert
+  bestehende Feed-Einträge beim nächsten Lauf neu, auch vergangene, dritter
+  Lauf danach `skipped` (Idempotenz); `spielfrei`-Upcasting beim Replay
+  (Alt-Event ohne Feld → false); `spielfrei` übersteht Platz-Zuordnung
+  (`MatchService::assignPitch()`) und den Absage-Nachlauf; `venue=spielfrei`
+  liefert nur Byes, `venue=auswaerts` liefert sie NICHT mehr; ein Bye
+  erscheint nie unter `typ=belegung`; Verfügbarkeitsberechnung bleibt für
+  Byes ohne Intervall und ohne Hinweis-Layer; ICS-Export enthält den Bye mit
+  kanonischem Titel „<Kürzel>: Spielfrei", ohne LOCATION-Zeile.
 - Konfliktprüfung im `BookingService`; DIESELBE Expansionslogik speist die
   Verfügbarkeitsansicht.
 - **Zeitzonen**: durchgängig `Europe/Berlin` (zentral im Bootstrap gesetzt,
