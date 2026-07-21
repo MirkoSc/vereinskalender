@@ -9,6 +9,7 @@ use App\Domain\EventType;
 use App\Service\Kalender\ConflictException;
 use App\Service\ValidationException;
 use App\Tests\Support\DatabaseTestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
  * Mandatory conflict check tests (CLAUDE.md section 12): 'gesperrt' blocks,
@@ -431,17 +432,36 @@ final class BookingServiceTest extends DatabaseTestCase
     }
 
     /**
+     * Issue #63: every Sportheim-Termin art is non-blocking, so the
+     * regressions below run against all of them. The expected hint wording
+     * comes from VermietungArt::hinweis() - "Sportheim vermietet" would be
+     * wrong for a cleaning slot.
+     *
+     * @return array<string, array{string, string}>
+     */
+    public static function sportheimTerminArten(): array
+    {
+        return [
+            'vermietung' => ['vermietung', 'Sportheim vermietet'],
+            'putzen' => ['putzen', 'Sportheim wird gereinigt'],
+            'sitzung' => ['sitzung', 'Sitzung im Sportheim'],
+        ];
+    }
+
+    /**
      * Issue #36: a Vermietung of the pitch's Sportheim overlapping the
      * booking must NEVER block or warn - createSlot saves without a
      * ConflictException and without confirmation-requiring warnings, the
      * overlap surfaces only in ConflictCheckResult::$hinweise.
+     * Issue #63: that holds for EVERY art, not just rentals.
      */
-    public function testVermietungNeverBlocksOrWarnsBooking(): void
+    #[DataProvider('sportheimTerminArten')]
+    public function testVermietungNeverBlocksOrWarnsBooking(string $art, string $erwarteterHinweis): void
     {
         $venueId = $this->createVenue();
         $sportheimId = $this->createSportheim($venueId);
         $pitchId = $this->createPitch($venueId, 'Rasenplatz Sportheim', '#0969da', 'RS', $sportheimId);
-        $this->createVermietung($sportheimId, '2026-08-04 08:00:00', '2026-08-04 23:00:00', 'Geburtstagsfeier');
+        $this->createVermietung($sportheimId, '2026-08-04 08:00:00', '2026-08-04 23:00:00', 'Geburtstagsfeier', [], $art);
 
         $result = $this->bookingService()->createSlot(
             $this->slotInput(['pitch_id' => $pitchId]),
@@ -449,7 +469,7 @@ final class BookingServiceTest extends DatabaseTestCase
         );
 
         self::assertSame([], $result['warnings']);
-        self::assertCount(1, $this->dumpTable('training_slot'), 'booking is saved despite the overlapping Vermietung');
+        self::assertCount(1, $this->dumpTable('training_slot'), 'booking is saved despite the overlapping Sportheim-Termin');
 
         // re-check the same booking, ignoring itself (as an edit dialog
         // would) - isolates the Vermietung hint from the booking's own slot
@@ -457,8 +477,9 @@ final class BookingServiceTest extends DatabaseTestCase
         self::assertFalse($check->hasConflicts());
         self::assertSame([], $check->warnings);
         self::assertCount(1, $check->hinweise);
-        self::assertSame('vermietung', $check->hinweise[0]->typ);
+        self::assertSame('vermietung', $check->hinweise[0]->typ, 'the hint category stays "vermietung" for every art');
         self::assertStringContainsString('Geburtstagsfeier', $check->hinweise[0]->nachricht);
+        self::assertStringContainsString($erwarteterHinweis, $check->hinweise[0]->nachricht);
     }
 
     public function testPitchWithoutSportheimGetsNoVermietungHinweis(): void
@@ -490,12 +511,16 @@ final class BookingServiceTest extends DatabaseTestCase
         self::assertCount(1, $check->hinweise);
     }
 
-    public function testCheckMatchNeverWarnsForVermietungOverlap(): void
+    /**
+     * Issue #63: the match path is non-blocking for every art too.
+     */
+    #[DataProvider('sportheimTerminArten')]
+    public function testCheckMatchNeverWarnsForVermietungOverlap(string $art, string $erwarteterHinweis): void
     {
         $venueId = $this->createVenue();
         $sportheimId = $this->createSportheim($venueId);
         $pitchId = $this->createPitch($venueId, 'Rasenplatz Sportheim', '#0969da', 'RS', $sportheimId);
-        $this->createVermietung($sportheimId, '2026-08-08 08:00:00', '2026-08-08 23:00:00', 'Vereinsfeier');
+        $this->createVermietung($sportheimId, '2026-08-08 08:00:00', '2026-08-08 23:00:00', 'Vereinsfeier', [], $art);
 
         $result = $this->bookingService()->checkMatch(
             $pitchId,
@@ -507,6 +532,7 @@ final class BookingServiceTest extends DatabaseTestCase
         self::assertSame([], $result->warnings);
         self::assertCount(1, $result->hinweise);
         self::assertSame('vermietung', $result->hinweise[0]->typ);
+        self::assertStringContainsString($erwarteterHinweis, $result->hinweise[0]->nachricht);
     }
 
     public function testValidationRejectsBrokenInput(): void

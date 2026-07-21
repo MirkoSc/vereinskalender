@@ -93,17 +93,27 @@
         </select>
     </label>
 
-    <!-- Issue #36: Vermietungen ein-/ausblenden bzw. isoliert anzeigen; rein
-         clientseitig wie der Manuell-Filter, funktioniert dadurch auch
+    <!-- Issue #36: Sportheim-Termine ein-/ausblenden bzw. isoliert anzeigen;
+         rein clientseitig wie der Manuell-Filter, funktioniert dadurch auch
          offline (das Feld ist im Bundle enthalten). -->
     <label class="filter">
-        Vermietungen
+        Sportheim-Termine
         <select id="filter-vermietung">
             <option value="">Alle Termine</option>
-            <option value="ohne">Ohne Vermietungen</option>
-            <option value="nur">Nur Vermietungen</option>
+            <option value="ohne">Ohne Sportheim-Termine</option>
+            <option value="nur">Nur Sportheim-Termine</option>
         </select>
     </label>
+
+    <!-- Issue #63: schränkt die Sportheim-Termine auf einzelne Arten ein
+         (Mehrfachauswahl, keine = alle). Die Chips selbst rendert
+         kalender.js aus appData.vermietungArten, damit eine neue Art im
+         PHP-Enum ohne Template-Änderung erscheint. Bei "Ohne Sportheim-
+         Termine" blendet das Skript die Reihe aus. -->
+    <div class="filter" id="filter-art-row">
+        <span class="filter-label" id="filter-art-label">Arten</span>
+        <div class="chip-toggle-row" id="filter-art-chips" role="group" aria-labelledby="filter-art-label"></div>
+    </div>
 
     <div class="dialog-actions">
         <button type="button" class="button" id="filter-close">Fertig</button>
@@ -237,19 +247,32 @@
     <div class="dialog-actions vertical">
         <button type="button" class="button" id="entry-booking">Belegung eintragen</button>
         <button type="button" class="button" id="entry-match">Spiel eintragen</button>
-        <button type="button" class="button" id="entry-vermietung">Vermietung eintragen</button>
+        <button type="button" class="button" id="entry-vermietung">Sportheim-Termin eintragen</button>
         <button type="button" class="linklike" id="entry-cancel">Abbrechen</button>
     </div>
 </dialog>
 
-<!-- Issue #36: Sportheim-Vermietung. Anlegen/Bearbeiten/Löschen öffentlich
+<!-- Issue #36: Sportheim-Termin (Aggregat/Tabelle heißen weiterhin
+     "vermietung", Issue #63). Anlegen/Bearbeiten/Löschen öffentlich
      (Ebene 2), analog dem manuellen Spiel-Dialog. Blockiert nie Trainings/
-     Spiele - deshalb keine Konflikt-/Warnungs-Anzeige wie beim Belegungs-/
-     Spiel-Dialog. -->
+     Spiele - in KEINER Art -, deshalb keine Konflikt-/Warnungs-Anzeige wie
+     beim Belegungs-/Spiel-Dialog. -->
 <dialog id="vermietung-dialog" class="sheet">
-    <h3 id="vermietung-title">Vermietung eintragen</h3>
+    <h3 id="vermietung-title">Sportheim-Termin eintragen</h3>
     <form id="vermietung-form">
         <input type="hidden" name="vermietung_id">
+        <!-- Issue #63: Segmented Control aus dem PHP-Enum gerendert, damit
+             Werte und Labels nicht doppelt gepflegt werden. Erste Art
+             ('vermietung') ist vorausgewählt - der häufigste Fall. -->
+        <fieldset class="segmented">
+            <legend>Art</legend>
+            <?php foreach ($appData['vermietungArten'] as $i => $art): ?>
+                <label>
+                    <input type="radio" name="art" value="<?= e($art['wert']) ?>"<?= $i === 0 ? ' checked' : '' ?>>
+                    <span><?= e($art['label']) ?></span>
+                </label>
+            <?php endforeach; ?>
+        </fieldset>
         <label>Sportheim
             <select name="sportheim_id" required id="vermietung-sportheim"></select>
         </label>
@@ -280,8 +303,8 @@
 
 <!-- Issue #64: Sperrung/Einschränkung bearbeiten, Einstieg über den
      Detail-Dialog (Anlegen bleibt der Verfügbarkeitsansicht vorbehalten,
-     CLAUDE.md Abschnitt 8: "+ Eintragen" bietet Belegung/Spiel/Vermietung
-     an) - dieselbe Formular-Struktur wie #restriction-dialog in
+     CLAUDE.md Abschnitt 8: "+ Eintragen" bietet Belegung/Spiel/
+     Sportheim-Termin an) - dieselbe Formular-Struktur wie #restriction-dialog in
      verfuegbarkeit.php. -->
 <dialog id="restriction-dialog" class="sheet">
     <h3 id="restriction-title">Sperrung/Einschränkung bearbeiten</h3>

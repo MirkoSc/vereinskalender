@@ -251,6 +251,9 @@
 
         // Vermietungen (Issue #36): venue-level hint layer, never touching a
         // pitch timeline - a rented Sportheim never turns a pitch "gesperrt".
+        // Issue #63: all arts (Vermietung/Putzen/Sitzung) appear here, each
+        // labelled by its own art - the non-blocking rule is identical for
+        // all of them. Key order must match AvailabilityCalculator (parity).
         const vermietungenByVenue = new Map();
         for (const vermietung of bundle.vermietungen ?? []) {
             if (vermietung.venue_id === null || !overlapsRange(vermietung, von, bis)) {
@@ -262,6 +265,7 @@
             vermietungenByVenue.get(vermietung.venue_id).push({
                 von: vermietung.start,
                 bis: vermietung.ende,
+                art: vermietung.art ?? 'vermietung',
                 titel: vermietung.anlass,
                 raum_text: vermietung.raum_text,
             });

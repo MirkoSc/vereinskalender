@@ -7,6 +7,7 @@ namespace App\Service\Kalender;
 use App\Domain\AggregateType;
 use App\Domain\EventContext;
 use App\Domain\EventType;
+use App\Domain\VermietungArt;
 use App\Repository\SportheimRaumRepository;
 use App\Repository\SportheimRepository;
 use App\Repository\VermietungRepository;
@@ -64,6 +65,7 @@ final readonly class VermietungService
 
         $this->eventStore->append(AggregateType::Vermietung, $id, EventType::Deleted, [
             'sportheim_id' => (int) $vermietung['sportheim_id'],
+            'art' => VermietungArt::fromPayload($vermietung['art'] ?? null)->value,
             'raum_ids' => array_map(intval(...), (array) json_decode((string) $vermietung['raum_ids'], true)),
             'von' => (string) $vermietung['von'],
             'bis' => (string) $vermietung['bis'],
@@ -85,6 +87,14 @@ final readonly class VermietungService
         $sportheim = $sportheimId > 0 ? $this->sportheime->find($sportheimId) : null;
         if ($sportheim === null || (int) $sportheim['aktiv'] !== 1) {
             $errors['sportheim_id'] = 'Bitte ein vorhandenes, aktives Sportheim wählen.';
+        }
+
+        // Issue #63: a missing art stays valid and means 'vermietung' (older
+        // clients keep writing); only an unknown value is rejected.
+        $artInput = trim((string) ($input['art'] ?? ''));
+        $art = $artInput === '' ? VermietungArt::Vermietung : VermietungArt::tryFrom($artInput);
+        if ($art === null) {
+            $errors['art'] = 'Bitte eine gültige Art wählen.';
         }
 
         $raumIds = array_values(array_unique(array_map(intval(...), (array) ($input['raum_ids'] ?? []))));
@@ -124,6 +134,7 @@ final readonly class VermietungService
 
         return [
             'sportheim_id' => $sportheimId,
+            'art' => $art->value,
             'raum_ids' => $raumIds,
             'von' => $von,
             'bis' => $bis,

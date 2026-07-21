@@ -302,6 +302,41 @@ final class AvailabilityServiceTest extends DatabaseTestCase
         );
     }
 
+    /**
+     * Issue #63: every art shows up in the same hint layer, carries its own
+     * art value for the per-art wording, and none of them ever blocks the
+     * pitch.
+     */
+    public function testAllSportheimTerminArtenAppearAsHintWithoutBlocking(): void
+    {
+        $sportheimId = $this->createSportheim($this->venueId);
+        $pitchWithSportheim = $this->createPitch($this->venueId, 'Rasenplatz Sportheim', '#0969da', 'RS', $sportheimId);
+        $this->createVermietung($sportheimId, '2026-08-04 09:00:00', '2026-08-04 10:00:00', 'Grundreinigung', [], 'putzen');
+        $this->createVermietung($sportheimId, '2026-08-04 18:00:00', '2026-08-04 19:00:00', 'Vorstandssitzung', [], 'sitzung');
+        $this->createVermietung($sportheimId, '2026-08-04 20:00:00', '2026-08-04 21:00:00', 'Geburtstagsfeier', [], 'vermietung');
+
+        $result = $this->availabilityService()->compute('2026-08-04', '2026-08-04');
+
+        $vermietungen = $result['venues'][0]['vermietungen'];
+        self::assertSame(
+            ['putzen', 'sitzung', 'vermietung'],
+            array_column($vermietungen, 'art'),
+        );
+
+        $pitchDay = null;
+        foreach ($result['venues'][0]['plaetze'] as $pitch) {
+            if ($pitch['id'] === $pitchWithSportheim) {
+                $pitchDay = $pitch['tage'][0];
+            }
+        }
+        self::assertNotNull($pitchDay);
+        self::assertSame(
+            [['von' => '08:00', 'bis' => '22:00', 'zustand' => 'frei']],
+            $pitchDay['intervalle'],
+            'no Sportheim-Termin art may ever turn the pitch gesperrt',
+        );
+    }
+
     public function testPitchWithoutSportheimShowsNoVermietungHint(): void
     {
         $otherVenueId = $this->createVenue('Anderer Verein');

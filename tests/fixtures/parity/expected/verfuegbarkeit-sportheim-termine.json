@@ -1,6 +1,6 @@
 {
-    "von": "2026-08-27",
-    "bis": "2026-08-27",
+    "von": "2026-09-14",
+    "bis": "2026-09-14",
     "nutzungszeiten": {
         "von": "08:00",
         "bis": "22:00"
@@ -14,11 +14,25 @@
             "hinweise": [],
             "vermietungen": [
                 {
-                    "von": "2026-08-27T16:00:00",
-                    "bis": "2026-08-27T22:00:00",
-                    "art": "vermietung",
-                    "titel": "Geburtstagsfeier",
+                    "von": "2026-09-14T08:00:00",
+                    "bis": "2026-09-14T10:00:00",
+                    "art": "putzen",
+                    "titel": "Grundreinigung",
                     "raum_text": "GR"
+                },
+                {
+                    "von": "2026-09-14T14:00:00",
+                    "bis": "2026-09-14T17:00:00",
+                    "art": "vermietung",
+                    "titel": "Kindergeburtstag",
+                    "raum_text": "gesamtes Sportheim"
+                },
+                {
+                    "von": "2026-09-14T19:00:00",
+                    "bis": "2026-09-14T21:00:00",
+                    "art": "sitzung",
+                    "titel": "Vorstandssitzung",
+                    "raum_text": "KB"
                 }
             ],
             "plaetze": [
@@ -30,7 +44,7 @@
                     "adresse": null,
                     "tage": [
                         {
-                            "datum": "2026-08-27",
+                            "datum": "2026-09-14",
                             "intervalle": [
                                 {
                                     "von": "08:00",
@@ -50,7 +64,7 @@
                     "adresse": "Nebenweg 2",
                     "tage": [
                         {
-                            "datum": "2026-08-27",
+                            "datum": "2026-09-14",
                             "intervalle": [
                                 {
                                     "von": "08:00",
@@ -80,7 +94,7 @@
                     "adresse": null,
                     "tage": [
                         {
-                            "datum": "2026-08-27",
+                            "datum": "2026-09-14",
                             "intervalle": [
                                 {
                                     "von": "08:00",

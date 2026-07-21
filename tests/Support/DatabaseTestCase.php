@@ -273,15 +273,24 @@ abstract class DatabaseTestCase extends TestCase
 
     /**
      * @param list<int> $raumIds
+     * @param string $art Issue #63: 'vermietung' | 'putzen' | 'sitzung' - the
+     *        default keeps every pre-#63 caller behaving exactly as before
      */
-    protected function createVermietung(int $sportheimId, string $von, string $bis, string $titel = 'Geburtstagsfeier', array $raumIds = []): int
-    {
+    protected function createVermietung(
+        int $sportheimId,
+        string $von,
+        string $bis,
+        string $titel = 'Geburtstagsfeier',
+        array $raumIds = [],
+        string $art = 'vermietung',
+    ): int {
         return $this->eventStore()->append(
             \App\Domain\AggregateType::Vermietung,
             null,
             \App\Domain\EventType::Created,
             [
                 'sportheim_id' => $sportheimId,
+                'art' => $art,
                 'raum_ids' => $raumIds,
                 'von' => $von,
                 'bis' => $bis,
