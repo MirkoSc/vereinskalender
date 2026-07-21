@@ -1059,7 +1059,13 @@
     const detailDialog = document.querySelector('#detail-dialog');
     const detailContent = document.querySelector('#detail-content');
     const detailActions = document.querySelector('#detail-actions');
-    document.querySelector('#detail-close').addEventListener('click', () => detailDialog.close());
+    // Issue #68: "Schließen" ist Teil derselben Button-Leiste wie die
+    // typspezifischen Aktionen; showDetail() leert #detail-actions bei
+    // jedem Aufruf und hängt den Button (dieselbe Referenz, derselbe
+    // Listener) am Ende jedes Zweigs wieder an - so bleibt er für alle
+    // Termintypen die letzte Aktion in der Leiste.
+    const detailClose = document.querySelector('#detail-close');
+    detailClose.addEventListener('click', () => detailDialog.close());
 
     const zeile = (label, wert) => {
         const p = document.createElement('p');
@@ -1149,7 +1155,7 @@
 
             const deleteButton = document.createElement('button');
             deleteButton.type = 'button';
-            deleteButton.className = 'linklike danger';
+            deleteButton.className = 'button danger';
             deleteButton.textContent = 'Belegung löschen (alle Termine)';
             deleteButton.addEventListener('click', async () => {
                 if (!confirm('Diese wiederkehrende Belegung komplett löschen?')) {
@@ -1193,7 +1199,7 @@
 
                 const deleteButton = document.createElement('button');
                 deleteButton.type = 'button';
-                deleteButton.className = 'linklike danger';
+                deleteButton.className = 'button danger';
                 deleteButton.textContent = 'Spiel löschen';
                 deleteButton.addEventListener('click', async () => {
                     if (!confirm('Dieses Spiel endgültig löschen?')) {
@@ -1249,7 +1255,7 @@
 
             const deleteButton = document.createElement('button');
             deleteButton.type = 'button';
-            deleteButton.className = 'linklike danger';
+            deleteButton.className = 'button danger';
             deleteButton.textContent = 'Sperrung löschen';
             deleteButton.addEventListener('click', async () => {
                 if (!confirm('Diese Sperrung/Einschränkung löschen?')) {
@@ -1288,7 +1294,7 @@
 
             const deleteButton = document.createElement('button');
             deleteButton.type = 'button';
-            deleteButton.className = 'linklike danger';
+            deleteButton.className = 'button danger';
             deleteButton.textContent = 'Vermietung löschen';
             deleteButton.addEventListener('click', async () => {
                 if (!confirm('Diese Vermietung endgültig löschen?')) {
@@ -1305,6 +1311,12 @@
 
             detailActions.append(editButton, deleteButton);
         }
+
+        // Issue #68: "Schließen" gehört für jeden Termintyp ans Ende
+        // derselben Leiste; replaceChildren() oben hat den Button (falls
+        // vom letzten Aufruf noch angehängt) bereits entfernt, append()
+        // hängt dieselbe Node - inkl. Listener - wieder an.
+        detailActions.append(detailClose);
 
         detailDialog.showModal();
     };
