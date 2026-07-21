@@ -155,7 +155,7 @@ sind KEINE Projektionen.
 - **event**: siehe Abschnitt 4 – Quelle der Wahrheit.
 - **setting** (key/value): Konfiguration in der DB, nicht in Dateien
   (landet so im Backup). U. a. Auswärts-Farbe, Nutzungszeiten, Update-Kanal,
-  Admin-Mail.
+  Admin-Mail, App-Name/App-Name-Kurz (Issue #62).
 
 ## 4. Event Sourcing (Kern-Invarianten)
 
@@ -540,9 +540,21 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   sichtbar sind), **kein** Zeitfenster-Hinweis mehr, **Schreiben gesperrt**.
   Ein Bundle mit veraltetem `format` gilt als „keine Daten" und wird beim
   nächsten Online-Besuch ersetzt. `manifest.webmanifest`-`start_url` zeigt auf
-  `/kalender`; der Service Worker cached nur noch `/kalender` (nicht mehr die
-  Alt-Routen) und mappt `/belegung`/`/spielplan` offline auf die gecachte
-  Kalenderseite, damit alte Bookmarks funktionieren.
+  `/kalender`; der Service Worker cached die App-Shell-Seiten `/`,
+  `/kalender`, `/verfuegbarkeit`, `/legende` (Issue #66: `/legende` rendert
+  offline vollständig aus derselben `appData` wie online – dieselbe
+  `[data-legende]`-Komponente wie Startseiten-Details und Kalender-Overlay,
+  Abschnitt 8 oben) und mappt `/belegung`/`/spielplan` offline auf die
+  gecachte Kalenderseite, damit alte Bookmarks funktionieren. **`/abonnieren`
+  wird bewusst NICHT gecacht** (Issue #66): seine Abo-Links brauchen ohnehin
+  eine Netzwerkverbindung. Der Navigationslink dorthin wird clientseitig
+  deaktiviert, sobald `navigator.onLine` false ist (`public/js/app.js`, auf
+  jeder Seite geladen – anders als `offline.js`, das nur auf Kalender/
+  Verfügbarkeit läuft); ein direkter Aufruf offline bekommt vom Service
+  Worker (Fetch-Handler-`catch`) eine eigene, im SW-Template eingebettete
+  Hinweisseite statt eines Browserfehlers. Kein Bundle-`format`-Bump nötig
+  (betrifft nur die App-Shell-Liste und rein clientseitige Navigation, keine
+  Bundle-Shape).
 - **Web-Push**: Kategorien Platzrestriktion (beide Arten) und
   Spielverlegung/-absage, je Team filterbar; Opt-in nur per Klick.
   push_subscription + notification_queue (mit ausgeloest_von_event_id);
@@ -645,6 +657,21 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   PWAs übernehmen ein neues Icon erst bei Neuinstallation (Plattform-
   Verhalten). Dateiname/Zeitstempel des Uploads landen als Setting, die
   Bilddatei selbst nie im Event-Log (Abschnitt 3).
+- **App-Name** (Issue #62): Settings `app_name` (Pflicht, Default
+  „Vereinskalender" – Bestandsinstallationen ändern sich beim Update nicht,
+  Migration 015 hebt das zuvor ungenutzte Setting `vereinsname` auf den
+  neuen Schlüssel) und `app_name_kurz` (optional, leer → `app_name` auf
+  12 Zeichen gekürzt als `manifest.webmanifest`-`short_name`). Pflege im
+  Admin bei den übrigen Einstellungen, direkt neben dem Vereinswappen.
+  Verwendet in `<title>` (Suffix „ – App-Name" außer auf der Startseite,
+  die den App-Namen allein zeigt), Kopfzeile/Footer, `manifest.webmanifest`
+  (`name`/`short_name`), Push-Fallback-Titel (`__APP_NAME__`-Platzhalter in
+  `sw.template.js`, analog `__VERSION__`), Alarm-Mail-Betreffen
+  (`[App-Name] ...`) und `X-WR-CALNAME` der ICS-Feeds. Derselbe Hinweis wie
+  beim Wappen: bereits installierte PWAs übernehmen einen neuen Namen erst
+  bei Neuinstallation. `View` reicht `appName` global an beide Layouts
+  weiter (analog `wappenVorhanden`), kein Bundle-`format`-Bump nötig (rein
+  serverseitig bzw. im SW-Template verwendet, keine Bundle-Shape-Änderung).
 
 ## 9. Self-Update, Backup, Installer
 
