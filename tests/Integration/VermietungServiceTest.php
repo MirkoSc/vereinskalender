@@ -7,6 +7,7 @@ namespace App\Tests\Integration;
 use App\Repository\VermietungRepository;
 use App\Service\ValidationException;
 use App\Tests\Support\DatabaseTestCase;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
  * Issue #36: Vermietungen sind ein öffentlicher Ebene-2-Schreibpfad (analog
@@ -181,5 +182,109 @@ final class VermietungServiceTest extends DatabaseTestCase
             ))
             ->fetch();
         self::assertSame('deleted', $event['event_typ']);
+    }
+
+    // ---- Issue #63: Arten (vermietung | putzen | sitzung) ----
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function arten(): array
+    {
+        return ['vermietung' => ['vermietung'], 'putzen' => ['putzen'], 'sitzung' => ['sitzung']];
+    }
+
+    #[DataProvider('arten')]
+    public function testCreatePersistsArt(string $art): void
+    {
+        $venueId = $this->createVenue();
+        $sportheimId = $this->createSportheim($venueId);
+
+        $id = $this->vermietungService()->create([
+            'sportheim_id' => (string) $sportheimId,
+            'art' => $art,
+            'von' => '2026-08-01T18:00',
+            'bis' => '2026-08-01T22:00',
+            'titel' => 'Anlass',
+        ], $this->context());
+
+        self::assertSame($art, new VermietungRepository($this->pdo())->find($id)['art']);
+    }
+
+    /**
+     * Older clients (and every pre-#63 caller) send no art at all - that
+     * stays valid and means 'vermietung', matching the replay upcast.
+     */
+    public function testCreateWithoutArtDefaultsToVermietung(): void
+    {
+        $venueId = $this->createVenue();
+        $sportheimId = $this->createSportheim($venueId);
+
+        $id = $this->vermietungService()->create([
+            'sportheim_id' => (string) $sportheimId,
+            'von' => '2026-08-01T18:00',
+            'bis' => '2026-08-01T22:00',
+            'titel' => 'Geburtstagsfeier',
+        ], $this->context());
+
+        self::assertSame('vermietung', new VermietungRepository($this->pdo())->find($id)['art']);
+    }
+
+    public function testCreateRejectsUnknownArt(): void
+    {
+        $venueId = $this->createVenue();
+        $sportheimId = $this->createSportheim($venueId);
+
+        try {
+            $this->vermietungService()->create([
+                'sportheim_id' => (string) $sportheimId,
+                'art' => 'grillfest',
+                'von' => '2026-08-01T18:00',
+                'bis' => '2026-08-01T22:00',
+                'titel' => 'Anlass',
+            ], $this->context());
+            self::fail('expected ValidationException');
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey('art', $e->getErrors());
+        }
+    }
+
+    public function testUpdateChangesArt(): void
+    {
+        $venueId = $this->createVenue();
+        $sportheimId = $this->createSportheim($venueId);
+        $id = $this->createVermietung($sportheimId, '2026-08-01 18:00:00', '2026-08-01 22:00:00', 'Anlass', [], 'vermietung');
+
+        $this->vermietungService()->update($id, [
+            'sportheim_id' => (string) $sportheimId,
+            'art' => 'sitzung',
+            'von' => '2026-08-01T18:00',
+            'bis' => '2026-08-01T22:00',
+            'titel' => 'Vorstandssitzung',
+        ], $this->context());
+
+        self::assertSame('sitzung', new VermietungRepository($this->pdo())->find($id)['art']);
+    }
+
+    /**
+     * The delete event rebuilds the full picture from the projection row
+     * (payloads are always complete, never diffs) - art must be part of it,
+     * otherwise a replay of the deletion would lose it.
+     */
+    public function testDeleteEventCarriesArt(): void
+    {
+        $venueId = $this->createVenue();
+        $sportheimId = $this->createSportheim($venueId);
+        $id = $this->createVermietung($sportheimId, '2026-08-01 08:00:00', '2026-08-01 10:00:00', 'Grundreinigung', [], 'putzen');
+
+        $this->vermietungService()->delete($id, $this->context());
+
+        $event = $this->pdo()
+            ->query(sprintf(
+                'SELECT * FROM event WHERE aggregat_typ = "vermietung" AND aggregat_id = %d ORDER BY id DESC LIMIT 1',
+                $id,
+            ))
+            ->fetch();
+        self::assertSame('putzen', json_decode((string) $event['payload'], true)['art']);
     }
 }

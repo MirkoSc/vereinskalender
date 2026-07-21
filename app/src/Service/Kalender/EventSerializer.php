@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service\Kalender;
 
 use App\Domain\Occurrence;
+use App\Domain\VermietungArt;
 
 /**
  * Serializes concrete calendar entities (slot occurrence, restriction,
@@ -206,13 +207,19 @@ final readonly class EventSerializer
             ? 'gesamtes Sportheim'
             : implode('+', array_map(static fn(array $r): string => (string) $r['kuerzel'], $raeume));
 
+        // Issue #63: the title prefix names the art ("Putzen: ..."), so the
+        // label is correct offline too - the bundle ships this string
+        // pre-serialized.
+        $art = VermietungArt::fromPayload($row['art'] ?? null);
+
         return [
             'id' => 'vermietung-' . (int) $row['id'],
             'typ' => 'vermietung',
             'vermietung_id' => (int) $row['id'],
+            'art' => $art->value,
             'start' => str_replace(' ', 'T', (string) $row['von']),
             'ende' => str_replace(' ', 'T', (string) $row['bis']),
-            'titel' => sprintf('Vermietung: %s (%s)', (string) $row['titel'], $raumText),
+            'titel' => sprintf('%s: %s (%s)', $art->label(), (string) $row['titel'], $raumText),
             'anlass' => (string) $row['titel'],
             'sportheim_id' => (int) $row['sportheim_id'],
             'sportheim_name' => $sportheim !== null ? (string) $sportheim['name'] : '',

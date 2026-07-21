@@ -50,6 +50,7 @@
         "id": "vermietung-301",
         "typ": "vermietung",
         "vermietung_id": 301,
+        "art": "vermietung",
         "start": "2026-08-04T18:00:00",
         "ende": "2026-08-04T23:59:00",
         "titel": "Vermietung: Vereinsfeier (gesamtes Sportheim)",

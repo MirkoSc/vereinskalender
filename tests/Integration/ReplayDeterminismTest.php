@@ -264,6 +264,55 @@ final class ReplayDeterminismTest extends DatabaseTestCase
     }
 
     /**
+     * Issue #63: vermietung events written before migration 017 carry no art
+     * key at all. The upcast (art -> 'vermietung', same idiom as
+     * spielfrei/pitch_manuell) must be deterministic, both on the initial
+     * write and on replay - and must match the column DEFAULT, otherwise
+     * TableProjector would write NULL for the missing key.
+     */
+    public function testLegacyVermietungEventWithoutArtUpcastsOnReplay(): void
+    {
+        $venueId = $this->createVenue();
+        $sportheimId = $this->createSportheim($venueId);
+
+        // events written before migration 017 carry no art key at all
+        $this->eventStore()->append(AggregateType::Vermietung, null, EventType::Created, [
+            'sportheim_id' => $sportheimId,
+            'raum_ids' => [],
+            'von' => '2026-08-04 18:00:00',
+            'bis' => '2026-08-04 23:00:00',
+            'titel' => 'Vereinsfeier',
+            'kontakt' => null,
+            'bemerkung' => null,
+        ], $this->context());
+
+        $vermietung = $this->dumpTable('vermietung')[0];
+        self::assertSame('vermietung', $vermietung['art']);
+
+        $state = $this->runRebuildToCompletion($this->rebuildService());
+        self::assertSame([], $state->skipped);
+        self::assertSame($vermietung, $this->dumpTable('vermietung')[0]);
+    }
+
+    /**
+     * Issue #63: a non-default art survives a rebuild unchanged - the upcast
+     * must not overwrite an explicitly stored value.
+     */
+    public function testExplicitVermietungArtSurvivesReplay(): void
+    {
+        $venueId = $this->createVenue();
+        $sportheimId = $this->createSportheim($venueId);
+        $this->createVermietung($sportheimId, '2026-08-04 08:00:00', '2026-08-04 10:00:00', 'Grundreinigung', [], 'putzen');
+
+        $vermietung = $this->dumpTable('vermietung')[0];
+        self::assertSame('putzen', $vermietung['art']);
+
+        $state = $this->runRebuildToCompletion($this->rebuildService());
+        self::assertSame([], $state->skipped);
+        self::assertSame($vermietung, $this->dumpTable('vermietung')[0]);
+    }
+
+    /**
      * Issue #36: sportheim/sportheim_raum/vermietung create/update/delete
      * (incl. deactivating a Sportheim/room and an empty raum_ids "whole
      * house" Vermietung) must reproduce identically after a rebuild.
@@ -333,9 +382,11 @@ final class ReplayDeterminismTest extends DatabaseTestCase
         ], $context)->aggregateId;
         self::assertGreaterThan(0, $pitchId);
 
-        // empty raum_ids = whole house
+        // empty raum_ids = whole house. Issue #63: the update also switches
+        // the art, so a changed art is covered by the determinism check.
         $vermietungId = $store->append(AggregateType::Vermietung, null, EventType::Created, [
             'sportheim_id' => $sportheimId,
+            'art' => 'vermietung',
             'raum_ids' => [],
             'von' => '2026-08-01 18:00:00',
             'bis' => '2026-08-01 22:00:00',
@@ -345,29 +396,32 @@ final class ReplayDeterminismTest extends DatabaseTestCase
         ], $context)->aggregateId;
         $store->append(AggregateType::Vermietung, $vermietungId, EventType::Updated, [
             'sportheim_id' => $sportheimId,
+            'art' => 'sitzung',
             'raum_ids' => [$raumId],
             'von' => '2026-08-01 18:00:00',
             'bis' => '2026-08-01 23:00:00',
-            'titel' => 'Geburtstagsfeier (verlängert)',
+            'titel' => 'Vorstandssitzung',
             'kontakt' => 'Max Mustermann',
             'bemerkung' => null,
         ], $context);
 
         $deletedVermietungId = $store->append(AggregateType::Vermietung, null, EventType::Created, [
             'sportheim_id' => $sportheimId,
+            'art' => 'putzen',
             'raum_ids' => [],
             'von' => '2026-09-01 18:00:00',
             'bis' => '2026-09-01 22:00:00',
-            'titel' => 'Abgesagte Feier',
+            'titel' => 'Abgesagte Grundreinigung',
             'kontakt' => null,
             'bemerkung' => null,
         ], $context)->aggregateId;
         $store->append(AggregateType::Vermietung, $deletedVermietungId, EventType::Deleted, [
             'sportheim_id' => $sportheimId,
+            'art' => 'putzen',
             'raum_ids' => [],
             'von' => '2026-09-01 18:00:00',
             'bis' => '2026-09-01 22:00:00',
-            'titel' => 'Abgesagte Feier',
+            'titel' => 'Abgesagte Grundreinigung',
             'kontakt' => null,
             'bemerkung' => null,
         ], $context);
