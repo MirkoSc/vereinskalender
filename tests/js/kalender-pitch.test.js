@@ -6,7 +6,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-    pitchGruppierungAktiv, pitchEventFarbe, pitchEventPraefix, pitchFarbeAktiv,
+    pitchGruppierungAktiv, pitchEventFarbe, pitchEventPraefix, platzFarbDarstellung,
 } = require('../../public/js/kalender-pitch.js');
 
 test('pitchGruppierungAktiv ist ohne Ressourcen-Spalten aktiv (Monat, oder Tag/Woche unter der Breiten-Schwelle)', () => {
@@ -46,20 +46,53 @@ test('pitchEventPraefix: Platz-Kürzel vor Platzname, Platzname als Fallback ohn
     assert.equal(pitchEventPraefix({ typ: 'belegung', pitch_kuerzel: null, pitch_name: null }), null, 'kein Platz zugeordnet');
 });
 
-// Issue #40: die "Alle Plätze"-Gruppierung (pitchGruppierungAktiv) darf die
-// Terminliste (listNachlade, mobiler Default für Belegung UND Spielplan)
-// nicht mehr übersteuern - der Team/Spielstätte-Umschalter muss dort
-// sichtbar wirken. In Grid-Ansichten (Ressourcen-Ersatz, Issue #6/#11)
-// bleibt die Platzfarbe unverändert.
-test('pitchFarbeAktiv: Platzfarbe gilt in Grid-Ansichten wie bisher', () => {
-    assert.equal(pitchFarbeAktiv(true, false), true);
+// Issue #57: die vollständige Matrix "Darstellung × Breite × Platzfilter".
+// Bewusst über hatResourceSpalten() aus kalender-ansicht.js komponiert -
+// getestet wird die Entscheidung, die kalender.js beim Rendern eines Termins
+// trifft, nicht eine künstlich isolierte Teilfrage. Die Breite geht dabei nur
+// über die Ressourcen-Spalten-Schwelle ein, sonst nirgends.
+const { hatResourceSpalten } = require('../../public/js/kalender-ansicht.js');
+
+const darstellung = (modus, breit, pitchFilter = '') => platzFarbDarstellung(
+    modus, hatResourceSpalten(modus, breit), pitchFilter,
+);
+
+test('platzFarbDarstellung: Matrix Darstellung × Breite, ohne Platzfilter', () => {
+    // schmal (<1100px): keine Ressourcen-Spalten, Tag/Woche tragen die
+    // Platzfarbe als Hintergrund (Ersatz für die fehlenden Spalten)
+    assert.equal(darstellung('tag', false), 'hintergrund');
+    assert.equal(darstellung('woche', false), 'hintergrund');
+    // breit: Tag/Woche haben Platz-SPALTEN - ein Hintergrund wäre doppelt
+    assert.equal(darstellung('tag', true), 'keine');
+    assert.equal(darstellung('woche', true), 'keine');
+    // Monat kennt nie Spalten, kann aber auch keinen Hintergrund zeigen
+    // (dayGridMonth rendert Dot-Events) - dritter Farbpunkt statt dessen
+    assert.equal(darstellung('monat', false), 'punkt');
+    assert.equal(darstellung('monat', true), 'punkt');
+    // Terminliste: chronologischer Feed, kein Spalten-Ersatz nötig (Issue #40)
+    assert.equal(darstellung('liste', false), 'keine');
+    assert.equal(darstellung('liste', true), 'keine');
 });
 
-test('pitchFarbeAktiv: in der Terminliste gewinnt immer der Team/Spielstätte-Modus (Issue #40)', () => {
-    assert.equal(pitchFarbeAktiv(true, true), false);
+test('platzFarbDarstellung: ein gewählter Einzelplatz schaltet die Platzfarbe überall ab', () => {
+    for (const modus of ['tag', 'woche', 'monat', 'liste']) {
+        for (const breit of [false, true]) {
+            assert.equal(
+                darstellung(modus, breit, '3'), 'keine',
+                `${modus}/${breit ? 'breit' : 'schmal'} mit Einzelplatz`,
+            );
+        }
+    }
 });
 
-test('pitchFarbeAktiv: ohne aktive Gruppierung bleibt es beim Modus, unabhängig von der Ansicht', () => {
-    assert.equal(pitchFarbeAktiv(false, false), false);
-    assert.equal(pitchFarbeAktiv(false, true), false);
+// Regression zu Issue #57: die Entscheidung hängt AUSSCHLIESSLICH an den drei
+// Eingaben. Genau daran scheiterte die alte Umsetzung - sie backte das
+// Ergebnis beim Fetch in den Event-Datensatz ein und benutzte es nach einem
+// Darstellungswechsel weiter (FullCalendar refetcht bei engerer Range nicht).
+// Der Wechsel Monat→Woche (breit) ist der reproduzierte Fall: gleiche Events,
+// anderes Ergebnis.
+test('platzFarbDarstellung: derselbe Termin wechselt mit der Darstellung das Ergebnis', () => {
+    assert.equal(darstellung('monat', true), 'punkt');
+    assert.equal(darstellung('woche', true), 'keine');
+    assert.equal(darstellung('woche', false), 'hintergrund');
 });
