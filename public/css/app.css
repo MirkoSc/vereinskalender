@@ -455,10 +455,60 @@ dialog.sheet::backdrop {
     white-space: nowrap;
 }
 
+/* Issue #67: die Kürzungsreihenfolge aus #58 (oben) setzt eine BEGRENZTE
+   Breite des Termin-Blocks voraus - flex-shrink kann nur schrumpfen, wenn
+   es eine Vorgabe gibt, gegen die geschrumpft wird. In Tag/Woche/Monat
+   liefert die Grid-Geometrie diese Vorgabe (der Block bekommt seine Breite
+   aus Spalte/Zelle), in der Terminliste NICHT: FullCalendar rendert sie als
+   `table.fc-list-table` mit `table-layout: auto`, und dort sizen sich die
+   Spalten am INHALT. Das `white-space: nowrap` von .ev-titel-text/.ev-praefix
+   macht deren min-content-Breite gleich der vollen Textlänge; diese Breite
+   ist für eine Auto-Layout-Tabelle eine harte Untergrenze und wandert
+   ungebremst nach oben: Zelle → Spalte → Tabelle. `overflow: hidden` auf
+   den Kindern verhindert das nicht - es begrenzt die Darstellung, nicht den
+   Platzbedarf, den die Zelle nach oben meldet. Die Tabelle wurde so breiter
+   als ihr `.fc-scroller` (der nur vertikal scrollt, overflow-x: visible),
+   der Überschuss lief bis zu body/html durch und erzeugte den gemeldeten
+   horizontalen Scrollbalken AM DOKUMENT - nicht am Termin und nicht am
+   Scroller. Die #58-Regeln greifen dabei durchaus (flex-direction: row,
+   min-width: 0 sind aktiv), sie laufen nur ins Leere.
+   `max-width: 0` auf der Titel-Zelle deckelt deren Beitrag zur
+   Spaltenbreite: die Spalte kann keine Breite mehr aus ihrem Inhalt
+   ableiten und bekommt nur noch den Platz, der nach den beiden
+   Inhalts-Spalten (Uhrzeit/Grafik, von FullCalendar per `width: 1px` +
+   nowrap bewusst schmal gehalten) übrig ist. Damit hat der Flex-Container
+   endlich eine definite Breite - die Kürzungsreihenfolge aus #58 wirkt und
+   der Titel bekommt seine Ellipsis. Bewusst NICHT `table-layout: fixed`:
+   das würde die Spaltenbreiten aus der ersten Zeile ziehen, und
+   FullCalendars `<thead>` hängt per `position: absolute; left: -10000px`
+   ausserhalb des Flusses - fixed fiele auf die erste Body-Zeile zurück
+   (`.fc-list-day` mit colspan=3, also EINE Zelle) und teilte alle drei
+   Spalten gleich breit auf; Uhrzeit-Spalte und Titel würden beide
+   unbrauchbar. `max-width: 0` lässt FullCalendars eigene Spalten-Logik
+   unangetastet. Der volle Text bleibt wie in #58 über title/aria-label am
+   .ev-titel und den Detail-Dialog erreichbar. */
+.fc .fc-list-table td.fc-list-event-title {
+    max-width: 0;
+}
+
 .ev-belegung .fc-list-event-dot,
 .ev-spiel .fc-list-event-dot,
 .ev-vermietung .fc-list-event-dot {
     display: none;
+}
+
+/* Issue #67: mit ausgeblendetem Punkt (Regel darüber - die Farbpunkte stehen
+   bei uns im Titel) bleibt FullCalendars Grafik-Spalte als reine Polsterung
+   übrig. Seit die Titel-Spalte nur noch den ÜBRIGEN Platz bekommt (max-width
+   oben), geht dieser Rest direkt vom Titel ab - bei 360 px waren das 14 von
+   188 px, also gut 7 % der Titelbreite für eine leere Zelle. Sperrungen
+   fehlen in der Liste bewusst (wie schon bei der Punkt-Regel darüber) - sie
+   behalten FullCalendars eigenen Punkt und brauchen die Spalte weiterhin.
+   Die Selektorlänge ist Absicht: FullCalendars `.fc .fc-list-table td
+   {padding:8px 14px}` (0,2,1) und `.fc-direction-ltr .fc-list-table
+   .fc-list-event-graphic` (0,3,0) schlagen eine kurze Fassung. */
+.fc .fc-list-table tr:is(.ev-belegung, .ev-spiel, .ev-vermietung) td.fc-list-event-graphic {
+    padding: 0;
 }
 
 /* Issue #36: Vermietung eigener, gedeckter Look statt Platzfarbe (die sie
