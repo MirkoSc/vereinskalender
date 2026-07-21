@@ -352,6 +352,16 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   Filter „Vermietungen" (`filter-vermietung`, dreistufig wie `filter-manuell`):
   clientseitig, `/api/events` kennt ihn nicht; „Nur Vermietungen" blendet
   auch Trainings/Spiele/Sperrungen aus.
+- Filter „Termintyp" (Issue #56, `filter-typ`, dreistufig: Alle / Nur Spiele /
+  Nur Trainings): clientseitig wie manuell/vermietung, `/api/events` kennt ihn
+  nicht (Offline-Parität, Ressourcen-Spalten und Nachlade-Cache bleiben
+  unberührt). Wirkt auf das `typ`-Feld im Event-Payload (`spiel`/`belegung`);
+  beide Stufen blenden dabei auch Sperrungen und Vermietungen aus. UND-
+  verknüpft mit den übrigen Filtern (z. B. „Nur Spiele" + „Nur manuelle" = nur
+  manuell angelegte Spiele). Liefert eine Kombination kein Ergebnis, ersetzt
+  ein Hinweistext mit den aktiven Filternamen die sonst stumm leere Ansicht
+  (`#kalender-leer-hinweis`, aus den bereits geladenen/gefilterten Events pro
+  Darstellung abgeleitet - kein Zusatz-Request).
 - Spielstätten-Auflösung zur **Anzeigezeit** im einen `VenueMatcher`-Service
   (Anzeige UND Import): erster `venue_begriff` nach sortierung,
   case-insensitive in `ort_text` → venue + Farbe; kein Treffer, aber Platz

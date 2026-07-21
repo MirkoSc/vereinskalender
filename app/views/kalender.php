@@ -23,6 +23,10 @@
 
     <ul id="filter-chips" class="chip-row" aria-label="Aktive Filter"></ul>
 
+    <!-- Issue #56: Hinweis statt stumm leerer Ansicht bei einer Filter-
+         kombination ohne Treffer (z. B. "Nur Spiele" + "Nur manuelle"). -->
+    <p id="kalender-leer-hinweis" class="liste-lade-indikator" hidden aria-live="polite"></p>
+
     <div id="kalender"></div>
     <p id="liste-lade-indikator" class="liste-lade-indikator" hidden aria-live="polite">Lädt weitere Termine…</p>
     <p id="liste-erschoepft-hinweis" class="liste-lade-indikator" hidden>Keine weiteren Termine</p>
@@ -60,6 +64,19 @@
         Platz
         <select id="filter-pitch">
             <option value="">Alle Plätze</option>
+        </select>
+    </label>
+
+    <!-- Issue #56: Termintyp Spiel/Training ein-/ausblenden; rein
+         clientseitig wie Platz-/Manuell-/Vermietungsfilter, /api/events
+         kennt ihn nicht (Offline-Parität, Ressourcen-Spalten, Nachlade-Cache
+         bleiben unberührt). -->
+    <label class="filter">
+        Termintyp
+        <select id="filter-typ">
+            <option value="">Alle Termine</option>
+            <option value="spiel">Nur Spiele</option>
+            <option value="training">Nur Trainings</option>
         </select>
     </label>
 

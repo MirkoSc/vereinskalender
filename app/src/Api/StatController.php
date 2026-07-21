@@ -18,6 +18,8 @@ final readonly class StatController
         'filternutzung', 'push_abo_dialog', 'pwa_installation', 'platzauswahl',
         // Issue #37: je Kalender-Darstellung gezählt (kalender-ansicht.js statMetrik())
         'ansicht_tag', 'ansicht_woche', 'ansicht_monat', 'ansicht_liste',
+        // Issue #56: je gewählter Stufe des Termintyp-Filters (kalender.js)
+        'filter_typ_spiel', 'filter_typ_training',
     ];
 
     public function __construct(private UsageStatRepository $stats)

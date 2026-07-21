@@ -5,7 +5,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-    baueEventsParams, manuellFilterAnwenden, vermietungFilterAnwenden,
+    baueEventsParams, manuellFilterAnwenden, vermietungFilterAnwenden, typFilterAnwenden,
 } = require('../../public/js/kalender-events.js');
 
 test('baueEventsParams liefert eine leere Query ohne aktive Filter (Issue #37: kein typ mehr, EventFeedService liefert alles)', () => {
@@ -100,4 +100,62 @@ test('vermietungFilterAnwenden: "nur" zeigt ausschließlich Vermietungen', () =>
         vermietungFilterAnwenden([vermietung, belegung, sperrung], 'nur'),
         [vermietung],
     );
+});
+
+// Issue #56: Filter "Termintyp" (dreistufig: Alle/Nur Spiele/Nur Trainings,
+// rein clientseitig) - Feed mit je einem Spiel, Training, einer Sperrung,
+// einer Vermietung und einem manuellen Spiel deckt alle Termintypen ab.
+
+test('baueEventsParams lässt typ weg (Issue #56: clientseitiger Filter)', () => {
+    const params = baueEventsParams({
+        team: '5', bereich: '', venue: '', pitch: '', manuell: '', vermietung: '', typ: 'spiel',
+    });
+    assert.equal(params.toString(), 'team=5');
+});
+
+test('typFilterAnwenden: leerer Wert zeigt alles', () => {
+    const spiel = { typ: 'spiel', manuell: false };
+    const training = { typ: 'belegung' };
+    const sperrung = { typ: 'sperrung' };
+    const vermietung = { typ: 'vermietung' };
+    const manuellesSpiel = { typ: 'spiel', manuell: true };
+    const events = [spiel, training, sperrung, vermietung, manuellesSpiel];
+
+    assert.deepEqual(typFilterAnwenden(events, ''), events);
+});
+
+test('typFilterAnwenden: "spiel" zeigt nur Spiele (blendet Training, Sperrung, Vermietung aus)', () => {
+    const spiel = { typ: 'spiel', manuell: false };
+    const training = { typ: 'belegung' };
+    const sperrung = { typ: 'sperrung' };
+    const vermietung = { typ: 'vermietung' };
+    const manuellesSpiel = { typ: 'spiel', manuell: true };
+
+    assert.deepEqual(
+        typFilterAnwenden([spiel, training, sperrung, vermietung, manuellesSpiel], 'spiel'),
+        [spiel, manuellesSpiel],
+    );
+});
+
+test('typFilterAnwenden: "training" zeigt nur Trainings (blendet Spiel, Sperrung, Vermietung aus)', () => {
+    const spiel = { typ: 'spiel', manuell: false };
+    const training = { typ: 'belegung' };
+    const sperrung = { typ: 'sperrung' };
+    const vermietung = { typ: 'vermietung' };
+    const manuellesSpiel = { typ: 'spiel', manuell: true };
+
+    assert.deepEqual(
+        typFilterAnwenden([spiel, training, sperrung, vermietung, manuellesSpiel], 'training'),
+        [training],
+    );
+});
+
+test('typFilterAnwenden UND manuellFilterAnwenden: "Nur Spiele" + "Nur manuelle" ergibt nur manuell angelegte Spiele', () => {
+    const spiel = { typ: 'spiel', manuell: false };
+    const training = { typ: 'belegung' };
+    const manuellesSpiel = { typ: 'spiel', manuell: true };
+    const events = [spiel, training, manuellesSpiel];
+
+    const nachTyp = typFilterAnwenden(events, 'spiel');
+    assert.deepEqual(manuellFilterAnwenden(nachTyp, 'nur'), [manuellesSpiel]);
 });
