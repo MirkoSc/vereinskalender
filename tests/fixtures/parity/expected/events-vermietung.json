@@ -3,6 +3,7 @@
         "id": "vermietung-303",
         "typ": "vermietung",
         "vermietung_id": 303,
+        "art": "vermietung",
         "start": "2026-08-27T16:00:00",
         "ende": "2026-08-27T22:00:00",
         "titel": "Vermietung: Geburtstagsfeier (GR)",

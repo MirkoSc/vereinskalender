@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\PublicPages;
 
+use App\Domain\VermietungArt;
 use App\Http\Request;
 use App\Http\Response;
 use App\Http\ResponseInterface;
@@ -355,6 +356,12 @@ final readonly class PublicController
                 'pitches' => $pitches,
                 'sportheime' => $sportheime,
                 'sportheimRaeume' => $sportheimRaeume,
+                // Issue #63: labels/hint wordings of the Sportheim-Termin
+                // arts come from the PHP enum, so no string is maintained
+                // twice - and the calendar, availability view and legend
+                // read them offline from the cached page like every other
+                // appData entry.
+                'vermietungArten' => VermietungArt::alle(),
                 'auswaertsFarbe' => $auswaertsFarbe,
                 'spielfreiFarbe' => $spielfreiFarbe,
             ],

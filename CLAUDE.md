@@ -146,7 +146,8 @@ sind KEINE Projektionen.
 - **sportheim_raum** (Issue #36): sportheim_id FK, name (z. B. „Gastraum",
   „Kegelbahn"), kuerzel, sortierung, aktiv. Mehrere Räume je Sportheim.
   Löschen nur ohne referenzierende Vermietungen (sonst deaktivieren).
-- **vermietung** (Issue #36): sportheim_id FK, raum_ids (Liste 0..n – leer =
+- **vermietung** (Issue #36): sportheim_id FK, art (Issue #63:
+  'vermietung'|'putzen'|'sitzung'), raum_ids (Liste 0..n – leer =
   gesamtes Sportheim), von, bis (DATETIME), titel (Anlass), kontakt NULL
   (Freitext), bemerkung NULL. **Blockiert nie** Trainings oder Spiele –
   `BookingService` behandelt eine überlappende Vermietung ausschließlich als
@@ -154,6 +155,26 @@ sind KEINE Projektionen.
   nicht als Konflikt oder bestätigungspflichtige Warnung. Anlegen/
   Bearbeiten/Löschen öffentlich (Ebene 2) als Events wie manuelle Spiele,
   Löschen = delete-Event; keine Konfliktprüfung beim eigenen Schreiben.
+  **art** (Issue #63) unterscheidet Vermietung, Putzen und Sitzung: Zeitraum,
+  Sportheim, Räume, Titel, Kontakt, Bemerkung und vor allem die
+  Nicht-Blockade-Semantik sind für alle drei identisch, ein zweites Aggregat
+  hätte nur dieselbe Logik dupliziert. Die Nicht-Blockade hängt am
+  **Aggregat, nicht an der Art** – `art` wird in `VermietungService`
+  (keine Konfliktprüfung) und `BookingService` (nur `$hinweise`) an keiner
+  Entscheidungsstelle gelesen, sondern ausschließlich für Wortlaute. Alt-
+  Events ohne Feld werden beim Replay deterministisch auf 'vermietung'
+  gehoben (Upcasting analog `pitch.farbe`/`match.spielfrei`, Migration 017,
+  DEFAULT = Upcast-Wert). Aggregat- und Tabellenname bleiben `vermietung`
+  (Umbenennen wäre eine Migration ohne Gegenwert); in der **UI** heißt der
+  Oberbegriff „Sportheim-Termin", die Arten tragen ihre eigenen Labels.
+  Einzige Quelle aller art-abhängigen Texte ist das PHP-Enum
+  `Domain\VermietungArt` (`label()` = Titel-Präfix, `hinweis()` = 🏠-Text);
+  der Client bekommt sie über `appData.vermietungArten`
+  (`PublicController::stammdaten()`), damit kein Wortlaut doppelt gepflegt
+  wird und die Labels offline identisch sind. Frei konfigurierbare Arten
+  (eigenes Aggregat wie `bereich`) sind bewusst NICHT umgesetzt – die
+  String-Spalte verbaut den Weg nicht, eine spätere Migration könnte
+  Strings → IDs heben wie Migration 013 es für `bereich` tat.
 - **admin**: username UNIQUE, password_hash
 - **event**: siehe Abschnitt 4 – Quelle der Wahrheit.
 - **setting** (key/value): Konfiguration in der DB, nicht in Dateien
@@ -381,15 +402,31 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   ausschließlich im zusammengeführten Feed (`typ=''`) enthalten – nie unter
   `typ=belegung`/`typ=spiel`; ein aktiver Team-/Bereichsfilter blendet sie
   aus (kein Team), ein Venue-Filter matcht über die Spielstätte des
-  Sportheims. Payload trägt `sportheim_id`, `sportheim_name`, `raum_ids`,
+  Sportheims. Payload trägt `art` (Issue #63), `sportheim_id`,
+  `sportheim_name`, `raum_ids`,
   `raum_text` (Kürzelliste, leer → „gesamtes Sportheim"), `kontakt`,
-  `bemerkung`, kein `team_id`/`pitch_id`. Trainings/Belegungen/Sperrungen/
+  `bemerkung`, kein `team_id`/`pitch_id`; `titel` ist serverseitig mit dem
+  Art-Label präfigiert („Putzen: <Anlass> (<Räume>)"), damit das Offline-
+  Bundle – das Vermietungen fertig serialisiert ausliefert – ohne eigenen
+  Port dieselbe Beschriftung zeigt. Trainings/Belegungen/Sperrungen/
   Spiele tragen zusätzlich `pitch_sportheim_id` (NULL ohne Sportheim-
   Zuordnung des Platzes), damit der Client Termine ohne Zusatz-Request gegen
   laufende Vermietungen abgleichen kann (Hinweis-Indikator, Abschnitt 8).
-  Filter „Vermietungen" (`filter-vermietung`, dreistufig wie `filter-manuell`):
-  clientseitig, `/api/events` kennt ihn nicht; „Nur Vermietungen" blendet
-  auch Trainings/Spiele/Sperrungen aus.
+  Filter „Sportheim-Termine" (`filter-vermietung`, dreistufig wie
+  `filter-manuell`): clientseitig, `/api/events` kennt ihn nicht; „Nur
+  Sportheim-Termine" blendet auch Trainings/Spiele/Sperrungen aus.
+  Daneben der Art-Filter (Issue #63, `art`, Chip-Mehrfachauswahl
+  kommasepariert, `''` = alle Arten, Container `#filter-art-chips` –
+  bewusst KEIN `#filter-art`-Select, damit die Konvention „`#filter-<key>`
+  ist ein Select" aus `setzeFilter`/`#filter-reset` gilt). Er ist eine reine
+  **Teilmengen-Einschränkung auf Sportheim-Termine**: Trainings, Spiele und
+  Sperrungen passieren ihn unverändert, sonst würde eine Art-Auswahl den
+  ganzen Kalender leerräumen. Bei Stufe „Ohne" ist er gegenstandslos und die
+  Chip-Reihe wird ausgeblendet. Eigener Filter statt weiterer Stufen von
+  `filter-vermietung`, damit dessen Werte `''`/`'ohne'`/`'nur'` ihre
+  Bedeutung behalten – **geteilte Alt-Links wirken dadurch strukturell
+  unverändert** (`filter.js` fällt für einen fehlenden Parameter auf den
+  Default zurück, `art=''` heißt „alle Arten"), ohne Sonderfall-Code.
 - Filter „Termintyp" (Issue #56, `filter-typ`, dreistufig: Alle / Nur Spiele /
   Nur Trainings): clientseitig wie manuell/vermietung, `/api/events` kennt ihn
   nicht (Offline-Parität, Ressourcen-Spalten und Nachlade-Cache bleiben
@@ -440,21 +477,31 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   zeigen Tag UND Woche Platz-Spalten (Premium Resource-Views, Lizenzkey
   `GPL-My-Project-Is-Open-Source`, Projekt ist GPLv3) inkl. einer
   synthetischen „Auswärts"-Spalte für Spiele ohne `pitch_id` sowie einer
-  synthetischen „Sportheim"-Spalte (Issue #36) für Vermietungen (die keinen
-  Platz, sondern ein Sportheim betreffen) und einer synthetischen
+  synthetischen „Sportheim"-Spalte (Issue #36) für Sportheim-Termine (die
+  keinen Platz, sondern ein Sportheim betreffen; Issue #63: EINE Spalte für
+  alle Arten – die Spalten bilden Orte ab, nicht Anlässe) und einer synthetischen
   „Spielfrei"-Spalte (Issue #65) für spielfreie Termine – auch sie haben
   keine `pitch_id`, dürfen aber nie in der Auswärts-Spalte erscheinen (ein
   Event mit unbekannter `resourceId` wird von FullCalendar in
   Ressourcen-Views sonst lautlos verworfen); Monat und Liste haben nie
   Spalten. Der Button „+ Eintragen" öffnet ein Auswahl-Sheet („Belegung
-  eintragen" / „Spiel eintragen" / „Vermietung eintragen") statt getrennter
-  Toolbar-Buttons. Vermietungen zeigen als Termin nur den
-  Spielstätten-Farbpunkt (kein Team) mit Text-Label „Vermietung: <Anlass>
-  (<Räume>)"; Trainings/Spiele auf einem Platz eines gerade vermieteten
+  eintragen" / „Spiel eintragen" / „Sportheim-Termin eintragen") statt
+  getrennter Toolbar-Buttons – EIN Eintrag für alle Arten (Issue #63), die
+  Art wählt ein Segmented Control im Formular selbst (Default „Vermietung",
+  serverseitig aus dem Enum gerendert). Sportheim-Termine zeigen als Termin
+  nur den Spielstätten-Farbpunkt (kein Team) mit Text-Label „<Art>: <Anlass>
+  (<Räume>)" und tragen zusätzlich die Klasse `ev-art-<art>`; der gedeckte
+  Grund-Look bleibt typ-basiert, unterschieden wird über das **Text-Label**
+  (drei weitere Farbtöne würden mit Team-/Spielstätten-/Platzfarben
+  konkurrieren, und „Farbe ist nie das einzige Signal" ist so erfüllt).
+  Trainings/Spiele auf einem Platz eines gerade belegten
   Sportheims tragen zusätzlich einen dezenten 🏠-Indikator, der volle
-  Hinweis („Sportheim vermietet: <Anlass>, Nutzung ggf. eingeschränkt")
+  Hinweis („<Art-Hinweis>: <Anlass>, Nutzung ggf. eingeschränkt" – z. B.
+  „Sportheim wird gereinigt", Wortlaut aus `appData.vermietungArten`)
   steht im Detail-Dialog (`public/js/vermietung-hinweis.js`, reiner
-  Overlap-Abgleich auf den bereits geladenen Events, kein Zusatz-Request).
+  Overlap-Abgleich auf den bereits geladenen Events, kein Zusatz-Request;
+  der Abgleich selbst kennt die Art nicht – er hängt an Sportheim und
+  Zeitraum, die Art bestimmt nur den Wortlaut beim Rendern).
 - **Zeitraum-Anzeige** (Issue #53): steht neben der Überschrift „Kalender"
   (`#kalender-zeitraum`), NICHT mehr in FullCalendars eigener Toolbar –
   `headerToolbar` hat seit Issue #53 keinen `center`-Slot mehr. Grund: die
@@ -540,12 +587,16 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   Symbole-Abschnitt erklärt den 🏠-Indikator an Terminen (Sportheim gerade
   vermietet), die Vermietungs-Darstellung (nur Spielstätten-Punkt, kein
   Team) und den Spielfrei-Punkt (Issue #65: kein Auswärtsspiel, für dieses
-  Team ist an diesem Termin schlicht kein Spiel angesetzt).
+  Team ist an diesem Termin schlicht kein Spiel angesetzt). Die
+  Sportheim-Termin-Arten (Issue #63) zählt der Abschnitt aus
+  `appData.vermietungArten` auf, statt sie – wie zuvor den festen Text
+  „Vermietung: <Anlass> (<Räume>)" – erneut zu hartcodieren.
 - **PWA/Offline**: Service Worker cached App-Shell; `GET /api/offline-bundle`
-  (format-versioniert, aktuell 5 – Issue #36 hat `sportheime`/
+  (format-versioniert, aktuell 6 – Issue #36 hat `sportheime`/
   `sportheim_raeume`/`vermietungen`-Listen ergänzt und `pitch.sportheim_id`
   aufgenommen, Issue #65 hat `spiele[].spielfrei` und
-  `settings.spielfrei_farbe` ergänzt) liefert den **kompletten Datenbestand**
+  `settings.spielfrei_farbe` ergänzt, Issue #63 `vermietungen[].art` plus den
+  art-präfigierten `titel`) liefert den **kompletten Datenbestand**
   (Issue #25): alle Spiele, Sperrungen und Vermietungen bereits serialisiert
   (Feed-Shape, inkl. Platz-/Vereinszuordnung über
   `VenueMatcher`/`MatchDuration`), Trainings-Slots dagegen als **Regeln**
@@ -797,7 +848,20 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   Upcasting beim Replay analog `pitch.farbe`; Sportheim-/Raum-Delete-Guards
   – referenzierende Räume/Plätze/Vermietungen bzw. Vermietungen →
   deaktivieren statt löschen; Offline-Parität für den neuen Termintyp,
-  s. u.); **Restriktionen bearbeiten** (Issue #64: Schreibpfad
+  s. u.); **Sportheim-Termin-Arten** (Issue #63: die Nicht-Blockade-
+  Regressionen laufen als `#[DataProvider]` über ALLE Arten – für jede muss
+  Belegung UND Spiel ohne Bestätigungszwang speichern, `$conflicts`/
+  `$warnings` leer, genau ein `$hinweise`-Eintrag mit `typ='vermietung'` und
+  dem art-spezifischen Wortlaut; `art`-Upcasting beim Replay – Alt-Event ohne
+  Feld → 'vermietung' –, eine explizit gesetzte Art überlebt den Rebuild
+  unverändert, Art-Wechsel per Update ist replay-deterministisch; Schreibpfad
+  create/update/delete je Art inkl. `art` im Delete-Vollbild, fehlende Art →
+  'vermietung', unbekannte Art → `ValidationException`; Feed liefert `art`
+  und den art-präfigierten `titel`; Verfügbarkeits-Hinweis-Layer enthält alle
+  Arten, ohne je einen Platz zu blockieren; clientseitig die Art-Filter-
+  Matrix inkl. der **Alt-Link-Regression** `?vermietung=nur`/`=ohne` ohne
+  `art`-Parameter, und `findeUeberschneidende` greift für jede Art gleich);
+  **Restriktionen bearbeiten** (Issue #64: Schreibpfad
   create/update/delete inkl. Event + Projektion in einer Transaktion,
   Art-Wechsel wirkt sofort auf die Konfliktprüfung – 'eingeschraenkt' →
   'gesperrt' blockiert die nächste Prüfung, ohne eine zuvor gespeicherte
@@ -832,7 +896,11 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   beginnender Sperrung, sowie – Issue #36 – Sportheime/Räume/Vermietungen
   inkl. einer raumbezogenen und einer Ganzhaus-Vermietung, eines Platzes mit
   sportheim_id und eines eigenen `vermietung`-Falls, sowie – Issue #65 –
-  eines isolierten Spielfrei-Falls in einer ansonsten leeren Woche) prüfen,
+  eines isolierten Spielfrei-Falls in einer ansonsten leeren Woche, sowie –
+  Issue #63 – eines eigenen `sportheim-termine`-Falls mit je einem Putzen-,
+  Sitzungs- und Vermietungs-Termin an einem sonst leeren Tag; der ältere
+  `vermietung`-Fall bleibt bewusst unangetastet, sein Diff belegt damit die
+  rein additive `art`-Ergänzung bei unverändertem Titel) prüfen,
   dass die clientseitigen Ports
   (`public/js/offline-events.js`, `public/js/offline-verfuegbarkeit.js`)
   byte-identisch zur PHP-Referenz (`SlotExpander`/`EventSerializer`,

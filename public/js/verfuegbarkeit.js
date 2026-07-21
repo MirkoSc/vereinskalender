@@ -5,6 +5,12 @@
 (() => {
     const appData = JSON.parse(document.querySelector('#app-data').textContent);
 
+    // Issue #63: Wortlaut je Sportheim-Termin-Art aus dem PHP-Enum
+    // (PublicController::stammdaten()) - offline identisch verfügbar, da die
+    // Seite samt appData vom Service Worker gecacht wird.
+    const artHinweis = (wert) => (appData.vermietungArten ?? [])
+        .find((a) => a.wert === (wert ?? 'vermietung'))?.hinweis ?? 'Sportheim belegt';
+
     let wochenstart = (() => {
         const heute = new Date();
         const offset = (heute.getDay() + 6) % 7; // Monday = 0
@@ -179,15 +185,17 @@
                 section.append(p);
             }
 
-            // Issue #36: Sportheim-Vermietung als eigener Hinweis-Layer - der
-            // Platz bleibt frei/belegt wie bisher, wird NIE als gesperrt gewertet.
+            // Issue #36: Sportheim-Termine als eigener Hinweis-Layer - der
+            // Platz bleibt frei/belegt wie bisher, wird NIE als gesperrt
+            // gewertet. Issue #63: alle Arten erscheinen hier, jede mit ihrem
+            // eigenen Wortlaut aus appData.vermietungArten.
             for (const vermietung of venue.vermietungen ?? []) {
                 const p = document.createElement('p');
                 p.className = 'hint';
                 const von = new Date(vermietung.von);
                 const bis = new Date(vermietung.bis);
                 const fmt = (d) => `${d.toLocaleDateString('de-DE')} ${d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}`;
-                p.textContent = `⚠ Sportheim vermietet: ${vermietung.titel} (${vermietung.raum_text}), ${fmt(von)}–${fmt(bis)} Uhr`;
+                p.textContent = `⚠ ${artHinweis(vermietung.art)}: ${vermietung.titel} (${vermietung.raum_text}), ${fmt(von)}–${fmt(bis)} Uhr`;
                 section.append(p);
             }
 

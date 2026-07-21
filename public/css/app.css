@@ -731,6 +731,73 @@ pre.payload {
     cursor: pointer;
 }
 
+/* Mehrfach-Auswahl-Chips im Filter-Sheet (Issue #63: Arten der Sportheim-
+   Termine). Anders als .chip-row sind das echte Buttons mit Zustand; der
+   aktive Zustand hängt an aria-pressed, damit Screenreader ihn ohne
+   Zusatztext bekommen (Abnahmeregel "Farbe ist nie das einzige Signal").
+   Touch-Ziel >= 44px (CLAUDE.md Abschnitt 8). */
+.chip-toggle-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+}
+
+.chip-toggle {
+    min-height: 44px;
+    padding: 0.35rem 0.8rem;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--color-text) 30%, transparent);
+    background: var(--color-bg);
+    color: inherit;
+    font: inherit;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.chip-toggle[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--color-accent) 25%, var(--color-bg));
+    border-color: var(--color-accent);
+    font-weight: 600;
+}
+
+.chip-toggle[aria-pressed="true"]::before {
+    content: "✓ ";
+}
+
+/* Segmented Control im Formular (Issue #63: Art eines Sportheim-Termins) -
+   Radios ohne eigene Optik, das Label trägt den Zustand. */
+.segmented {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    border: none;
+    padding: 0;
+    margin: 0 0 0.75rem;
+}
+
+.segmented legend {
+    padding: 0;
+    margin-bottom: 0.25rem;
+}
+
+.segmented label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 44px;
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--color-text) 30%, transparent);
+    cursor: pointer;
+}
+
+.segmented label:has(input:checked) {
+    background: color-mix(in srgb, var(--color-accent) 25%, var(--color-bg));
+    border-color: var(--color-accent);
+    font-weight: 600;
+}
+
 /* Filter-Button + Badge (Issue #8): der Button öffnet Panel/Bottom-Sheet
    (dialog.filter-sheet, wiederverwendet dieselbe .sheet-Mechanik wie die
    übrigen Dialoge - mobil Bottom-Sheet, Desktop zentriertes Panel). */

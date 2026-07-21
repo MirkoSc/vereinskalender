@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Service\Kalender;
 
 use App\Domain\RestrictionArt;
+use App\Domain\VermietungArt;
 
 /**
  * Pure availability timeline computation (CLAUDE.md section 9): intervals
@@ -104,7 +105,9 @@ final class AvailabilityCalculator
 
         // Vermietungen (Issue #36): venue-level hint layer, like the
         // Heimspiel hint above - the pitch timeline is NEVER touched, so a
-        // rented Sportheim never turns a pitch "gesperrt".
+        // rented Sportheim never turns a pitch "gesperrt". Issue #63: all
+        // arts (Vermietung/Putzen/Sitzung) appear here, each labelled by its
+        // own art - the non-blocking rule is identical for all of them.
         $vermietungenByVenue = [];
         foreach ($daten['vermietungen'] ?? [] as $vermietung) {
             if ($vermietung['venue_id'] === null || !self::overlapsRange($vermietung, $von, $bis)) {
@@ -113,6 +116,7 @@ final class AvailabilityCalculator
             $vermietungenByVenue[(int) $vermietung['venue_id']][] = [
                 'von' => (string) $vermietung['start'],
                 'bis' => (string) $vermietung['ende'],
+                'art' => VermietungArt::fromPayload($vermietung['art'] ?? null)->value,
                 'titel' => (string) $vermietung['anlass'],
                 'raum_text' => (string) $vermietung['raum_text'],
             ];

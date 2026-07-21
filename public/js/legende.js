@@ -94,7 +94,7 @@
         return li;
     };
 
-    const symbolAbschnitt = () => {
+    const symbolAbschnitt = (arten) => {
         const haus = document.createElement('p');
         haus.className = 'legende-symbol-erklaerung';
         const hausPunkt = document.createElement('span');
@@ -104,17 +104,21 @@
             hausPunkt,
             document.createTextNode(
                 ' an einem Training oder Spiel: das Sportheim des Platzes ist zu diesem '
-                + 'Zeitpunkt vermietet, die Nutzung ist ggf. eingeschränkt.',
+                + 'Zeitpunkt belegt, die Nutzung ist ggf. eingeschränkt. Der Hinweistext '
+                + 'nennt die Art der Belegung.',
             ),
         );
 
+        // Issue #63: die Arten kommen aus appData (PHP-Enum), damit hier
+        // keine Bezeichnung ein zweites Mal gepflegt wird.
         const vermietung = document.createElement('p');
         vermietung.className = 'legende-symbol-erklaerung';
         vermietung.append(
             punkt('var(--auswaerts)', 'venue'),
             document.createTextNode(
-                ' Vermietungstermine zeigen nur den Spielstätten-Punkt (kein Team) mit dem Titel '
-                + '„Vermietung: <Anlass> (<Räume>)".',
+                ' Sportheim-Termine zeigen nur den Spielstätten-Punkt (kein Team) mit dem Titel '
+                + '„<Art>: <Anlass> (<Räume>)". Arten: '
+                + arten.map((a) => a.label).join(', ') + '.',
             ),
         );
 
@@ -171,7 +175,7 @@
         ));
         root.append(abschnitt('Teams', teamGruppen));
 
-        root.append(symbolAbschnitt());
+        root.append(symbolAbschnitt(appData.vermietungArten ?? []));
     };
 
     const dataScript = document.querySelector('#app-data');

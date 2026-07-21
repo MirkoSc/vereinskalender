@@ -23,6 +23,7 @@
         "id": "vermietung-302",
         "typ": "vermietung",
         "vermietung_id": 302,
+        "art": "vermietung",
         "start": "2026-08-20T00:00:00",
         "ende": "2026-08-20T23:59:00",
         "titel": "Vermietung: Kegelabend (KB)",
