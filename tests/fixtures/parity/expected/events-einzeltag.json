@@ -22,6 +22,7 @@
         "venue_adresse": "Sportweg 1",
         "gegner": "SV Rivale",
         "heimspiel": true,
+        "spielfrei": false,
         "ort_text": "Sportanlage Musterstadt",
         "status": "geplant"
     },
@@ -154,6 +155,7 @@
         "venue_adresse": "Sportweg 1",
         "gegner": "Unbekannter Gegner",
         "heimspiel": true,
+        "spielfrei": false,
         "ort_text": "Sportanlage Musterstadt, Platz unbekannt",
         "status": "geplant"
     },
@@ -180,6 +182,7 @@
         "venue_adresse": null,
         "gegner": "Kein Treffer",
         "heimspiel": true,
+        "spielfrei": false,
         "ort_text": "Nirgendwo",
         "status": "geplant"
     },
@@ -206,6 +209,7 @@
         "venue_adresse": "Sportweg 1",
         "gegner": "Absage-Gegner",
         "heimspiel": true,
+        "spielfrei": false,
         "ort_text": "Sportanlage Musterstadt",
         "status": "abgesagt"
     }

@@ -337,8 +337,9 @@ final readonly class PublicController
         )));
 
         $auswaertsFarbe = $this->settings->get('auswaerts_farbe', '#57606a');
+        $spielfreiFarbe = $this->settings->get('spielfrei_farbe', '#775c3c');
 
-        $cssLines = ['--auswaerts: ' . $auswaertsFarbe . ';'];
+        $cssLines = ['--auswaerts: ' . $auswaertsFarbe . ';', '--spielfrei: ' . $spielfreiFarbe . ';'];
         foreach ($teams as $team) {
             $cssLines[] = sprintf('--team-%d: %s;', $team['id'], $team['farbe']);
         }
@@ -355,6 +356,7 @@ final readonly class PublicController
                 'sportheime' => $sportheime,
                 'sportheimRaeume' => $sportheimRaeume,
                 'auswaertsFarbe' => $auswaertsFarbe,
+                'spielfreiFarbe' => $spielfreiFarbe,
             ],
             ':root { ' . implode(' ', $cssLines) . ' }',
         ];

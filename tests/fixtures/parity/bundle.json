@@ -1,5 +1,5 @@
 {
-  "format": 4,
+  "format": 5,
   "stand": "2026-08-01 12:00:00",
   "spiele": [
     {
@@ -25,6 +25,7 @@
       "venue_adresse": "Sportweg 1",
       "gegner": "SV Rivale",
       "heimspiel": true,
+      "spielfrei": false,
       "ort_text": "Sportanlage Musterstadt",
       "status": "geplant"
     },
@@ -51,6 +52,7 @@
       "venue_adresse": "Waldweg 5",
       "gegner": "Turnier",
       "heimspiel": true,
+      "spielfrei": false,
       "ort_text": "Sportanlage TSV Nachbarort",
       "status": "geplant"
     },
@@ -77,6 +79,7 @@
       "venue_adresse": "Sportweg 1",
       "gegner": "Absage-Gegner",
       "heimspiel": true,
+      "spielfrei": false,
       "ort_text": "Sportanlage Musterstadt",
       "status": "abgesagt"
     },
@@ -103,6 +106,7 @@
       "venue_adresse": null,
       "gegner": "Auswärtsgegner",
       "heimspiel": false,
+      "spielfrei": false,
       "ort_text": "Stadion Auswärts",
       "status": "geplant"
     },
@@ -129,6 +133,7 @@
       "venue_adresse": "Sportweg 1",
       "gegner": "Unbekannter Gegner",
       "heimspiel": true,
+      "spielfrei": false,
       "ort_text": "Sportanlage Musterstadt, Platz unbekannt",
       "status": "geplant"
     },
@@ -155,7 +160,35 @@
       "venue_adresse": null,
       "gegner": "Kein Treffer",
       "heimspiel": true,
+      "spielfrei": false,
       "ort_text": "Nirgendwo",
+      "status": "geplant"
+    },
+    {
+      "id": "match-107",
+      "typ": "spiel",
+      "match_id": 107,
+      "manuell": false,
+      "start": "2026-09-07T15:00:00",
+      "ende": "2026-09-07T17:00:00",
+      "titel": "E2 – Spielfrei",
+      "team_id": 2,
+      "team_name": "E2",
+      "team_kuerzel": "E2",
+      "team_farbe": "#8250df",
+      "venue_id": null,
+      "venue_name": null,
+      "venue_farbe": "#775c3c",
+      "pitch_id": null,
+      "pitch_name": null,
+      "pitch_kuerzel": null,
+      "pitch_farbe": null,
+      "pitch_adresse": null,
+      "venue_adresse": null,
+      "gegner": "Spielfrei",
+      "heimspiel": false,
+      "spielfrei": true,
+      "ort_text": "",
       "status": "geplant"
     }
   ],
@@ -339,6 +372,7 @@
   ],
   "settings": {
     "auswaerts_farbe": "#57606a",
+    "spielfrei_farbe": "#775c3c",
     "nutzungszeiten_von": "08:00",
     "nutzungszeiten_bis": "22:00"
   }

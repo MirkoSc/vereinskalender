@@ -580,4 +580,150 @@ final class IcsImportTest extends DatabaseTestCase
         self::assertSame('import', $matchEvents[0]['quelle']);
         self::assertSame('ICS-Import', $matchEvents[0]['editor_name']);
     }
+
+    // ---- Issue #65: Spielfrei detection ----
+
+    public function testSpielfreiDetectedWithEmptyLocationAndKeyword(): void
+    {
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('frei', '20990808T150000', 'Spielfrei', ''),
+        )]);
+        $this->icsImportService($fetcher)->runAll();
+
+        self::assertSame(1, (int) $this->dumpTable('match')[0]['spielfrei']);
+    }
+
+    public function testEmptyLocationWithoutKeywordIsNotSpielfrei(): void
+    {
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('frei', '20990808T150000', 'FC Irgendwo', ''),
+        )]);
+        $this->icsImportService($fetcher)->runAll();
+
+        self::assertSame(
+            0,
+            (int) $this->dumpTable('match')[0]['spielfrei'],
+            'no keyword hit: a plain away match without a maintained LOCATION is not spielfrei',
+        );
+    }
+
+    public function testKeywordWithLocationIsNotSpielfrei(): void
+    {
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('frei', '20990808T150000', 'Spielfrei', 'Sportanlage Musterstadt'),
+        )]);
+        $this->icsImportService($fetcher)->runAll();
+
+        self::assertSame(
+            0,
+            (int) $this->dumpTable('match')[0]['spielfrei'],
+            'a maintained LOCATION rules out spielfrei even with the keyword present',
+        );
+    }
+
+    public function testSpielfreiDetectionIsCaseInsensitive(): void
+    {
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('frei', '20990808T150000', 'SPIELFREI', ''),
+        )]);
+        $this->icsImportService($fetcher)->runAll();
+
+        self::assertSame(1, (int) $this->dumpTable('match')[0]['spielfrei']);
+    }
+
+    public function testMultipleCommaSeparatedKeywords(): void
+    {
+        $settings = new \App\Repository\SettingRepository($this->pdo());
+        $settings->set('spielfrei_begriffe', 'Pause, Spielfrei, Ausfall');
+
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('frei', '20990808T150000', 'Ausfall', ''),
+        )]);
+        $this->icsImportService($fetcher)->runAll();
+
+        self::assertSame(1, (int) $this->dumpTable('match')[0]['spielfrei'], 'the second configured keyword also matches');
+    }
+
+    /**
+     * Regression lock-in for the mb_stripos($s, '') pitfall: an empty
+     * needle would otherwise match every SUMMARY.
+     */
+    public function testEmptyKeywordSettingDetectsNothing(): void
+    {
+        $settings = new \App\Repository\SettingRepository($this->pdo());
+        $settings->set('spielfrei_begriffe', '');
+
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('frei', '20990808T150000', 'Spielfrei', ''),
+        )]);
+        $this->icsImportService($fetcher)->runAll();
+
+        self::assertSame(0, (int) $this->dumpTable('match')[0]['spielfrei'], 'an empty setting turns detection off');
+    }
+
+    /**
+     * Unlike pitch reflow, spielfrei is re-derived for EVERY run including
+     * past feed entries: it classifies immutable feed content, so
+     * re-deriving it corrects a misclassification rather than rewriting
+     * history. The keyword is not part of sync_hash, so the skip condition
+     * must carry an extra clause for it to reach an unchanged-hash row at
+     * all (mirrors testRuleChangeReflowsFutureNonManualMatchesOnNextRun).
+     */
+    public function testKeywordChangeReclassifiesExistingRowsIncludingPastOnesThenIsIdempotent(): void
+    {
+        $now = new \DateTimeImmutable('2099-08-08 15:00:00');
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('frei', '20990801T150000', 'Pause', ''),
+        )]);
+        $import = $this->icsImportService($fetcher, $now);
+        $import->runAll();
+        self::assertSame(0, (int) $this->dumpTable('match')[0]['spielfrei'], 'not yet a configured keyword');
+
+        $settings = new \App\Repository\SettingRepository($this->pdo());
+        $settings->set('spielfrei_begriffe', 'Pause');
+
+        // byte-identical feed: hash unchanged, but spielfrei classification changes
+        $result = $import->runAll()[0];
+        self::assertSame([0, 1, 0, 0], [$result->inserted, $result->updated, $result->cancelled, $result->skipped]);
+        self::assertSame(1, (int) $this->dumpTable('match')[0]['spielfrei'], 'reclassified even though the match is in the past');
+
+        // idempotent: a third run with the same feed and setting skips
+        $result = $import->runAll()[0];
+        self::assertSame([0, 0, 0, 1], [$result->inserted, $result->updated, $result->cancelled, $result->skipped]);
+    }
+
+    public function testCancelFollowUpPreservesSpielfrei(): void
+    {
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('frei', '20990808T150000', 'Spielfrei', ''),
+        )]);
+        $import = $this->icsImportService($fetcher);
+        $import->runAll();
+        self::assertSame(1, (int) $this->dumpTable('match')[0]['spielfrei']);
+
+        $fetcher->set(self::URL, self::feed());
+        $import->runAll();
+
+        $match = $this->dumpTable('match')[0];
+        self::assertSame('abgesagt', $match['status']);
+        self::assertSame(1, (int) $match['spielfrei'], 'spielfrei flag survives the cancel follow-up');
+    }
+
+    public function testAssignPitchPreservesSpielfreiFlag(): void
+    {
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('frei', '20990808T150000', 'Spielfrei', ''),
+        )]);
+        $import = $this->icsImportService($fetcher);
+        $import->runAll();
+        $matchId = (int) $this->dumpTable('match')[0]['id'];
+
+        $this->matchService()->assignPitch($matchId, ['pitch_id' => (string) $this->pitchId], $this->context('Platzwart Paul'));
+
+        self::assertSame(
+            1,
+            (int) $this->dumpTable('match')[0]['spielfrei'],
+            'rowPayload() must carry the flag forward, not silently reset it',
+        );
+    }
 }

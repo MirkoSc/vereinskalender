@@ -174,11 +174,12 @@ final class FeinschliffTest extends DatabaseTestCase
             new \App\Repository\VermietungRepository($pdo),
         )->build();
 
-        self::assertSame(4, $bundle['format']);
+        self::assertSame(5, $bundle['format']);
         self::assertCount(2, $bundle['spiele'], 'the complete dataset: past AND future matches, no date window');
         self::assertArrayHasKey('team_farbe', $bundle['spiele'][0], 'both color modes work offline');
         self::assertArrayHasKey('venue_farbe', $bundle['spiele'][0]);
         self::assertArrayHasKey('pitch_farbe', $bundle['spiele'][0]);
+        self::assertArrayHasKey('spielfrei', $bundle['spiele'][0], 'Issue #65: byes need a discriminator field offline too');
         self::assertCount(1, $bundle['slots'], 'training slots as RULES, not expanded occurrences');
         self::assertSame([$teamId], $bundle['slots'][0]['team_ids']);
         self::assertSame([], $bundle['ausnahmen']);
@@ -188,5 +189,6 @@ final class FeinschliffTest extends DatabaseTestCase
         self::assertSame('#0969da', $bundle['pitches'][0]['farbe']);
         self::assertNull($bundle['pitches'][0]['adresse']);
         self::assertSame('#57606a', $bundle['settings']['auswaerts_farbe']);
+        self::assertSame('#775c3c', $bundle['settings']['spielfrei_farbe']);
     }
 }

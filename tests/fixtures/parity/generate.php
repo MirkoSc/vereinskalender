@@ -44,6 +44,7 @@ function eventsAusBundle(array $bundle, string $von, string $bis): array
         $venuesById,
         new VenueMatcher([]),
         (string) $bundle['settings']['auswaerts_farbe'],
+        (string) $bundle['settings']['spielfrei_farbe'],
     );
 
     $slotsById = [];

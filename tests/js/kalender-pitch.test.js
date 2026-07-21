@@ -40,6 +40,11 @@ test('pitchEventPraefix: Auswärtsspiele bilden die eigene Gruppe "Auswärts"', 
     assert.equal(pitchEventPraefix(auswaertsSpiel), 'Auswärts');
 });
 
+test('pitchEventPraefix: Spielfrei-Termine bilden die eigene Gruppe "Spielfrei", nicht "Auswärts" (Issue #65)', () => {
+    const spielfrei = { typ: 'spiel', heimspiel: false, spielfrei: true, pitch_kuerzel: null, pitch_name: null };
+    assert.equal(pitchEventPraefix(spielfrei), 'Spielfrei');
+});
+
 test('pitchEventPraefix: Platz-Kürzel vor Platzname, Platzname als Fallback ohne Kürzel', () => {
     assert.equal(pitchEventPraefix({ typ: 'spiel', heimspiel: true, pitch_kuerzel: 'R1', pitch_name: 'Rasenplatz 1' }), 'R1');
     assert.equal(pitchEventPraefix({ typ: 'spiel', heimspiel: true, pitch_kuerzel: '', pitch_name: 'Rasenplatz 1' }), 'Rasenplatz 1');

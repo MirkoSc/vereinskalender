@@ -81,7 +81,8 @@ final readonly class AvailabilityService
             $raeumeById[(int) $raum['id']] = $raum;
         }
         $auswaertsFarbe = $this->settings->get('auswaerts_farbe', '#57606a');
-        $serializer = new EventSerializer($teamsById, $pitchesById, $venuesById, $this->venueMatcher, $auswaertsFarbe, $sportheimeById, $raeumeById);
+        $spielfreiFarbe = $this->settings->get('spielfrei_farbe', '#775c3c');
+        $serializer = new EventSerializer($teamsById, $pitchesById, $venuesById, $this->venueMatcher, $auswaertsFarbe, $spielfreiFarbe, $sportheimeById, $raeumeById);
 
         $slotRows = $this->slots->findOverlapping($von, $bis);
         $ausnahmen = $this->exceptions->findForSlots(
@@ -117,6 +118,7 @@ final readonly class AvailabilityService
             'pitches' => $pitches,
             'settings' => [
                 'auswaerts_farbe' => $auswaertsFarbe,
+                'spielfrei_farbe' => $spielfreiFarbe,
                 'nutzungszeiten_von' => $this->settings->get('nutzungszeiten_von', '08:00'),
                 'nutzungszeiten_bis' => $this->settings->get('nutzungszeiten_bis', '22:00'),
             ],
