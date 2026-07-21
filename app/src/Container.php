@@ -130,6 +130,7 @@ final class Container
             $this->version->value,
             $this->wappenService()->exists(),
             $this->wappenService()->version(),
+            $this->settingRepository()->get('app_name', 'Vereinskalender'),
         ));
     }
 
@@ -234,6 +235,7 @@ final class Container
             $this->trainingSlotRepository(),
             $this->slotExceptionRepository(),
             $this->pitchRepository(),
+            $this->settingRepository(),
         ));
     }
 

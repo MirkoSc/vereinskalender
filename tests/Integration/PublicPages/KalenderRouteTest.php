@@ -28,7 +28,7 @@ use App\View\View;
  */
 final class KalenderRouteTest extends DatabaseTestCase
 {
-    private function controller(): PublicController
+    private function controller(?string $publicDir = null): PublicController
     {
         $pdo = $this->pdo();
 
@@ -41,7 +41,7 @@ final class KalenderRouteTest extends DatabaseTestCase
             new PageRepository($pdo),
             new UsageStatRepository($pdo),
             '0.0.0-test',
-            sys_get_temp_dir(),
+            $publicDir ?? sys_get_temp_dir(),
             new WappenService(sys_get_temp_dir()),
             new BereichRepository($pdo),
             new SportheimRepository($pdo),
@@ -104,5 +104,51 @@ final class KalenderRouteTest extends DatabaseTestCase
 
         $manifest = json_decode($response->body, true, flags: JSON_THROW_ON_ERROR);
         self::assertSame('/kalender', $manifest['start_url']);
+    }
+
+    /**
+     * Issue #62: manifest name/short_name come from the app_name(_kurz)
+     * settings instead of the hardcoded "Vereinskalender"/"Kalender".
+     */
+    public function testManifestUsesConfiguredAppName(): void
+    {
+        $settings = new SettingRepository($this->pdo());
+        $settings->set('app_name', 'SG Musterstadt');
+        $settings->set('app_name_kurz', 'SGM');
+
+        $response = $this->controller()->manifest(new Request(HttpMethod::Get, '/manifest.webmanifest'));
+        $manifest = json_decode($response->body, true, flags: JSON_THROW_ON_ERROR);
+
+        self::assertSame('SG Musterstadt', $manifest['name']);
+        self::assertSame('SGM', $manifest['short_name']);
+    }
+
+    public function testManifestFallsBackToTruncatedAppNameForShortName(): void
+    {
+        $settings = new SettingRepository($this->pdo());
+        $settings->set('app_name', 'Ein ziemlich langer Vereinsname');
+
+        $response = $this->controller()->manifest(new Request(HttpMethod::Get, '/manifest.webmanifest'));
+        $manifest = json_decode($response->body, true, flags: JSON_THROW_ON_ERROR);
+
+        self::assertSame('Ein ziemlich langer Vereinsname', $manifest['name']);
+        self::assertSame(mb_substr('Ein ziemlich langer Vereinsname', 0, 12), $manifest['short_name']);
+    }
+
+    /**
+     * Issue #62: the service worker template gets the app name injected
+     * next to the release version, used as the push-notification title
+     * fallback.
+     */
+    public function testServiceWorkerInjectsConfiguredAppName(): void
+    {
+        $settings = new SettingRepository($this->pdo());
+        $settings->set('app_name', 'SG "Muster" Stadt');
+
+        $publicDir = dirname(__DIR__, 3) . '/public';
+        $response = $this->controller($publicDir)->serviceWorker(new Request(HttpMethod::Get, '/sw.js'));
+
+        self::assertStringContainsString('const APP_NAME = "SG \\"Muster\\" Stadt";', $response->body);
+        self::assertStringNotContainsString('__APP_NAME__', $response->body);
     }
 }

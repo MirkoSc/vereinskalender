@@ -123,6 +123,15 @@ main {
     text-decoration: underline;
 }
 
+/* Issue #66: /abonnieren needs a live network (feed URLs), so its nav
+   link is disabled instead of leading to a confusing offline error. */
+.main-nav a.nav-disabled {
+    color: var(--color-text);
+    opacity: 0.5;
+    cursor: not-allowed;
+    text-decoration: none;
+}
+
 .card-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
@@ -546,6 +555,11 @@ dialog.sheet::backdrop {
 
 .site-footer a {
     color: inherit;
+}
+
+.footer-brand {
+    font-weight: 600;
+    margin-right: auto;
 }
 
 .offline-banner {

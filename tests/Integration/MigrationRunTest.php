@@ -13,7 +13,7 @@ final class MigrationRunTest extends DatabaseTestCase
     {
         $migrator = new Migrator($this->pdo(), $this->migrationsDir());
 
-        self::assertSame(14, $migrator->currentVersion());
+        self::assertSame(15, $migrator->currentVersion());
         self::assertSame([], $migrator->pending());
 
         $tables = $this->pdo()
@@ -39,6 +39,6 @@ final class MigrationRunTest extends DatabaseTestCase
         $result = $migrator->migrate();
 
         self::assertSame([], $result->applied);
-        self::assertSame(14, $result->toVersion);
+        self::assertSame(15, $result->toVersion);
     }
 }

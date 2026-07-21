@@ -3,9 +3,17 @@
     <h2>Einstellungen</h2>
     <form method="post" action="/admin/einstellungen">
         <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
-        <label>Vereinsname
-            <input type="text" name="vereinsname" value="<?= e($values['vereinsname']) ?>" required maxlength="100">
+        <label>App-Name
+            <input type="text" name="app_name" value="<?= e($values['app_name']) ?>" required maxlength="100">
         </label>
+        <label>App-Name kurz (Homescreen-Beschriftung, leer = automatisch gekürzt)
+            <input type="text" name="app_name_kurz" value="<?= e($values['app_name_kurz']) ?>" maxlength="30">
+        </label>
+        <p class="hint">
+            Bereits als App installierte Kalender (Homescreen) übernehmen einen
+            neuen App-Namen erst bei einer Neuinstallation – das ist so vom
+            Betriebssystem vorgegeben (wie beim Wappen unten).
+        </p>
         <div class="field-row">
             <label>Nutzungszeiten von <input type="time" name="nutzungszeiten_von" value="<?= e($values['nutzungszeiten_von']) ?>" required></label>
             <label>bis <input type="time" name="nutzungszeiten_bis" value="<?= e($values['nutzungszeiten_bis']) ?>" required></label>

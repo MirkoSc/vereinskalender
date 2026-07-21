@@ -50,7 +50,6 @@ final readonly class PublicController
         [$appData, $colorCss] = $this->stammdaten();
 
         return Response::html($this->view->render('home', [
-            'title' => 'Vereinskalender',
             'appData' => $appData,
             'colorCss' => $colorCss,
             'scripts' => ['/js/legende-gruppierung.js', '/js/legende.js'],
@@ -189,10 +188,16 @@ final readonly class PublicController
             return new Response(404, ['Content-Type' => 'text/plain; charset=utf-8'], 'sw fehlt');
         }
 
+        $appName = $this->settings->get('app_name', 'Vereinskalender');
+
         return new Response(200, [
             'Content-Type' => 'text/javascript; charset=utf-8',
             'Cache-Control' => 'no-cache',
-        ], str_replace('__VERSION__', $this->version, $template));
+        ], str_replace(
+            ['__VERSION__', '__APP_NAME__'],
+            [$this->version, json_encode($appName, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE)],
+            $template,
+        ));
     }
 
     /**
@@ -220,9 +225,15 @@ final readonly class PublicController
                 ['src' => '/icon.svg', 'sizes' => 'any', 'type' => 'image/svg+xml', 'purpose' => 'any'],
             ];
 
+        $appName = $this->settings->get('app_name', 'Vereinskalender');
+        $appNameKurz = $this->settings->get('app_name_kurz', '');
+        if ($appNameKurz === '') {
+            $appNameKurz = mb_substr($appName, 0, 12);
+        }
+
         $manifest = [
-            'name' => 'Vereinskalender',
-            'short_name' => 'Kalender',
+            'name' => $appName,
+            'short_name' => $appNameKurz,
             'description' => 'Alle Termine des Vereins: Training, Spiele und Platzsperrungen',
             'start_url' => '/kalender',
             'display' => 'standalone',
