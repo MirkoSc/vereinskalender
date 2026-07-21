@@ -4,5 +4,6 @@
   { "name": "fruehjahr-dst", "von": "2027-03-22", "bis": "2027-03-28" },
   { "name": "einzeltag", "von": "2026-08-04", "bis": "2026-08-04" },
   { "name": "mehrtaegige-sperrung", "von": "2026-08-20", "bis": "2026-08-23" },
-  { "name": "vermietung", "von": "2026-08-27", "bis": "2026-08-27" }
+  { "name": "vermietung", "von": "2026-08-27", "bis": "2026-08-27" },
+  { "name": "spielfrei", "von": "2026-09-07", "bis": "2026-09-07" }
 ]

@@ -130,6 +130,79 @@ final class EventFeedTest extends DatabaseTestCase
         self::assertNull($events[1]['pitch_kuerzel'], 'Auswärtsspiel hat keinen Platz');
     }
 
+    /**
+     * Issue #65: a spielfrei match is its own category, resolved ahead of
+     * the venue_begriff/pitch/auswaerts chain in EventSerializer::spiel().
+     */
+    public function testSpielfreiEventShapeHasNoVenueOrPitchAndOwnColor(): void
+    {
+        $settings = new \App\Repository\SettingRepository($this->pdo());
+        $settings->set('spielfrei_farbe', '#775c3c');
+
+        $this->createMatch($this->teamId, [
+            'anstoss' => '2026-08-08 15:00:00',
+            'gegner' => 'Spielfrei',
+            'ort_text' => '',
+            'spielfrei' => true,
+        ]);
+
+        $events = $this->eventFeedService()->events([
+            'von' => '2026-08-03', 'bis' => '2026-08-09', 'typ' => 'spiel',
+        ]);
+
+        self::assertCount(1, $events);
+        self::assertTrue($events[0]['spielfrei']);
+        self::assertNull($events[0]['venue_id']);
+        self::assertNull($events[0]['pitch_id']);
+        self::assertSame('#775c3c', $events[0]['venue_farbe']);
+    }
+
+    /**
+     * Issue #65: venue=auswaerts must exclude byes, even though a bye also
+     * has venue_id null - otherwise it would silently double as an
+     * "auswaerts" filter hit.
+     */
+    public function testVenueSpielfreiFilterExcludesFromAuswaertsAndReturnsOnlyByes(): void
+    {
+        $this->createMatch($this->teamId, [
+            'anstoss' => '2026-08-08 15:00:00',
+            'ort_text' => 'Stadion Gegnerhausen',
+        ]);
+        $this->createMatch($this->teamId, [
+            'anstoss' => '2026-08-09 15:00:00',
+            'ort_text' => '',
+            'spielfrei' => true,
+        ]);
+
+        $feed = $this->eventFeedService();
+        $range = ['von' => '2026-08-03', 'bis' => '2026-08-09', 'typ' => 'spiel'];
+
+        self::assertCount(2, $feed->events($range), 'both remain in the unfiltered feed');
+        self::assertCount(1, $feed->events([...$range, 'venue' => 'auswaerts']), 'the bye is excluded from auswaerts');
+        self::assertCount(1, $feed->events([...$range, 'venue' => 'spielfrei']), 'only the bye matches');
+    }
+
+    /**
+     * Issue #65: a bye has no pitch_id, so the existing occupancy-view
+     * carve-out (pitch_id === null -> continue) already keeps it out of
+     * typ=belegung - this pins that down as an explicit invariant.
+     */
+    public function testSpielfreiNeverAppearsUnderTypBelegung(): void
+    {
+        $this->createMatch($this->teamId, [
+            'anstoss' => '2026-08-08 15:00:00',
+            'ort_text' => '',
+            'spielfrei' => true,
+        ]);
+
+        $events = $this->eventFeedService()->events([
+            'von' => '2026-08-03', 'bis' => '2026-08-09', 'typ' => 'belegung',
+        ]);
+
+        self::assertCount(1, $events, 'only the training slot occurrence, never the bye');
+        self::assertSame('belegung', $events[0]['typ']);
+    }
+
     public function testFiltersTeamBereichVenue(): void
     {
         $otherTeam = $this->createTeam('Herren 1', 'Herren');

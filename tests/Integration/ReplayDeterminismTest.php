@@ -427,6 +427,38 @@ final class ReplayDeterminismTest extends DatabaseTestCase
     }
 
     /**
+     * Issue #65: match events written before the spielfrei column existed
+     * carry no such key. The upcast (spielfrei -> false, CLAUDE.md section
+     * 5, same idiom as pitch_manuell) must be deterministic, both on the
+     * initial write and on replay.
+     */
+    public function testLegacyMatchEventWithoutSpielfreiUpcastsOnReplay(): void
+    {
+        $teamId = $this->createTeam();
+
+        $this->eventStore()->append(\App\Domain\AggregateType::Match, null, EventType::Created, [
+            'team_id' => $teamId,
+            'anstoss' => '2099-08-08 15:00:00',
+            'gegner' => 'FC Gegner',
+            'heimspiel' => false,
+            'ort_text' => 'Stadion Gegnerhausen',
+            'pitch_id' => null,
+            'status' => 'geplant',
+            'import_source_id' => null,
+            'ics_uid' => 'legacy-2',
+            'ics_sequence' => 0,
+            'sync_hash' => 'legacy',
+        ], $this->context());
+
+        $match = $this->dumpTable('match')[0];
+        self::assertSame(0, (int) $match['spielfrei']);
+
+        $state = $this->runRebuildToCompletion($this->rebuildService());
+        self::assertSame([], $state->skipped);
+        self::assertSame($match, $this->dumpTable('match')[0]);
+    }
+
+    /**
      * Issue #12: a manual match with an explicit ende replays identically,
      * and a Deleted event keeps the row gone after a rebuild.
      */

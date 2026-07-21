@@ -1,0 +1,29 @@
+[
+    {
+        "id": "match-107",
+        "typ": "spiel",
+        "match_id": 107,
+        "manuell": false,
+        "start": "2026-09-07T15:00:00",
+        "ende": "2026-09-07T17:00:00",
+        "titel": "E2 – Spielfrei",
+        "team_id": 2,
+        "team_name": "E2",
+        "team_kuerzel": "E2",
+        "team_farbe": "#8250df",
+        "venue_id": null,
+        "venue_name": null,
+        "venue_farbe": "#775c3c",
+        "pitch_id": null,
+        "pitch_name": null,
+        "pitch_kuerzel": null,
+        "pitch_farbe": null,
+        "pitch_adresse": null,
+        "venue_adresse": null,
+        "gegner": "Spielfrei",
+        "heimspiel": false,
+        "spielfrei": true,
+        "ort_text": "",
+        "status": "geplant"
+    }
+]

@@ -415,6 +415,7 @@ final class Container
             $this->teamHomePitchRepository(),
             $this->venueMatcher(),
             new HttpIcsFeedFetcher(),
+            $this->settingRepository(),
             $this->alarmMailer(),
         ));
     }

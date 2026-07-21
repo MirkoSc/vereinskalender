@@ -51,6 +51,27 @@ final class IcsExporterTest extends DatabaseTestCase
         self::assertStringContainsString('DTSTART:20990808T130000Z', $ics);
     }
 
+    /**
+     * Issue #65: a bye stays in the feed (relevant to subscribers) with a
+     * canonical title independent of the feed's own SUMMARY wording, and
+     * without a LOCATION line - it never had one.
+     */
+    public function testSpielfreiMatchGetsCanonicalTitleAndNoLocation(): void
+    {
+        $teamId = $this->createTeam('E1');
+        $this->createMatch($teamId, [
+            'anstoss' => '2099-08-08 15:00:00',
+            'gegner' => 'Ausfall (Feiertag)',
+            'ort_text' => '',
+            'spielfrei' => true,
+        ]);
+
+        $ics = $this->exporter()->matchesFeed($teamId);
+
+        self::assertStringContainsString('SUMMARY:E1: Spielfrei', $ics);
+        self::assertStringNotContainsString('LOCATION:', $ics);
+    }
+
     public function testCalendarNameIncludesTheConfiguredAppName(): void
     {
         $settings = new \App\Repository\SettingRepository($this->pdo());

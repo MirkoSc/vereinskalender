@@ -79,6 +79,7 @@ final class ParityFixturesTest extends TestCase
             $venuesById,
             new VenueMatcher([]),
             (string) $bundle['settings']['auswaerts_farbe'],
+            (string) $bundle['settings']['spielfrei_farbe'],
         );
 
         $slotsById = [];
