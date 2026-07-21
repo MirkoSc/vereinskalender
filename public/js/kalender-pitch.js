@@ -29,23 +29,42 @@
         return props.pitch_kuerzel || props.pitch_name || null;
     };
 
-    // Ob der Termin-HINTERGRUND nach Platz eingefärbt werden soll (Issue
-    // #40). pitchGruppierungAktiv() ersetzt fehlende Ressourcen-Spalten in
-    // Grid-Ansichten (Issue #6/#11) - dort bleibt die Platzfarbe wie
-    // bisher. Die Terminliste (listNachlade, mobiler Default für Belegung
-    // UND Spielplan) ist aber ein chronologischer Feed ohne Spalten-Konzept;
-    // dort bleibt der Hintergrund neutral - die Team-/Spielstättenfarbe
-    // zeigen dort (wie überall) die zwei Punkte aus kalender-farbe.js
-    // (Issue #39), unabhängig von dieser Funktion. Das Platz-Kürzel bleibt
-    // als Text-Präfix trotzdem erhalten - eventTitle() in kalender.js nutzt
-    // weiterhin pitchGruppierungAktiv() direkt, unverändert (Farbe ist nie
-    // das einzige Signal, CLAUDE.md Abschnitt 8).
-    const pitchFarbeAktiv = (pitchGruppierungAktivWert, istListenansicht) => (
-        pitchGruppierungAktivWert && !istListenansicht
-    );
+    // WIE die Platzfarbe am Termin erscheint - die eine Entscheidungsstelle
+    // für "Darstellung × Breite × Platzfilter" (Issue #57). Vorher war die
+    // Regel auf pitchGruppierungAktiv() + eine Listen-Sonderabfrage verteilt
+    // und wurde zudem zum Fetch-Zeitpunkt eingebacken; beides zusammen ergab
+    // beim Darstellungswechsel veraltete Farben. Ergebnis:
+    //   'hintergrund' - Termin-HINTERGRUND in Platzfarbe (Issue #6/#11):
+    //                   Ersatz für fehlende Ressourcen-Spalten in den
+    //                   Zeitraster-Ansichten (Tag/Woche unterhalb der
+    //                   Desktop-Schwelle).
+    //   'punkt'       - dritter Farbpunkt statt Hintergrund, nur im Monat
+    //                   (Issue #57): dayGridMonth rendert zeitgebundene
+    //                   Termine als Dot-Events ohne Block-Fläche, ein
+    //                   Hintergrund kommt dort schlicht nicht an. Der eigene
+    //                   eventContent ersetzt zudem FullCalendars Punkt, die
+    //                   Platzfarbe hätte sonst gar kein Ziel.
+    //   'keine'       - Ressourcen-Spalten tragen den Platz bereits; die
+    //                   Terminliste ist ein chronologischer Feed ohne
+    //                   Spalten-Konzept und bleibt neutral (Issue #40); ein
+    //                   gewählter Einzelplatz macht die Unterscheidung
+    //                   gegenstandslos.
+    // Unabhängig davon zeigen alle Ansichten die zwei Team-/Spielstätten-
+    // Punkte (kalender-farbe.js, Issue #39) und - solange
+    // pitchGruppierungAktiv() gilt - das Platz-Kürzel als Text-Präfix
+    // (Farbe ist nie das einzige Signal, CLAUDE.md Abschnitt 8).
+    const platzFarbDarstellung = (modus, hatResourceSpaltenWert, pitchFilter) => {
+        if (!pitchGruppierungAktiv(hatResourceSpaltenWert, pitchFilter)) {
+            return 'keine';
+        }
+        if (modus === 'liste') {
+            return 'keine';
+        }
+        return modus === 'monat' ? 'punkt' : 'hintergrund';
+    };
 
     const api = {
-        pitchGruppierungAktiv, pitchEventFarbe, pitchEventPraefix, pitchFarbeAktiv,
+        pitchGruppierungAktiv, pitchEventFarbe, pitchEventPraefix, platzFarbDarstellung,
     };
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = api;

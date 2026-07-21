@@ -301,16 +301,39 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   Platz-SPALTEN auf genau diesen Platz (inkl. der synthetischen „Auswärts"-
   Spalte für Spiele ohne `pitch_id`); in jeder anderen Kombination (Monat,
   Liste, schmale Tag-/Wochenansicht) filtert er stattdessen die Termine
-  direkt. Ohne Einzelplatz-Auswahl färbt „Alle Plätze" in den Grid-Ansichten
-  OHNE Ressourcen-Spalten (Ersatz für die fehlenden Spalten) den Termin-
-  HINTERGRUND nach Platzfarbe mit Platz-Kürzel (Fallback Platzname) als
-  Text-Präfix vor dem Titel; Auswärtsspiele (nie eine `pitch_id`) bilden
-  dabei die eigene Gruppe „Auswärts" mit der globalen Auswärtsfarbe. Die
-  Terminliste (`listNachlade`, per Umschalter jederzeit erreichbar, Issue
-  #37) ist kein Ressourcen-Ersatz, sondern ein chronologischer Feed: dort
-  bleibt der Hintergrund neutral (Issue #40) – die Team-/Spielstättenfarbe
-  zeigen dort wie überall die zwei Farbpunkte, unabhängig von „Alle Plätze";
-  der Platz-Kürzel-Präfix im Titel bleibt davon unberührt.
+  direkt. Ohne Einzelplatz-Auswahl trägt „Alle Plätze" die Platzfarbe als
+  Ersatz für die fehlenden Spalten an den Termin – mit Platz-Kürzel (Fallback
+  Platzname) als Text-Präfix vor dem Titel; Auswärtsspiele (nie eine
+  `pitch_id`) bilden dabei die eigene Gruppe „Auswärts" mit der globalen
+  Auswärtsfarbe. **Wie** die Farbe erscheint, hängt an der Darstellung
+  (Issue #57, eine Entscheidungsstelle:
+  `VKKalenderPitch.platzFarbDarstellung(modus, hatResourceSpalten, pitchFilter)`):
+  Tag/Woche ohne Ressourcen-Spalten färben den Termin-HINTERGRUND; der Monat
+  bekommt stattdessen einen dritten Farbpunkt (Quadrat wie der
+  Spielstätten-Punkt, Legende Issue #38), weil `dayGridMonth` zeitgebundene
+  Termine als Dot-Events ohne Block-Fläche rendert – ein Hintergrund kommt
+  dort nicht an, und der eigene `eventContent` ersetzt zudem FullCalendars
+  eigenen Punkt. Die Terminliste (`listNachlade`, per Umschalter jederzeit
+  erreichbar, Issue #37) ist kein Ressourcen-Ersatz, sondern ein
+  chronologischer Feed: dort bleibt der Hintergrund neutral (Issue #40) – die
+  Team-/Spielstättenfarbe zeigen dort wie überall die zwei Farbpunkte,
+  unabhängig von „Alle Plätze"; der Platz-Kürzel-Präfix im Titel bleibt in
+  allen Darstellungen unberührt.
+- **Alles Darstellungsabhängige wird beim RENDERN abgeleitet, nie im
+  Event-Datensatz gespeichert** (Issue #57, Invariante): Platzfarbe und
+  Platz-Präfix entstehen in `eventContent`/`eventDidMount` aus dem aktuellen
+  `modus`, der live gelesenen Breite (`istBreit()`, kein Snapshot mehr) und
+  dem Platzfilter. Grund: `setzeModus()` wechselt nur die View, und
+  FullCalendar fetcht mit `lazyFetching` ausschließlich nach, wenn die neue
+  Range über die geladene hinausgeht – jeder Wechsel in eine ENGERE Range
+  (Monat→Woche, Monat→Tag, Woche→Tag, Liste→alles) benutzt die gecachten
+  Event-Objekte weiter. Vorberechnete Werte im Datensatz überleben den
+  Wechsel damit und zeigen die Regel der VORHERIGEN Darstellung. Aus
+  demselben Grund liefert `aktuelleRessourcen()` die Spaltenliste
+  breitenunabhängig (eine einmal leer gecachte Liste ließ eine später
+  aktivierte Ressourcen-View sonst alle Events lautlos verwerfen). Im
+  Datensatz darf nur stehen, was allein am Termin hängt – die Art-Farbe der
+  Sperrungen.
 - Filter „manuelle Termine" (`filter-manuell`, dreistufig: Alle / Ohne
   manuelle / Nur manuelle): clientseitig wie der Platzfilter, `/api/events`
   kennt ihn nicht; er wirkt auf das `manuell`-Flag im Event-Payload und
@@ -640,7 +663,13 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   Lücke > 1 Jahr beendet die Kette nicht, „wirklich kein Termin mehr" endet
   terminierend mit Abschlusshinweis, Slot-Regel als frühester Kandidat,
   laufende Sperrung zählt nicht als „nächster"; Filter senken die Schranke
-  nicht); **Offline-
+  nicht); **Platzfarb-Darstellung** (Issue #57,
+  `tests/js/kalender-pitch.test.js`: vollständige Matrix Darstellung × Breite
+  × Platzfilter über `platzFarbDarstellung()`, komponiert mit
+  `hatResourceSpalten()` – Hintergrund nur in Tag/Woche ohne Spalten, Punkt
+  nur im Monat, „keine" in Ressourcen-Views/Liste/bei Einzelplatz, und
+  derselbe Termin liefert je Darstellung ein anderes Ergebnis – die
+  Eigenschaft, die die eingebackene Variante verletzte); **Offline-
   Paritätstests** (Issue #25): goldene Fixtures
   (`tests/fixtures/parity/bundle.json` + `cases.json`, inkl. beider
   DST-Wochenenden, überlappender Slots, mehrtägiger vor dem Zeitraum
