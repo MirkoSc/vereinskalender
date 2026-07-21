@@ -5,13 +5,14 @@
     // /api/events-Query aus den aktiven Filtern (Issue #37: die zusammen-
     // geführte Kalenderseite fragt IMMER alle Termintypen ab - kein
     // typ-Parameter, EventFeedService liefert dann Belegungen, Sperrungen
-    // UND Spiele ohne Duplikate). 'pitch' und 'manuell' filtern weiterhin nur
-    // clientseitig (applyPitchFilter/manuellFilterAnwenden in kalender.js,
-    // Issue #6/#11/#12), /api/events kennt beide nicht.
+    // UND Spiele ohne Duplikate). 'pitch', 'manuell', 'vermietung' und 'typ'
+    // filtern weiterhin nur clientseitig (applyPitchFilter/
+    // manuellFilterAnwenden/vermietungFilterAnwenden/typFilterAnwenden in
+    // kalender.js, Issue #6/#11/#12/#36/#56), /api/events kennt keinen davon.
     const baueEventsParams = (filters) => {
         const params = new URLSearchParams();
         for (const [key, value] of Object.entries(filters)) {
-            if (value !== '' && key !== 'pitch' && key !== 'manuell' && key !== 'vermietung') {
+            if (value !== '' && key !== 'pitch' && key !== 'manuell' && key !== 'vermietung' && key !== 'typ') {
                 params.set(key, value);
             }
         }
@@ -45,7 +46,23 @@
             : events.filter((e) => !istVermietung(e));
     };
 
-    const api = { baueEventsParams, manuellFilterAnwenden, vermietungFilterAnwenden };
+    // Dreistufiger Filter "Termintyp" (Issue #56): '' zeigt alles, 'spiel'
+    // zeigt ausschließlich Spiele, 'training' ausschließlich Trainings
+    // (typ='belegung' - Trainings-Slots heißen intern "Belegung", CLAUDE.md
+    // Abschnitt 3). Beide Stufen blenden dabei auch Sperrungen und
+    // Vermietungen aus - anders als manuell/vermietung gibt es hier keinen
+    // "ohne"-Zwischenschritt, da die zwei Ausprägungen bereits exklusiv sind.
+    const typFilterAnwenden = (events, wert) => {
+        if (wert === '') {
+            return events;
+        }
+        const zielTyp = wert === 'spiel' ? 'spiel' : 'belegung';
+        return events.filter((e) => e.typ === zielTyp);
+    };
+
+    const api = {
+        baueEventsParams, manuellFilterAnwenden, vermietungFilterAnwenden, typFilterAnwenden,
+    };
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = api;
     } else {

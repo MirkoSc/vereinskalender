@@ -51,6 +51,9 @@
         { key: 'pitch', default: '', label: (wert) => `Platz: ${pitchLabel(wert)}` },
         { key: 'manuell', default: '', label: (wert) => (wert === 'nur' ? 'Nur manuelle Termine' : 'Ohne manuelle Termine') },
         { key: 'vermietung', default: '', label: (wert) => (wert === 'nur' ? 'Nur Vermietungen' : 'Ohne Vermietungen') },
+        // Issue #56: dreistufiger Termintyp-Filter, rein clientseitig wie
+        // manuell/vermietung - /api/events kennt ihn nicht (s. baueEventsParams).
+        { key: 'typ', default: '', label: (wert) => (wert === 'spiel' ? 'Nur Spiele' : 'Nur Trainings') },
     ];
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -75,6 +78,23 @@
     const filterDialog = document.querySelector('#filter-dialog');
     const filterChips = document.querySelector('#filter-chips');
     const filterBadge = document.querySelector('#filter-badge');
+    // Issue #56: Hinweis statt stumm leerer Ansicht, wenn die aktiven Filter
+    // (egal welche Kombination - z. B. "Nur Spiele" + "Nur manuelle") kein
+    // einziges Ergebnis liefern. Bleibt aus, wenn ein Zeitraum ganz ohne
+    // Filter leer ist (spielfreie Zeit ist kein Filter-Effekt).
+    const kalenderLeerHinweis = document.querySelector('#kalender-leer-hinweis');
+    const aktualisiereLeerHinweis = (gefilterteEvents) => {
+        if (!kalenderLeerHinweis) {
+            return;
+        }
+        const abweichungen = window.VKFilter.aktiveAbweichungen(filters, filterDefinitionen);
+        if (gefilterteEvents.length > 0 || abweichungen.length === 0) {
+            kalenderLeerHinweis.hidden = true;
+            return;
+        }
+        kalenderLeerHinweis.textContent = `Keine Termine für die aktiven Filter (${abweichungen.map((a) => a.text).join(', ')}).`;
+        kalenderLeerHinweis.hidden = false;
+    };
 
     const aktualisiereUrl = () => {
         const query = window.VKFilter.schreibeUrlParams(filters, filterDefinitionen).toString();
@@ -130,17 +150,31 @@
 
     const manuellSelect = document.querySelector('#filter-manuell');
     const vermietungSelect = document.querySelector('#filter-vermietung');
+    const typSelect = document.querySelector('#filter-typ');
 
     teamSelect.value = filters.team;
     bereichSelect.value = filters.bereich;
     venueSelect.value = filters.venue;
     manuellSelect.value = filters.manuell;
     vermietungSelect.value = filters.vermietung;
+    typSelect.value = filters.typ;
     teamSelect.addEventListener('change', () => setzeFilter('team', teamSelect.value));
     bereichSelect.addEventListener('change', () => setzeFilter('bereich', bereichSelect.value));
     venueSelect.addEventListener('change', () => setzeFilter('venue', venueSelect.value));
     manuellSelect.addEventListener('change', () => setzeFilter('manuell', manuellSelect.value));
     vermietungSelect.addEventListener('change', () => setzeFilter('vermietung', vermietungSelect.value));
+    // Issue #56: zusätzlich zur generischen 'filternutzung' (onFilterChange)
+    // je gewählter Stufe eine eigene Metrik - analog den Ansicht-Metriken -
+    // damit das Dashboard "Nur Spiele" von "Nur Trainings" unterscheiden kann.
+    // Kein Beacon beim Zurücksetzen auf "Alle" (kein Feature-"Nutzen").
+    typSelect.addEventListener('change', () => {
+        if (typSelect.value === 'spiel') {
+            beacon('filter_typ_spiel');
+        } else if (typSelect.value === 'training') {
+            beacon('filter_typ_training');
+        }
+        setzeFilter('typ', typSelect.value);
+    });
 
     document.querySelector('#filter-button').addEventListener('click', () => filterDialog.showModal());
     document.querySelector('#filter-close').addEventListener('click', () => filterDialog.close());
@@ -460,11 +494,14 @@
             : events
     );
 
-    // Beide clientseitigen Filter zusammen anwenden (auch im Offline-Pfad,
-    // da fetchEventsRange auch dort schon fertige Event-Objekte liefert).
-    const applyClientFilters = (events) => window.VKKalenderEvents.vermietungFilterAnwenden(
-        window.VKKalenderEvents.manuellFilterAnwenden(applyPitchFilter(events), filters.manuell),
-        filters.vermietung,
+    // Alle clientseitigen Filter zusammen anwenden (auch im Offline-Pfad, da
+    // fetchEventsRange auch dort schon fertige Event-Objekte liefert).
+    const applyClientFilters = (events) => window.VKKalenderEvents.typFilterAnwenden(
+        window.VKKalenderEvents.vermietungFilterAnwenden(
+            window.VKKalenderEvents.manuellFilterAnwenden(applyPitchFilter(events), filters.manuell),
+            filters.vermietung,
+        ),
+        filters.typ,
     );
 
     // Issue #36: die zuletzt geladenen Vermietungen (immer aus dem GEFILTERTEN
@@ -963,7 +1000,9 @@
                     listeAktiv = true;
                     listeLadeKette(params);
                 }
-                success(merkeVermietungen(applyClientFilters(listeEvents)).map(toFcEvent));
+                const gefiltert = merkeVermietungen(applyClientFilters(listeEvents));
+                aktualisiereLeerHinweis(gefiltert);
+                success(gefiltert.map(toFcEvent));
                 listeTitelAktualisieren();
                 return;
             }
@@ -975,7 +1014,9 @@
                 // Grid-Ansichten zeigen ein festes Fenster - `naechster`
                 // (Issue #52) braucht nur die nachladende Terminliste.
                 const { events } = await fetchEventsRange(von, bis, params);
-                success(merkeVermietungen(applyClientFilters(events)).map(toFcEvent));
+                const gefiltert = merkeVermietungen(applyClientFilters(events));
+                aktualisiereLeerHinweis(gefiltert);
+                success(gefiltert.map(toFcEvent));
             } catch (error) {
                 failure(error);
             }
