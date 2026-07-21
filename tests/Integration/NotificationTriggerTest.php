@@ -52,6 +52,40 @@ final class NotificationTriggerTest extends DatabaseTestCase
         self::assertNotNull($queue[0]['ausgeloest_von_event_id']);
     }
 
+    /**
+     * Issue #64: a restriction UPDATE (e.g. an art change) enqueues the same
+     * 'platzsperrung' category as a create; DELETE deliberately never does
+     * (analog manual matches, whose deletion also stays silent).
+     */
+    public function testRestrictionUpdateEnqueuesButDeleteDoesNot(): void
+    {
+        $venueId = $this->createVenue();
+        $pitchId = $this->createPitch($venueId);
+        $store = $this->eventStoreWithTrigger();
+
+        $payload = [
+            'pitch_id' => $pitchId,
+            'von' => '2026-09-01 08:00:00',
+            'bis' => '2026-09-02 22:00:00',
+            'art' => 'eingeschraenkt',
+            'grund' => 'Rasenschonung',
+        ];
+        $id = $store->append(AggregateType::PitchRestriction, null, EventType::Created, $payload, $this->context())->aggregateId;
+        self::assertCount(1, $this->dumpTable('notification_queue'));
+
+        $store->append(AggregateType::PitchRestriction, $id, EventType::Updated, [
+            ...$payload, 'art' => 'gesperrt',
+        ], $this->context());
+        self::assertCount(2, $this->dumpTable('notification_queue'), 'update enqueues like create');
+
+        $store->append(AggregateType::PitchRestriction, $id, EventType::Deleted, $payload, $this->context());
+        self::assertCount(2, $this->dumpTable('notification_queue'), 'delete stays silent');
+
+        $queue = $this->dumpTable('notification_queue');
+        $updatePayload = json_decode((string) $queue[1]['payload'], true);
+        self::assertSame('gesperrt', $updatePayload['art']);
+    }
+
     public function testMatchKickoffChangeAndCancellationEnqueue(): void
     {
         $teamId = $this->createTeam();

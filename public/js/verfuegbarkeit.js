@@ -276,6 +276,23 @@
         intervalContent.append(title, info);
 
         if (segment.restriction_id) {
+            // Issue #64: die Tages-Kachel kennt nur den auf diesen Tag
+            // geclippten Ausschnitt - Bearbeiten braucht den vollen,
+            // ungeclippten Zeitraum der Restriktion, daher ein Nachladen.
+            const editButton = document.createElement('button');
+            editButton.type = 'button';
+            editButton.className = 'button';
+            editButton.textContent = 'Bearbeiten';
+            editButton.addEventListener('click', async () => {
+                const response = await fetch(`/api/sperrungen/${segment.restriction_id}`);
+                if (!response.ok) {
+                    alert('Diese Sperrung/Einschränkung konnte nicht geladen werden.');
+                    return;
+                }
+                intervalDialog.close();
+                openRestrictionDialog(await response.json());
+            });
+
             const deleteButton = document.createElement('button');
             deleteButton.type = 'button';
             deleteButton.className = 'button danger';
@@ -292,7 +309,7 @@
                     alert(VK.fehlerText(result.data));
                 }
             });
-            intervalActions.append(deleteButton);
+            intervalActions.append(editButton, deleteButton);
         }
 
         intervalActions.append(intervalClose);
@@ -300,32 +317,77 @@
         intervalDialog.showModal();
     };
 
-    // ---- restriction dialog ----
+    // ---- restriction dialog (Issue #64: Bearbeiten analog Anlegen, exakt
+    // dasselbe öffentliche Ebene-2-Muster wie Vermietung/manuelles Spiel) ----
 
     const restrictionDialog = document.querySelector('#restriction-dialog');
     const restrictionForm = document.querySelector('#restriction-form');
     const restrictionFeedback = document.querySelector('#restriction-feedback');
+    const restrictionTitle = document.querySelector('#restriction-title');
+    const restrictionSubmit = document.querySelector('#restriction-submit');
+    const restrictionCancel = document.querySelector('#restriction-cancel');
     const restrictionPitchSelect = document.querySelector('#restriction-pitch');
     for (const pitch of appData.pitches) {
         restrictionPitchSelect.add(new Option(`${pitch.name} (${pitch.venue_name})`, String(pitch.id)));
     }
 
-    document.querySelector('#new-restriction').addEventListener('click', () => {
+    const openRestrictionDialog = (props) => {
         restrictionForm.reset();
         restrictionFeedback.textContent = '';
-        restrictionDialog.showModal();
-    });
-    document.querySelector('#restriction-cancel').addEventListener('click', () => restrictionDialog.close());
+        restrictionFeedback.className = '';
+        restrictionCancel.textContent = 'Abbrechen';
 
+        const isEdit = props !== null;
+        restrictionTitle.textContent = isEdit ? 'Sperrung/Einschränkung bearbeiten' : 'Platzsperrung / Einschränkung eintragen';
+        restrictionSubmit.textContent = isEdit ? 'Speichern' : 'Eintragen';
+
+        restrictionForm.elements.restriction_id.value = isEdit ? String(props.id) : '';
+        restrictionForm.elements.pitch_id.value = isEdit ? String(props.pitch_id) : '';
+        restrictionForm.elements.art.value = isEdit ? props.art : 'gesperrt';
+        // datetime-local erwartet 'YYYY-MM-DDTHH:MM', von/bis liefern das
+        // bereits als Präfix (Sekunden abgeschnitten)
+        restrictionForm.elements.von.value = isEdit ? props.von.slice(0, 16) : '';
+        restrictionForm.elements.bis.value = isEdit ? props.bis.slice(0, 16) : '';
+        restrictionForm.elements.grund.value = isEdit ? props.grund : '';
+
+        restrictionDialog.showModal();
+    };
+
+    document.querySelector('#new-restriction').addEventListener('click', () => openRestrictionDialog(null));
+    restrictionCancel.addEventListener('click', () => restrictionDialog.close());
+
+    // Issue #64: eine Sperrung/Einschränkung blockiert nie sich selbst -
+    // wie beim Anlegen wird direkt gespeichert, kein Konflikt-/Warnungs-
+    // Check nötig. Betrifft die Änderung bereits bestehende Termine, liefert
+    // der Server das als reinen Hinweis zurück (macht sie nicht ungültig);
+    // der Dialog bleibt dafür offen statt sofort zu schließen.
     restrictionForm.addEventListener('submit', async (event) => {
         event.preventDefault();
         const data = Object.fromEntries(new FormData(restrictionForm));
+        const id = data.restriction_id;
+        const url = id === '' ? '/api/sperrungen' : `/api/sperrungen/${id}`;
 
         try {
-            const result = await VK.post('/api/sperrungen', data);
+            const result = await VK.post(url, data);
             if (result.ok) {
-                restrictionDialog.close();
                 load();
+                const betroffene = result.data.betroffene ?? [];
+                if (betroffene.length > 0) {
+                    restrictionFeedback.className = 'warning-message';
+                    const intro = document.createElement('p');
+                    intro.textContent = 'Hinweis: folgende bereits bestehende Termine sind jetzt betroffen (sie bleiben wie gespeichert):';
+                    const liste = document.createElement('ul');
+                    liste.className = 'konflikt-liste';
+                    for (const text of betroffene) {
+                        const li = document.createElement('li');
+                        li.textContent = text;
+                        liste.append(li);
+                    }
+                    restrictionFeedback.replaceChildren(intro, liste);
+                    restrictionCancel.textContent = 'Schließen';
+                    return;
+                }
+                restrictionDialog.close();
             } else {
                 restrictionFeedback.className = 'error-message';
                 restrictionFeedback.textContent = VK.fehlerText(result.data);

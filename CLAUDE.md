@@ -89,6 +89,19 @@ sind KEINE Projektionen.
   art ('gesperrt'|'eingeschraenkt'), grund (Pflicht). 'gesperrt' →
   Konfliktprüfung lehnt neue Belegungen ab; 'eingeschraenkt' → Belegen
   erlaubt, Buchungsdialog warnt mit Grund, Termine tragen Markierung.
+  **Bearbeiten/Löschen öffentlich** (Ebene 2) als Events, Löschen =
+  delete-Event – exakt das Muster von manuellen Spielen/Vermietungen
+  (Issue #64); Platz, Zeitraum und Grund sind alle änderbar (das Payload ist
+  ohnehin immer ein Vollbild, kein Diff – kein Sonderfall für den Platz
+  nötig). Ein Art-Wechsel wirkt sofort auf die Konfliktprüfung, die
+  `pitch_restriction` bei jeder Prüfung live liest; er macht dadurch
+  bestehende Belegungen **nicht** ungültig – `BookingService::
+  occurrencesOnPitch()` liefert die davon betroffenen Trainings-/Spiel-
+  termine im Zeitraum der Restriktion beim Schreiben (create UND update) als
+  reine Hinweisliste zurück, rein informativ wie
+  `ConflictCheckResult::$hinweise`. Push (Kategorie „Platzrestriktion")
+  feuert bei Created UND Updated, nicht bei Deleted (analog dem
+  Lösch-Verhalten bei manuellen Spielen).
 - **match**: team_id FK, anstoss, ende NULL (nur bei manuellen Spielen
   gesetzt; der Import schreibt immer NULL; Anzeige, Konfliktprüfung,
   Verfügbarkeit und ICS-Export nutzen ende, sonst Fallback Anstoß + 2 Std.
@@ -718,7 +731,14 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   Upcasting beim Replay analog `pitch.farbe`; Sportheim-/Raum-Delete-Guards
   – referenzierende Räume/Plätze/Vermietungen bzw. Vermietungen →
   deaktivieren statt löschen; Offline-Parität für den neuen Termintyp,
-  s. u.); **Bereich-
+  s. u.); **Restriktionen bearbeiten** (Issue #64: Schreibpfad
+  create/update/delete inkl. Event + Projektion in einer Transaktion,
+  Art-Wechsel wirkt sofort auf die Konfliktprüfung – 'eingeschraenkt' →
+  'gesperrt' blockiert die nächste Prüfung, ohne eine zuvor gespeicherte
+  Belegung zu entfernen –, `betroffene`-Hinweisliste bei überlappenden
+  Trainings-/Spielterminen sowohl bei create als auch bei update,
+  Push-Auslösung nur bei Created/Updated nicht bei Deleted, Replay nach
+  Update); **Bereich-
   Upcasting** (Issue #27: Alt-Team-Event mit nur dem Enum-String → über die
   System-Seed-Events im Event-Log auf die passende bereich_id gehoben,
   deterministisch unabhängig von der Replay-Reihenfolge relativ zu den

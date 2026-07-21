@@ -44,8 +44,9 @@
 </section>
 
 <dialog id="restriction-dialog" class="sheet">
-    <h3>Platzsperrung / Einschränkung eintragen</h3>
+    <h3 id="restriction-title">Platzsperrung / Einschränkung eintragen</h3>
     <form id="restriction-form">
+        <input type="hidden" name="restriction_id">
         <label>Platz
             <select name="pitch_id" required id="restriction-pitch"></select>
         </label>
@@ -60,9 +61,9 @@
             <label>Bis <input type="datetime-local" name="bis" required></label>
         </div>
         <label>Grund <input type="text" name="grund" required maxlength="255"></label>
-        <p id="restriction-feedback" aria-live="polite"></p>
+        <div id="restriction-feedback" aria-live="polite"></div>
         <div class="dialog-actions">
-            <button type="submit" class="button">Eintragen</button>
+            <button type="submit" class="button" id="restriction-submit">Eintragen</button>
             <button type="button" class="linklike" id="restriction-cancel">Abbrechen</button>
         </div>
     </form>

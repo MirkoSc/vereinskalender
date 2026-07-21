@@ -150,9 +150,23 @@ final readonly class BookingApiController
     public function createRestriction(Request $request): Response
     {
         try {
-            $id = $this->restrictions->create($request->post, $this->context($request));
+            $result = $this->restrictions->create($request->post, $this->context($request));
 
-            return Response::json(['id' => $id], 201);
+            return Response::json(['id' => $result['id'], 'betroffene' => $result['betroffene']], 201);
+        } catch (ValidationException $e) {
+            return Response::json(['fehler' => $e->getErrors()], 422);
+        }
+    }
+
+    /**
+     * @param array<string, string> $params
+     */
+    public function updateRestriction(Request $request, array $params): Response
+    {
+        try {
+            $result = $this->restrictions->update((int) $params['id'], $request->post, $this->context($request));
+
+            return Response::json(['ok' => true, 'betroffene' => $result['betroffene']]);
         } catch (ValidationException $e) {
             return Response::json(['fehler' => $e->getErrors()], 422);
         }

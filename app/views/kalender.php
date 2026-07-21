@@ -277,6 +277,37 @@
     </form>
 </dialog>
 
+<!-- Issue #64: Sperrung/Einschränkung bearbeiten, Einstieg über den
+     Detail-Dialog (Anlegen bleibt der Verfügbarkeitsansicht vorbehalten,
+     CLAUDE.md Abschnitt 8: "+ Eintragen" bietet Belegung/Spiel/Vermietung
+     an) - dieselbe Formular-Struktur wie #restriction-dialog in
+     verfuegbarkeit.php. -->
+<dialog id="restriction-dialog" class="sheet">
+    <h3 id="restriction-title">Sperrung/Einschränkung bearbeiten</h3>
+    <form id="restriction-form">
+        <input type="hidden" name="restriction_id">
+        <label>Platz
+            <select name="pitch_id" required id="restriction-pitch"></select>
+        </label>
+        <label>Art
+            <select name="art" required>
+                <option value="gesperrt">Gesperrt (keine Belegung möglich)</option>
+                <option value="eingeschraenkt">Eingeschränkt (Belegung mit Warnung)</option>
+            </select>
+        </label>
+        <div class="field-row">
+            <label>Von <input type="datetime-local" name="von" required></label>
+            <label>Bis <input type="datetime-local" name="bis" required></label>
+        </div>
+        <label>Grund <input type="text" name="grund" required maxlength="255"></label>
+        <div id="restriction-feedback" aria-live="polite"></div>
+        <div class="dialog-actions">
+            <button type="submit" class="button" id="restriction-submit">Speichern</button>
+            <button type="button" class="linklike" id="restriction-cancel">Abbrechen</button>
+        </div>
+    </form>
+</dialog>
+
 <dialog id="name-dialog" class="sheet">
     <h3>Wie heißt du?</h3>
     <p>Dein Name wird bei jeder Änderung gespeichert, damit nachvollziehbar bleibt, wer was geändert hat.</p>
