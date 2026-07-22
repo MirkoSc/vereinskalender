@@ -694,10 +694,13 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   Content-Zeile in Tag/Woche in eine SPALTE - ohne horizontale Haupt-Achse
   schrumpft dort nichts mehr, jedes Kind nimmt seine natürliche Breite und
   ragt über den Block hinaus, unabhängig von jeder Ellipsis-Regel auf den
-  Kindern selbst. `.ev-inhalt` erzwingt seither `flex-direction: row
-  !important` (wie die `--fc-event-*`-Variablen oben, Abschnitt 8 Beginn).
-  Vollständiger Text bleibt über `title`/`aria-label` am `.ev-titel`-Element
-  und den Detail-Dialog erreichbar.
+  Kindern selbst. `.ev-inhalt` erzwang seither `flex-direction: row
+  !important` (wie die `--fc-event-*`-Variablen oben, Abschnitt 8 Beginn) –
+  seit Issue #75 (s. u.) gilt die Zeile nur noch als Basis für Monat/Liste,
+  ohne `!important`; für `.fc-v-event` (Tag/Woche) überschreibt eine
+  spezifischere Regel bewusst wieder auf Spalte. Vollständiger Text bleibt
+  über `title`/`aria-label` am `.ev-titel`-Element und den Detail-Dialog
+  erreichbar.
 - **Die Kürzungsreihenfolge braucht eine begrenzte Breite** (Issue #67 –
   die Regel aus #58 war unvollständig): `flex-shrink` schrumpft nur gegen
   eine Vorgabe. In Tag/Woche/Monat liefert die Grid-Geometrie sie (der
@@ -733,6 +736,28 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   `document.documentElement.scrollWidth === clientWidth`) – die Ursache
   liegt in CSS-Layout, nicht in einer Entscheidungsfunktion, für die sich
   ein Unit-Test wie bei `platzFarbDarstellung()` (Issue #57) lohnen würde.
+- **Termine in Tag/Woche stapeln Uhrzeit/Punkte/Team vertikal** (Issue #75):
+  Auftrag war eine vertikale Darstellung statt der #58-Zeile – scheinbar ein
+  Widerspruch, da #58 die Zeile gerade WEGEN Überlauf erzwang. Auflösung:
+  #58s Überlauf kam von FullCalendars ungebremster `column`-Kippung ohne
+  jede Breitenbegrenzung auf den Kindern; die neue Spalten-Regel
+  (`.fc .fc-v-event .ev-inhalt{flex-direction:column;align-items:stretch}`,
+  Spezifität 0,3,0 schlägt FCs `.fc-v-event .fc-event-main-frame` mit 0,2,0
+  ohne `!important`) behält dagegen `min-width:0`+`overflow:hidden`+Ellipsis
+  auf jedem gestapelten Kind bei – Uhrzeit oben (`flex-shrink:0` zusätzlich
+  in der Höhe, damit sie nie verschwindet), Punkte in der Mitte (`.ev-punkte`
+  bleibt `flex-shrink:0`, achsenunabhängig), Titel unten. Die #58-
+  Kürzungsreihenfolge (Titel vor Präfix) bleibt unangetastet, weil
+  `.ev-titel` selbst eine interne Row-Flex-Zeile bleibt – nur die drei
+  äußeren Blöcke stapeln sich, nicht Präfix/Titel gegeneinander. Bei zu
+  wenig Höhe (sehr kurze Termine) gibt der Titel zuerst nach und wird vom
+  Container-`overflow:hidden` geklippt, voller Text bleibt über
+  `title`/`aria-label`/Detail-Dialog erreichbar – dasselbe Prinzip wie #58,
+  nur auf der Höhen- statt der Breiten-Achse. Monat (Dot-Events, kein
+  `.fc-v-event`) und Liste (#67-Tabellenlayout) bleiben bei der Zeile,
+  unverändert. Die Tagesansicht übernimmt dieselbe Spalten-Darstellung wie
+  die Woche (gleiche `.fc-v-event`-Basis, Konsistenz statt eines
+  Sonderfalls, zumal Tag die mobile Default-Ansicht ist).
 - Cache-Busting: Assets `?v=<VERSION>`, SW-Cache-Name enthält Version.
 - **Vereinswappen**: Admin-Upload (nur PNG – GD kann kein SVG rastern, einzige
   auf Shared Hosting garantiert vorhandene Bild-Erweiterung), Ablage in
