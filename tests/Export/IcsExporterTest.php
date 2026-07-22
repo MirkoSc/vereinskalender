@@ -79,11 +79,11 @@ final class IcsExporterTest extends DatabaseTestCase
     }
 
     /**
-     * Issue #78: the feed puts a bye's kickoff at ~23:59 the day before; the
-     * exported DATE must be the real day (date of the effective end), not the
-     * kickoff day.
+     * Issue #78: a bye sits at a late evening hour (~23:59) on its real day.
+     * The exported DATE must be the kickoff day, NOT the +2h effective-end day
+     * (which would be the following day and render the bye one day too late).
      */
-    public function testSpielfreiExportUsesEffectiveEndDayNotKickoffDay(): void
+    public function testSpielfreiExportUsesKickoffDayNotEffectiveEndDay(): void
     {
         $teamId = $this->createTeam('E1');
         $this->createMatch($teamId, [
@@ -95,9 +95,11 @@ final class IcsExporterTest extends DatabaseTestCase
 
         $ics = $this->exporter()->matchesFeed($teamId);
 
-        // kickoff is 2099-08-07 23:59, +2h end lands on 2099-08-08 => that day
-        self::assertStringContainsString('DTSTART;VALUE=DATE:20990808', $ics);
-        self::assertStringNotContainsString('DTSTART;VALUE=DATE:20990807', $ics);
+        // kickoff 2099-08-07 23:59 (+2h end would be 2099-08-08 01:59) => the
+        // DATE is the kickoff day, exclusive end the day after
+        self::assertStringContainsString('DTSTART;VALUE=DATE:20990807', $ics);
+        self::assertStringContainsString('DTEND;VALUE=DATE:20990808', $ics);
+        self::assertStringNotContainsString('DTSTART;VALUE=DATE:20990808', $ics);
     }
 
     public function testCalendarNameIncludesTheConfiguredAppName(): void

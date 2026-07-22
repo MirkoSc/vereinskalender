@@ -111,11 +111,13 @@ sind KEINE Projektionen.
   UND konfigurierbarer Begriff im SUMMARY, s. Abschnitt 6; Alt-Events ohne
   Feld werden beim Replay deterministisch auf false gehoben, Upcasting
   analog pitch_manuell. Issue #78: ein Spielfrei ist ein **Tages-Fakt**,
-  kein Uhrzeit-Block – der Feed liefert ihn als DATE-TIME am Vortag ~23:59,
-  gespeichert bleibt dieser rohe `anstoss`; die **Ganztägigkeit** und der
-  **maßgebliche Tag** = `date(effectiveEnd)` werden erst zur Anzeige/im ICS-
-  Export abgeleitet, NICHT in der DB normalisiert – konsistent mit „alles
-  Darstellungsabhängige wird beim Rendern abgeleitet", Abschnitt 7),
+  kein Uhrzeit-Block – der Feed liefert ihn als DATE-TIME zu später
+  Abendstunde (~23:59) am echten Tag, gespeichert bleibt dieser rohe
+  `anstoss`; die **Ganztägigkeit** und der **maßgebliche Tag** =
+  `date(anstoss)` (Tag des Anstoßes, NICHT des `+2h`-Endes – das läge sonst
+  am Folgetag) werden erst zur Anzeige/im ICS-Export abgeleitet, NICHT in der
+  DB normalisiert – konsistent mit „alles Darstellungsabhängige wird beim
+  Rendern abgeleitet", Abschnitt 7),
   ort_text (ICS-LOCATION roh), pitch_id NULL (nur
   Heimspiele), pitch_manuell (true = manuelle Platz-Zuordnung, der Import
   fasst pitch_id dann nie an; Alt-Events ohne Feld werden beim Replay
@@ -337,16 +339,18 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   idempotent. Ein manuelles Spiel kann nie spielfrei sein (Pflicht: Platz
   ODER ort_text, die leere-LOCATION-Bedingung greift dort also nie).
 - **Spielfrei-Zeit** (Issue #78): der Feed liefert das Spielfrei als
-  **DATE-TIME** (getakteter VEVENT) am Vortag ~23:59, NICHT als `VALUE=DATE`
-  – belegt dadurch, dass `IcsParser::parseDateTime` ein echtes DATE bereits
-  sauber auf Mitternacht Europe/Berlin hebt (kein Versatz möglich); der
-  beobachtete 23:59-/01:59-Effekt kann also nur aus einer echten Uhrzeit
-  stammen. Der Import speichert diesen rohen `anstoss` bewusst **unverändert**
-  (keine Normalisierung im Schreibpfad – das würde `anstoss` im `sync_hash`
-  an die Spielfrei-Erkennung koppeln und bestehende Byes umschreiben). Der
-  maßgebliche Kalendertag = `date(MatchDuration::effectiveEnd(anstoss, ende))`
-  (der `+2h`-Fallback trägt 23:59 über Mitternacht auf den echten Tag) und
-  wird erst zur Anzeige (`EventSerializer`) bzw. im ICS-Export abgeleitet.
+  **DATE-TIME** (getakteter VEVENT) zu später Abendstunde (~23:59) am echten
+  Tag, NICHT als `VALUE=DATE` – belegt dadurch, dass `IcsParser::
+  parseDateTime` ein echtes DATE bereits sauber auf Mitternacht Europe/Berlin
+  hebt (kein Versatz möglich); der beobachtete Uhrzeit-Effekt kann also nur
+  aus einer echten Uhrzeit stammen. Der Import speichert diesen rohen
+  `anstoss` bewusst **unverändert** (keine Normalisierung im Schreibpfad –
+  das würde `anstoss` im `sync_hash` an die Spielfrei-Erkennung koppeln und
+  bestehende Byes umschreiben). Der maßgebliche Kalendertag = `date(anstoss)`
+  (der Tag des Anstoßes; **nicht** `date(effectiveEnd)` – der `+2h`-Fallback
+  läge bei einem 23:59-Anstoß am Folgetag und schöbe den Termin einen Tag zu
+  spät) und wird erst zur Anzeige (`EventSerializer`) bzw. im ICS-Export
+  abgeleitet.
 - Fehler pro Quelle isolieren; Fehlertext in import_source, Anzeige im Admin.
 
 ## 7. Anzeigemodi, Farben, Filter
@@ -373,17 +377,14 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   gesendet.
 - **Ganztägige Spiele** (Issue #78): Spiele tragen `allDay` (bool). Für
   Spielfrei (`spielfrei=true`) ist `allDay=true`, und `start`/`ende` sind auf
-  `<tag>T00:00:00` gesetzt (tag = `date(effectiveEnd)`, s. Abschnitt 6) statt
-  auf die rohe ~23:59-Uhrzeit; alle übrigen Spiele sind `allDay=false` mit
-  ihrer echten Anstoß-/Ende-Zeit. Weil `MatchRepository::findInRange` auf
-  rohem `anstoss` filtert, ein Bye aber auf seinem abgeleiteten Tag erscheint
-  (Anstoß Vortag 23:59 → Tag am Folgetag), weitet `EventFeedService::events()`
-  den Match-Fetch um **einen Tag** auf der `von`-Seite und filtert
-  **nach der Serialisierung** auf dem abgeleiteten `start` in `[von, bis]` –
-  exakt die `inKickoffRange`-Semantik von `offline-events.js`, damit online =
-  offline (sonst fiele ein Montags-Bye aus seiner eigenen Woche). `naechster`
-  bleibt davon unberührt (nur untere Schranke, ein um ≤ 1 Tag zu früher Bye
-  ist zulässig).
+  `<tag>T00:00:00` gesetzt (tag = `date(anstoss)`, s. Abschnitt 6) statt auf
+  die rohe ~23:59-Uhrzeit; alle übrigen Spiele sind `allDay=false` mit ihrer
+  echten Anstoß-/Ende-Zeit. Da der abgeleitete Tag = `date(anstoss)` ist,
+  bleibt der Bye im selben Kalendertag wie sein roher `anstoss` – der
+  `MatchRepository::findInRange`-Filter (auf `anstoss`) erfasst ihn also
+  unverändert, ohne Sonderbehandlung des Fetch-Zeitraums; online und offline
+  (`offline-events.js` `inKickoffRange` auf demselben serialisierten `start`)
+  stimmen dadurch von selbst überein.
 - Die Antwort ist `{ events, naechster }` (Issue #52): `naechster` ist das
   Datum des nächsten Termins **nach `bis`**, oder `null`, wenn danach
   nachweislich keiner mehr folgt. Es trägt allein die Abbruchbedingung der
@@ -1010,17 +1011,15 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   Byes ohne Intervall und ohne Hinweis-Layer; ICS-Export enthält den Bye mit
   kanonischem Titel „<Kürzel>: Spielfrei", ohne LOCATION-Zeile.
 - **Spielfrei ganztägig** (Issue #78): `EventSerializer::spiel()` liefert für
-  Byes `allDay=true` und `start`/`ende` = Tages-Mitternacht des abgeleiteten
-  Tages (`date(effectiveEnd)`), nicht die rohe ~23:59-Uhrzeit; alle übrigen
-  Spiele `allDay=false` mit echter Zeit. Feed-Range-Regression
-  (`EventFeedService::events()`): ein Bye, dessen roher `anstoss` 23:59 am Tag
-  **vor** `von` liegt, erscheint dennoch auf seinem echten Tag in `[von, bis]`
-  (Fetch um 1 Tag geweitet + Post-Filter auf serialisiertem `start`), ein
-  echtes 23:59-Spiel am Vortag **leakt nicht**, und ein auf `bis+1`
-  abgeleiteter Bye fällt aus dem aktuellen Batch. ICS-Export: Bye als
-  `DTSTART;VALUE=DATE` mit exklusivem Folgetag-`DTEND`, keine Uhrzeit, keine
-  LOCATION, Tag aus `effectiveEnd`. Offline-Parität: die ganztägige Bye-Shape
-  fließt aus dem Bundle (format 7) unverändert durch `offline-events.js`.
+  Byes `allDay=true` und `start`/`ende` = Tages-Mitternacht des **Anstoß-
+  Tages** (`date(anstoss)`), nicht die rohe ~23:59-Uhrzeit; alle übrigen
+  Spiele `allDay=false` mit echter Zeit. Regressionstest gegen die
+  Ende-Ableitung: ein Bye mit Anstoß 23:59 bleibt auf DEM Tag (nicht dem
+  Folgetag, den `+2h` liefern würde) und taucht in einem Batch, der erst am
+  Folgetag beginnt, NICHT auf. ICS-Export: Bye als `DTSTART;VALUE=DATE` mit
+  exklusivem Folgetag-`DTEND`, keine Uhrzeit, keine LOCATION, Tag aus dem
+  Anstoß. Offline-Parität: die ganztägige Bye-Shape fließt aus dem Bundle
+  (format 7) unverändert durch `offline-events.js`.
 - Konfliktprüfung im `BookingService`; DIESELBE Expansionslogik speist die
   Verfügbarkeitsansicht.
 - **Zeitzonen**: durchgängig `Europe/Berlin` (zentral im Bootstrap gesetzt,
