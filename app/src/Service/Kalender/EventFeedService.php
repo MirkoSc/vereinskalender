@@ -215,25 +215,9 @@ final readonly class EventFeedService
         }
 
         if ($typ === '' || $typ === 'spiel' || $typ === 'belegung') {
-            // Issue #78: byes render on their derived day (date of the
-            // effective end), not their raw kickoff (~23:59 the day before).
-            // findInRange filters on raw anstoss, so a Monday bye (kickoff
-            // Sunday 23:59) would fall out of its own week. Widen the fetch by
-            // one day on the von side - date(effectiveEnd) is at most one day
-            // after date(anstoss) - then keep only matches whose SERIALIZED
-            // start lands in [von, bis]. That mirrors offline-events.js
-            // inKickoffRange byte-for-byte, so online = offline at the edge.
-            $vonMinus1 = $rangeStart->modify('-1 day')->format('Y-m-d');
-            foreach ($this->matches->findInRange($vonMinus1 . ' 00:00:00', $bis . ' 23:59:59') as $match) {
+            foreach ($this->matches->findInRange($von . ' 00:00:00', $bis . ' 23:59:59') as $match) {
                 $event = $serializer->spiel($match);
-                if ($event === null) {
-                    continue;
-                }
-                $startWall = str_replace('T', ' ', (string) $event['start']);
-                if ($startWall < $von . ' 00:00:00' || $startWall > $bis . ' 23:59:59') {
-                    continue;
-                }
-                if (!$matchesTeams([$event['team_id']])
+                if ($event === null || !$matchesTeams([$event['team_id']])
                     || !$matchesVenue($event['venue_id'], $event['spielfrei'])) {
                     continue;
                 }
