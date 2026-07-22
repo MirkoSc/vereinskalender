@@ -79,13 +79,13 @@ final readonly class IcsExporter
                 end: $effektivesEnde,
                 summary: $summary,
                 // Issue #78: a bye is a whole-day fact. Export it as a DATE
-                // (all-day) VEVENT on its real day - date of the effective
-                // end, since the feed puts kickoff at ~23:59 the day before -
-                // with no LOCATION. Non-byes stay timed UTC VEVENTs.
+                // (all-day) VEVENT on its real day - the DATE of the kickoff
+                // (the feed puts a bye at a late evening hour on the actual
+                // day) - with no LOCATION. Non-byes stay timed UTC VEVENTs.
                 location: $spielfrei ? '' : (string) $match['ort_text'],
                 sequence: (int) $match['ics_sequence'],
                 cancelled: (string) $match['status'] === 'abgesagt',
-                allDayDate: $spielfrei ? $effektivesEnde->format('Y-m-d') : null,
+                allDayDate: $spielfrei ? $start->format('Y-m-d') : null,
             );
         }
 
