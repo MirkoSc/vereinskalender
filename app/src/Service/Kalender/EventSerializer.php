@@ -151,16 +151,31 @@ final readonly class EventSerializer
         $venueId = $spielfrei ? null : ($this->venueMatcher->match((string) $matchRow['ort_text'])
             ?? ($pitch !== null ? (int) $pitch['venue_id'] : null));
 
-        $start = new \DateTimeImmutable((string) $matchRow['anstoss']);
+        $anstoss = (string) $matchRow['anstoss'];
         $ende = $matchRow['ende'] !== null ? (string) $matchRow['ende'] : null;
+        $effektivesEnde = MatchDuration::effectiveEnd($anstoss, $ende);
+
+        // Issue #78: a bye is a whole-day fact, never a timed block. The feed
+        // ships spielfrei as a DATE-TIME at ~23:59 the day before (our DATE
+        // branch would produce clean midnight, so the observed offset proves
+        // a timed VEVENT); the +2h fallback lands the effective end on the
+        // real day. The relevant calendar day is therefore the effective
+        // end's date - anstoss stays raw in the DB, only the display derives.
+        // start/ende collapse to that day's midnight and allDay carries the
+        // whole-day flag; FullCalendar renders it in the all-day slot.
+        if ($spielfrei) {
+            $tag = $effektivesEnde->format('Y-m-d') . 'T00:00:00';
+        }
+        $start = new \DateTimeImmutable($anstoss);
 
         return [
             'id' => 'match-' . (int) $matchRow['id'],
             'typ' => 'spiel',
             'match_id' => (int) $matchRow['id'],
             'manuell' => $matchRow['import_source_id'] === null,
-            'start' => $start->format('Y-m-d\TH:i:s'),
-            'ende' => MatchDuration::effectiveEnd((string) $matchRow['anstoss'], $ende)->format('Y-m-d\TH:i:s'),
+            'allDay' => $spielfrei,
+            'start' => $spielfrei ? $tag : $start->format('Y-m-d\TH:i:s'),
+            'ende' => $spielfrei ? $tag : $effektivesEnde->format('Y-m-d\TH:i:s'),
             'titel' => (string) $team['kuerzel'] . ' – ' . (string) $matchRow['gegner'],
             'team_id' => $teamId,
             'team_name' => (string) $team['name'],
