@@ -360,12 +360,11 @@ dialog.sheet::backdrop {
        kippte die Zeile in eine SPALTE - ohne Haupt-Achse in der Breite
        schrumpft dort nichts mehr, jedes Kind (Uhrzeit/Punkte/Titel) nimmt
        seine natürliche Breite und ragt über den Block hinaus, unabhängig von
-       jeder Ellipsis-Regel auf den Kindern. `!important` wie bei den
-       --fc-event-*-Variablen oben (Zeile 39ff.) statt eines Spezifitäts-
-       Wettrüstens gegen alle FC-internen Selektoren (Monat/Liste setzen den
-       Bug so nicht, aber ohne `!important` bliebe die Regel fragil gegenüber
-       künftigen FC-Versionen). */
-    flex-direction: row !important;
+       jeder Ellipsis-Regel auf den Kindern. Monat/Liste (kein `.fc-v-event`)
+       bleiben bei dieser Zeilen-Basis - Issue #75 unten kippt die Zeile für
+       Tag/Woche bewusst wieder in eine Spalte, diesmal mit breitenbegrenzten,
+       ellipsierenden Kindern statt FCs ungebremster `column`-Regel. */
+    flex-direction: row;
     align-items: center;
     gap: 0.3rem;
     min-width: 0;
@@ -374,12 +373,52 @@ dialog.sheet::backdrop {
     overflow: hidden;
 }
 
+/* Issue #75: Tag/Woche (`.fc-v-event`, timeGrid-Views) stapeln Uhrzeit /
+   Farbpunkte / Team vertikal statt in einer Zeile - der ursprüngliche
+   Auftrag der App, s. Issue-Text. Das scheint der #58-Zeilen-Regel oben zu
+   widersprechen, ist es aber nicht: #58 verhinderte Überlauf, weil FCs
+   erzwungene `column`-Kippung KEINE Breitenbegrenzung auf die Kinder legte
+   (jedes Kind nimmt seine natürliche nowrap-Breite). Hier ist es umgekehrt -
+   die Spalte ist bewusst gewählt, UND jedes gestapelte Kind bleibt über
+   `min-width:0`+`overflow:hidden`+Ellipsis (Uhrzeit oben, `.ev-titel` unten)
+   auf die definite Blockbreite begrenzt, die die Grid-Geometrie liefert. Die
+   #58-Kürzungsreihenfolge (Präfix schrumpft nach dem Titel) bleibt dabei
+   unangetastet, weil `.ev-titel` selbst weiter eine interne Row-Flex-Zeile
+   ist - nur die drei Blöcke Uhrzeit/Punkte/Titel stapeln sich außen. Höhere
+   Spezifität (0,3,0 durch die zusätzliche `.fc`-Klasse) statt `!important`
+   genügt hier, um FCs `.fc-v-event .fc-event-main-frame` (0,2,0) zu
+   schlagen - anders als bei den `--fc-event-*`-Variablen oben ist das kein
+   Wettrüsten gegen viele künftige Selektoren, sondern eine einzelne, stabile
+   FC-Klasse. Monat (`.fc-daygrid`, Dot-Events) und Liste (`listNachlade`,
+   #67-Tabellenlayout) sind keine `.fc-v-event` und bleiben unberührt. */
+.fc .fc-v-event .ev-inhalt {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.15rem;
+}
+
+/* Die Uhrzeit soll in der Spalte nie vertikal schrumpfen (kompaktestes
+   Signal neben den Punkten, Issue #58-Prinzip) - nur der Titel (unten) gibt
+   bei zu wenig Höhe zuerst nach; der Container-`overflow:hidden` oben klippt
+   ihn dann sauber weg, voller Text bleibt über title/aria-label und den
+   Detail-Dialog erreichbar (kalender.js). .ev-punkte trägt bereits global
+   flex-shrink:0 (oben) - das gilt achsenunabhängig für Zeile UND Spalte,
+   braucht hier keine eigene Regel. */
+.fc .fc-v-event .ev-inhalt > .fc-event-time {
+    flex-shrink: 0;
+}
+
 /* Issue #58: Uhrzeit ist nicht Teil der festgelegten Kürzungsreihenfolge
    (die gilt für Präfix/Titel, s. .ev-titel unten) - sie kann als
    Start-Ende-Bereich ("17:00 - 18:30") selbst breiter sein als eine schmale
    geteilte Spalte. flex-shrink:0 allein hätte hier hart am Elementrand
    abgeschnitten (kein Ellipsis, s. Issue) statt zu beschneiden; stattdessen
-   wie Präfix/Titel: schrumpfen mit Ellipsis statt überlaufen. */
+   wie Präfix/Titel: schrumpfen mit Ellipsis statt überlaufen. Die Breiten-
+   Regeln hier (min-width/overflow/ellipsis/nowrap) gelten unverändert in
+   JEDER Darstellung. Issue #75 überschreibt für `.fc-v-event` (Tag/Woche)
+   nur `flex-shrink` auf 0 - dort ist die Hauptachse nach der Spalten-Kippung
+   vertikal, das betrifft also die HÖHE (Uhrzeit soll nie vertikal
+   schrumpfen), nicht die hier geregelte horizontale Ellipsis-Kürzung. */
 .ev-inhalt .fc-event-time {
     flex-shrink: 1;
     min-width: 0;
