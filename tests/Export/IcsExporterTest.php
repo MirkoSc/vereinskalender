@@ -55,6 +55,8 @@ final class IcsExporterTest extends DatabaseTestCase
      * Issue #65: a bye stays in the feed (relevant to subscribers) with a
      * canonical title independent of the feed's own SUMMARY wording, and
      * without a LOCATION line - it never had one.
+     * Issue #78: it is exported as a whole-day DATE event (no time, no
+     * timezone shift), with an exclusive next-day DTEND.
      */
     public function testSpielfreiMatchGetsCanonicalTitleAndNoLocation(): void
     {
@@ -70,6 +72,32 @@ final class IcsExporterTest extends DatabaseTestCase
 
         self::assertStringContainsString('SUMMARY:E1: Spielfrei', $ics);
         self::assertStringNotContainsString('LOCATION:', $ics);
+        // Issue #78: DATE value, no time, exclusive next-day end
+        self::assertStringContainsString('DTSTART;VALUE=DATE:20990808', $ics);
+        self::assertStringContainsString('DTEND;VALUE=DATE:20990809', $ics);
+        self::assertStringNotContainsString('DTSTART:2099', $ics, 'a bye must not carry a timed DTSTART');
+    }
+
+    /**
+     * Issue #78: the feed puts a bye's kickoff at ~23:59 the day before; the
+     * exported DATE must be the real day (date of the effective end), not the
+     * kickoff day.
+     */
+    public function testSpielfreiExportUsesEffectiveEndDayNotKickoffDay(): void
+    {
+        $teamId = $this->createTeam('E1');
+        $this->createMatch($teamId, [
+            'anstoss' => '2099-08-07 23:59:00',
+            'gegner' => 'Spielfrei',
+            'ort_text' => '',
+            'spielfrei' => true,
+        ]);
+
+        $ics = $this->exporter()->matchesFeed($teamId);
+
+        // kickoff is 2099-08-07 23:59, +2h end lands on 2099-08-08 => that day
+        self::assertStringContainsString('DTSTART;VALUE=DATE:20990808', $ics);
+        self::assertStringNotContainsString('DTSTART;VALUE=DATE:20990807', $ics);
     }
 
     public function testCalendarNameIncludesTheConfiguredAppName(): void
