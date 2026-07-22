@@ -714,6 +714,7 @@ final class Container
             $this->view(),
             $this->session(),
             $this->authService(),
+            $this->rateLimiter(),
         ));
     }
 

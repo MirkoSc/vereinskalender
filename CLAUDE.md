@@ -224,9 +224,27 @@ jederzeit per Replay rekonstruierbar.
    Rate-Limit pro IP (~30 Schreibzugriffe/Minute).
 3. **Admin**: username + password_hash, PHP-Session. **Bootstrap-Regel**:
    Credentials aus config.php gelten NUR bei leerer admin-Tabelle; erster
-   Login erzwingt Anlage eines echten Admins.
+   Login erzwingt Anlage eines echten Admins. **Brute-Force-Schutz**:
+   `POST /admin/login` und `/admin/setup` sind pro IP gedrosselt
+   (`RateLimiter::loginLocked/registerLoginFailure/resetLogin`, strikter als
+   der öffentliche Schreibpfad – `LOGIN_LIMIT_PER_MINUTE`); es zählen NUR
+   fehlgeschlagene Versuche, ein erfolgreicher Login/Setup setzt den Zähler
+   zurück. Der Zähler liegt in derselben `rate_limit`-Tabelle unter einem
+   gehashten `login:`-Schlüssel (kollidiert nie mit dem Schreib-Rate-Limit
+   derselben IP). Die Sperrmeldung ist bewusst generisch (keine
+   User-Enumeration). Durchsetzung im `AuthController` (nicht im generischen
+   `$guard`), weil nur dort Erfolg/Fehlschlag bekannt ist.
 
-CSRF-Token für alle Schreibrouten. Passwörter nie loggen.
+CSRF-Token für alle Schreibrouten. **Passwörter nie loggen**: der globale
+Error-Handler (`Http/Kernel`) loggt nie den vollen Exception-String (ein
+Stacktrace trägt bei `zend.exception_ignore_args=Off` die Funktionsargumente,
+z. B. das Klartext-Passwort aus dem Login-Pfad), sondern nur
+Exception-Klasse, `getMessage()`, Request-Methode/-Pfad und Fehlerort; die
+Hoster-Ini setzt zusätzlich `zend.exception_ignore_args=On` (Defense in
+Depth). Farbwerte, die in den öffentlichen `<style>`-Block fließen, werden
+an der AUSGABE gegen `Palette` gefiltert (nicht nur beim Schreiben) – eine
+per Event-Korrektur eingeschleuste Nicht-Palette-Farbe kann so nicht aus dem
+Style-Element ausbrechen.
 
 Admin-Funktionen: Bereiche/Teams/Plätze/Spielstätten-CRUD (Teams inkl.
 eingebetteter Heimspielstätten-Regeln, Abschnitt 3; Sortierung in allen vier

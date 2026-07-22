@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Integration\PublicPages;
 
+use App\Domain\AggregateType;
+use App\Domain\EventType;
 use App\Http\HttpMethod;
 use App\Http\Request;
 use App\PublicPages\PublicController;
@@ -64,6 +66,55 @@ final class KalenderRouteTest extends DatabaseTestCase
         $stats = new UsageStatRepository($this->pdo());
         self::assertSame(1, $stats->summary('seite')['heute']);
         self::assertSame('/kalender', $stats->topDimensions('seite')[0]['dimension']);
+    }
+
+    /**
+     * K1: team/venue colors reach the public <style> block (layout.php)
+     * unescaped. Every write path validates colors against the palette, but
+     * an admin event correction applies a RAW payload without that check.
+     * The CHAR(7) farbe column already caps the length (a full "</style>"
+     * breakout does not even fit), so the output filter in stammdaten() is
+     * defense in depth: any non-palette value is dropped so nothing but
+     * validated palette hex ever reaches the style element, independent of
+     * the column width.
+     */
+    public function testNonPaletteTeamColorIsDroppedFromTheStyleBlock(): void
+    {
+        $teamId = $this->createTeam('E1', 'E', '#0969da');
+
+        // reproduces the projection state an admin event correction
+        // (EventStore::correct, raw payload, no palette check) would produce.
+        // Fits CHAR(7) but is not a palette hex and carries a CSS-breaking
+        // ";" - exactly what the output filter must not pass through.
+        $this->eventStore()->append(
+            AggregateType::Team,
+            $teamId,
+            EventType::Updated,
+            [
+                'bereich' => 'E',
+                'name' => 'E1',
+                'kuerzel' => 'E1',
+                'farbe' => '#f00;x',
+                'aktiv' => true,
+                'sortierung' => 0,
+            ],
+            $this->context(),
+        );
+
+        $response = $this->controller()->kalender(new Request(HttpMethod::Get, '/kalender'));
+
+        self::assertSame(200, $response->status);
+
+        self::assertSame(1, preg_match('#<style>(.*?)</style>#s', $response->body, $m), 'a style block is rendered');
+        $styleBlock = $m[1];
+
+        // the corrupted color never reaches the style element (neither its
+        // variable nor the raw value)
+        self::assertStringNotContainsString('--team-' . $teamId, $styleBlock);
+        self::assertStringNotContainsString('#f00;x', $styleBlock);
+        // valid palette colors are still emitted, so the filter is not a
+        // blanket drop
+        self::assertMatchesRegularExpression('/--auswaerts: #[0-9a-fA-F]{6};/', $styleBlock);
     }
 
     public function testBelegungLeitetOhneQueryAufKalenderUm(): void
