@@ -63,22 +63,29 @@ final readonly class IcsExporter
             }
             $start = new \DateTimeImmutable((string) $match['anstoss']);
             $ende = $match['ende'] !== null ? (string) $match['ende'] : null;
+            $effektivesEnde = MatchDuration::effectiveEnd((string) $match['anstoss'], $ende);
             $kuerzel = $teamNames[(int) $match['team_id']] ?? '';
+            $spielfrei = (int) ($match['spielfrei'] ?? 0) === 1;
 
             // Issue #65: a bye stays in the feed (relevant to subscribers)
             // with a canonical title, independent of the feed's own wording.
-            $summary = (int) ($match['spielfrei'] ?? 0) === 1
+            $summary = $spielfrei
                 ? trim($kuerzel . ': Spielfrei')
                 : trim($kuerzel . ': ' . (string) $match['gegner']);
 
             $events[] = self::vevent(
                 uid: sprintf('match-%d@%s', (int) $match['id'], self::UID_DOMAIN),
                 start: $start,
-                end: MatchDuration::effectiveEnd((string) $match['anstoss'], $ende),
+                end: $effektivesEnde,
                 summary: $summary,
-                location: (string) $match['ort_text'],
+                // Issue #78: a bye is a whole-day fact. Export it as a DATE
+                // (all-day) VEVENT on its real day - date of the effective
+                // end, since the feed puts kickoff at ~23:59 the day before -
+                // with no LOCATION. Non-byes stay timed UTC VEVENTs.
+                location: $spielfrei ? '' : (string) $match['ort_text'],
                 sequence: (int) $match['ics_sequence'],
                 cancelled: (string) $match['status'] === 'abgesagt',
+                allDayDate: $spielfrei ? $effektivesEnde->format('Y-m-d') : null,
             );
         }
 
@@ -164,14 +171,25 @@ final readonly class IcsExporter
         string $location,
         int $sequence,
         bool $cancelled,
+        ?string $allDayDate = null,
     ): string {
         $utc = new \DateTimeZone('UTC');
+        // Issue #78: a whole-day event (bye) uses DATE values (VALUE=DATE)
+        // with an exclusive next-day DTEND, so no time and no timezone shift.
+        if ($allDayDate !== null) {
+            $tag = new \DateTimeImmutable($allDayDate);
+            $dtstart = 'DTSTART;VALUE=DATE:' . $tag->format('Ymd');
+            $dtend = 'DTEND;VALUE=DATE:' . $tag->modify('+1 day')->format('Ymd');
+        } else {
+            $dtstart = 'DTSTART:' . $start->setTimezone($utc)->format('Ymd\THis\Z');
+            $dtend = 'DTEND:' . $end->setTimezone($utc)->format('Ymd\THis\Z');
+        }
         $lines = [
             'BEGIN:VEVENT',
             'UID:' . $uid,
             'DTSTAMP:' . $start->setTimezone($utc)->format('Ymd\THis\Z'),
-            'DTSTART:' . $start->setTimezone($utc)->format('Ymd\THis\Z'),
-            'DTEND:' . $end->setTimezone($utc)->format('Ymd\THis\Z'),
+            $dtstart,
+            $dtend,
             'SUMMARY:' . self::escape($summary),
         ];
         if ($location !== '') {

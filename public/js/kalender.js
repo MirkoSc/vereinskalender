@@ -539,6 +539,11 @@
         title: e.titel,
         start: e.start,
         end: e.ende,
+        // Issue #78: Spielfrei ist ein Tages-Fakt - der Feed liefert es als
+        // Ganztags-Termin (allDay + Tagesdatum statt Uhrzeit); FullCalendar
+        // rendert es damit im All-Day-Slot (Tag/Woche) bzw. ohne Uhrzeit
+        // (Liste), am richtigen Tag. Fehlendes Feld => zeitgebunden.
+        allDay: e.allDay === true,
         // Issue #36: Vermietungen haben keine pitch_id - eigene Spalte statt
         // der "Auswärts"-Spalte, die sonst für Termine ohne Platz greift.
         // Issue #65: Spielfrei-Termine ebenso - auch sie haben keine pitch_id,
@@ -1026,7 +1031,12 @@
         locale: 'de',
         firstDay: 1,
         height: 'auto',
-        allDaySlot: false,
+        // Issue #78: All-Day-Zeile aktiv, damit Spielfrei-Termine (Tages-Fakt,
+        // allDay) in Tag/Woche unter der Kopfzeile statt im Stundenraster
+        // erscheinen. Sonst tragen nur Byes Ganztags-Events; die Zeile bleibt
+        // meist leer und wird per CSS kompakt gehalten.
+        allDaySlot: true,
+        allDayText: 'ganztägig',
         slotMinTime: '07:00:00',
         slotMaxTime: '23:00:00',
         nowIndicator: true,

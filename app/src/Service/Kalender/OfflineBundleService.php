@@ -43,7 +43,11 @@ final readonly class OfflineBundleService
     // Issue #63: bumped to 6 - vermietungen now carry an art
     // (vermietung/putzen/sitzung) and their titel is prefixed with it; an
     // older cached bundle would label a cleaning slot as a rental.
-    public const int FORMAT = 6;
+    // Issue #78: bumped to 7 - bye (spielfrei) spiele are now whole-day: they
+    // carry allDay=true and a day-midnight start/ende (date of the effective
+    // end) instead of a ~23:59 kickoff; an older cached bundle would still
+    // render a bye as a timed block on the wrong day.
+    public const int FORMAT = 7;
 
     public function __construct(
         private TrainingSlotRepository $slots,

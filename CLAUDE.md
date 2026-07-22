@@ -110,7 +110,13 @@ sind KEINE Projektionen.
   #65: kein Spiel, sondern ein spielfreier Feed-Termin – leere LOCATION
   UND konfigurierbarer Begriff im SUMMARY, s. Abschnitt 6; Alt-Events ohne
   Feld werden beim Replay deterministisch auf false gehoben, Upcasting
-  analog pitch_manuell), ort_text (ICS-LOCATION roh), pitch_id NULL (nur
+  analog pitch_manuell. Issue #78: ein Spielfrei ist ein **Tages-Fakt**,
+  kein Uhrzeit-Block – der Feed liefert ihn als DATE-TIME am Vortag ~23:59,
+  gespeichert bleibt dieser rohe `anstoss`; die **Ganztägigkeit** und der
+  **maßgebliche Tag** = `date(effectiveEnd)` werden erst zur Anzeige/im ICS-
+  Export abgeleitet, NICHT in der DB normalisiert – konsistent mit „alles
+  Darstellungsabhängige wird beim Rendern abgeleitet", Abschnitt 7),
+  ort_text (ICS-LOCATION roh), pitch_id NULL (nur
   Heimspiele), pitch_manuell (true = manuelle Platz-Zuordnung, der Import
   fasst pitch_id dann nie an; Alt-Events ohne Feld werden beim Replay
   deterministisch auf false gehoben, Upcasting analog pitch.farbe),
@@ -330,6 +336,17 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   so trotz gleichem Hash jede betroffene Zeile, ein zweiter Lauf danach ist
   idempotent. Ein manuelles Spiel kann nie spielfrei sein (Pflicht: Platz
   ODER ort_text, die leere-LOCATION-Bedingung greift dort also nie).
+- **Spielfrei-Zeit** (Issue #78): der Feed liefert das Spielfrei als
+  **DATE-TIME** (getakteter VEVENT) am Vortag ~23:59, NICHT als `VALUE=DATE`
+  – belegt dadurch, dass `IcsParser::parseDateTime` ein echtes DATE bereits
+  sauber auf Mitternacht Europe/Berlin hebt (kein Versatz möglich); der
+  beobachtete 23:59-/01:59-Effekt kann also nur aus einer echten Uhrzeit
+  stammen. Der Import speichert diesen rohen `anstoss` bewusst **unverändert**
+  (keine Normalisierung im Schreibpfad – das würde `anstoss` im `sync_hash`
+  an die Spielfrei-Erkennung koppeln und bestehende Byes umschreiben). Der
+  maßgebliche Kalendertag = `date(MatchDuration::effectiveEnd(anstoss, ende))`
+  (der `+2h`-Fallback trägt 23:59 über Mitternacht auf den echten Tag) und
+  wird erst zur Anzeige (`EventSerializer`) bzw. im ICS-Export abgeleitet.
 - Fehler pro Quelle isolieren; Fehlertext in import_source, Anzeige im Admin.
 
 ## 7. Anzeigemodi, Farben, Filter
@@ -354,6 +371,19 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   Duplikate); `typ=belegung`/`typ=spiel` bleiben als engere API-Filterwerte
   Teil der öffentlichen Schnittstelle, werden vom Frontend aber nicht mehr
   gesendet.
+- **Ganztägige Spiele** (Issue #78): Spiele tragen `allDay` (bool). Für
+  Spielfrei (`spielfrei=true`) ist `allDay=true`, und `start`/`ende` sind auf
+  `<tag>T00:00:00` gesetzt (tag = `date(effectiveEnd)`, s. Abschnitt 6) statt
+  auf die rohe ~23:59-Uhrzeit; alle übrigen Spiele sind `allDay=false` mit
+  ihrer echten Anstoß-/Ende-Zeit. Weil `MatchRepository::findInRange` auf
+  rohem `anstoss` filtert, ein Bye aber auf seinem abgeleiteten Tag erscheint
+  (Anstoß Vortag 23:59 → Tag am Folgetag), weitet `EventFeedService::events()`
+  den Match-Fetch um **einen Tag** auf der `von`-Seite und filtert
+  **nach der Serialisierung** auf dem abgeleiteten `start` in `[von, bis]` –
+  exakt die `inKickoffRange`-Semantik von `offline-events.js`, damit online =
+  offline (sonst fiele ein Montags-Bye aus seiner eigenen Woche). `naechster`
+  bleibt davon unberührt (nur untere Schranke, ein um ≤ 1 Tag zu früher Bye
+  ist zulässig).
 - Die Antwort ist `{ events, naechster }` (Issue #52): `naechster` ist das
   Datum des nächsten Termins **nach `bis`**, oder `null`, wenn danach
   nachweislich keiner mehr folgt. Es trägt allein die Abbruchbedingung der
@@ -502,7 +532,16 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   keine `pitch_id`, dürfen aber nie in der Auswärts-Spalte erscheinen (ein
   Event mit unbekannter `resourceId` wird von FullCalendar in
   Ressourcen-Views sonst lautlos verworfen); Monat und Liste haben nie
-  Spalten. Der Button „+ Eintragen" öffnet ein Auswahl-Sheet („Belegung
+  Spalten. **Spielfrei ganztägig** (Issue #78): Byes tragen im Feed
+  `allDay=true` (Abschnitt 7), `toFcEvent` reicht das an FullCalendar durch;
+  `allDaySlot` ist aktiv (`allDayText: 'ganztägig'`), sodass Tag/Woche das
+  Spielfrei in der **All-Day-Zeile unter der Kopfzeile** zeigen (nicht im
+  Stundenraster; in Ressourcen-Views in der All-Day-Zelle der
+  „Spielfrei"-Spalte), Monat als normalen Tages-Eintrag und die Liste am
+  Tagesanfang ohne Uhrzeit (der Zeit-Block in `eventContent` hängt an
+  `arg.timeText`, das FullCalendar für Ganztags-Events leer lässt). Team- und
+  Spielfrei-Farbpunkt plus Text-Label „<Kürzel>: Spielfrei" bleiben wie in
+  #65 – „Farbe ist nie das einzige Signal" erfüllt. Der Button „+ Eintragen" öffnet ein Auswahl-Sheet („Belegung
   eintragen" / „Spiel eintragen" / „Sportheim-Termin eintragen") statt
   getrennter Toolbar-Buttons – EIN Eintrag für alle Arten (Issue #63), die
   Art wählt ein Segmented Control im Formular selbst (Default „Vermietung",
@@ -610,11 +649,13 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   `appData.vermietungArten` auf, statt sie – wie zuvor den festen Text
   „Vermietung: <Anlass> (<Räume>)" – erneut zu hartcodieren.
 - **PWA/Offline**: Service Worker cached App-Shell; `GET /api/offline-bundle`
-  (format-versioniert, aktuell 6 – Issue #36 hat `sportheime`/
+  (format-versioniert, aktuell 7 – Issue #36 hat `sportheime`/
   `sportheim_raeume`/`vermietungen`-Listen ergänzt und `pitch.sportheim_id`
   aufgenommen, Issue #65 hat `spiele[].spielfrei` und
   `settings.spielfrei_farbe` ergänzt, Issue #63 `vermietungen[].art` plus den
-  art-präfigierten `titel`) liefert den **kompletten Datenbestand**
+  art-präfigierten `titel`, Issue #78 hat Byes ganztägig gemacht –
+  `spiele[].allDay` plus Tages-Mitternacht in `start`/`ende` statt der rohen
+  Uhrzeit) liefert den **kompletten Datenbestand**
   (Issue #25): alle Spiele, Sperrungen und Vermietungen bereits serialisiert
   (Feed-Shape, inkl. Platz-/Vereinszuordnung über
   `VenueMatcher`/`MatchDuration`), Trainings-Slots dagegen als **Regeln**
@@ -939,7 +980,10 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   beginnender Sperrung, sowie – Issue #36 – Sportheime/Räume/Vermietungen
   inkl. einer raumbezogenen und einer Ganzhaus-Vermietung, eines Platzes mit
   sportheim_id und eines eigenen `vermietung`-Falls, sowie – Issue #65 –
-  eines isolierten Spielfrei-Falls in einer ansonsten leeren Woche, sowie –
+  eines isolierten Spielfrei-Falls in einer ansonsten leeren Woche (Issue #78
+  auf die ganztägige Shape gehoben: `allDay=true`, `start`/`ende` =
+  Tages-Mitternacht – der Diff dieses Falls belegt die additive
+  `allDay`-Ergänzung), sowie –
   Issue #63 – eines eigenen `sportheim-termine`-Falls mit je einem Putzen-,
   Sitzungs- und Vermietungs-Termin an einem sonst leeren Tag; der ältere
   `vermietung`-Fall bleibt bewusst unangetastet, sein Diff belegt damit die
@@ -965,6 +1009,18 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   erscheint nie unter `typ=belegung`; Verfügbarkeitsberechnung bleibt für
   Byes ohne Intervall und ohne Hinweis-Layer; ICS-Export enthält den Bye mit
   kanonischem Titel „<Kürzel>: Spielfrei", ohne LOCATION-Zeile.
+- **Spielfrei ganztägig** (Issue #78): `EventSerializer::spiel()` liefert für
+  Byes `allDay=true` und `start`/`ende` = Tages-Mitternacht des abgeleiteten
+  Tages (`date(effectiveEnd)`), nicht die rohe ~23:59-Uhrzeit; alle übrigen
+  Spiele `allDay=false` mit echter Zeit. Feed-Range-Regression
+  (`EventFeedService::events()`): ein Bye, dessen roher `anstoss` 23:59 am Tag
+  **vor** `von` liegt, erscheint dennoch auf seinem echten Tag in `[von, bis]`
+  (Fetch um 1 Tag geweitet + Post-Filter auf serialisiertem `start`), ein
+  echtes 23:59-Spiel am Vortag **leakt nicht**, und ein auf `bis+1`
+  abgeleiteter Bye fällt aus dem aktuellen Batch. ICS-Export: Bye als
+  `DTSTART;VALUE=DATE` mit exklusivem Folgetag-`DTEND`, keine Uhrzeit, keine
+  LOCATION, Tag aus `effectiveEnd`. Offline-Parität: die ganztägige Bye-Shape
+  fließt aus dem Bundle (format 7) unverändert durch `offline-events.js`.
 - Konfliktprüfung im `BookingService`; DIESELBE Expansionslogik speist die
   Verfügbarkeitsansicht.
 - **Zeitzonen**: durchgängig `Europe/Berlin` (zentral im Bootstrap gesetzt,
