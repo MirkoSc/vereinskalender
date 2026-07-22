@@ -162,56 +162,51 @@ final class EventFeedTest extends DatabaseTestCase
     }
 
     /**
-     * Issue #78: the feed puts a bye's kickoff at ~23:59 the day before, but
-     * it belongs on the real day (date of the effective end). A Monday bye
-     * therefore has a Sunday 23:59 kickoff; since findInRange filters on raw
-     * anstoss, the feed widens the fetch and re-filters on the serialized
-     * (derived) day so the bye still lands in its own week - and a genuinely
-     * timed match at 23:59 the day before does NOT leak in.
+     * Issue #78: the feed puts a bye at a late evening hour (~23:59) on its
+     * real day. The whole-day date must come from the START, not the +2h
+     * effective end - otherwise a 23:59 kickoff would spill onto the next day
+     * and render the bye one day too late. The bye therefore stays on the day
+     * of its kickoff and its raw anstoss keeps it inside that day's range.
      */
-    public function testSpielfreiRendersOnEffectiveEndDayAcrossRangeBoundary(): void
+    public function testSpielfreiWholeDayComesFromKickoffDayNotEffectiveEnd(): void
     {
-        // kickoff Sunday 23:59, derived day Monday 2026-08-10
+        // kickoff 23:59 on 2026-08-08; the +2h fallback end is 2026-08-09 01:59
         $this->createMatch($this->teamId, [
-            'anstoss' => '2026-08-09 23:59:00',
+            'anstoss' => '2026-08-08 23:59:00',
             'gegner' => 'Spielfrei',
             'ort_text' => '',
             'spielfrei' => true,
         ]);
-        // a real away match at 23:59 the day before the range must NOT leak
-        $this->createMatch($this->teamId, [
-            'anstoss' => '2026-08-09 23:59:00',
-            'ort_text' => 'Stadion Gegnerhausen',
-        ]);
 
         $events = $this->eventFeedService()->events([
-            'von' => '2026-08-10', 'bis' => '2026-08-16', 'typ' => 'spiel',
+            'von' => '2026-08-03', 'bis' => '2026-08-09', 'typ' => 'spiel',
         ]);
 
-        self::assertCount(1, $events, 'only the bye, moved onto its real day; the timed match stays out');
-        self::assertTrue($events[0]['spielfrei']);
-        self::assertSame('2026-08-10T00:00:00', $events[0]['start']);
+        self::assertCount(1, $events);
+        self::assertTrue($events[0]['allDay']);
+        self::assertSame('2026-08-08T00:00:00', $events[0]['start'], 'day of the kickoff, not the next day');
+        self::assertSame('2026-08-08T00:00:00', $events[0]['ende']);
     }
 
     /**
-     * Issue #78: mirror image - a bye whose kickoff is 23:59 on the last day
-     * of the range derives onto bis+1 and must therefore NOT appear in the
-     * current batch (it belongs to the next one).
+     * Issue #78: the bye lives on its kickoff day, so a range starting the day
+     * AFTER must not contain it (guards against a regression that would derive
+     * the day from the +2h end and leak the bye into the next batch).
      */
-    public function testSpielfreiDerivedOntoNextDayLeavesTheCurrentBatch(): void
+    public function testSpielfreiDoesNotLeakIntoTheNextDaysRange(): void
     {
         $this->createMatch($this->teamId, [
-            'anstoss' => '2026-08-16 23:59:00',
+            'anstoss' => '2026-08-08 23:59:00',
             'gegner' => 'Spielfrei',
             'ort_text' => '',
             'spielfrei' => true,
         ]);
 
         $events = $this->eventFeedService()->events([
-            'von' => '2026-08-10', 'bis' => '2026-08-16', 'typ' => 'spiel',
+            'von' => '2026-08-09', 'bis' => '2026-08-15', 'typ' => 'spiel',
         ]);
 
-        self::assertSame([], $events, 'derived day 2026-08-17 is outside the batch');
+        self::assertSame([], $events, 'the bye belongs to 2026-08-08, not the following week');
     }
 
     /**
