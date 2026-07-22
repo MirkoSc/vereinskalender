@@ -24,7 +24,7 @@ final class Kernel
         try {
             return $this->staticFiles->tryServe($request) ?? $this->dispatch($request);
         } catch (\Throwable $e) {
-            return $this->errorResponse($e);
+            return $this->errorResponse($e, $request);
         }
     }
 
@@ -55,10 +55,26 @@ final class Kernel
         };
     }
 
-    private function errorResponse(\Throwable $e): Response
+    private function errorResponse(\Throwable $e, Request $request): Response
     {
-        error_log((string) $e);
+        // Structured log WITHOUT the full exception string: a stack trace can
+        // carry function arguments (e.g. the plaintext password from the login
+        // path) when zend.exception_ignore_args is off. Logging class, message
+        // and request context only keeps the guarantee "Passwörter nie loggen"
+        // (CLAUDE.md section 5) independent of that ini setting - defense in
+        // depth, and a shorter, more useful log line (K2). PDO exception
+        // messages never contain bound values, so getMessage() is safe here.
+        error_log(sprintf(
+            '%s: %s [%s %s] at %s:%d',
+            $e::class,
+            $e->getMessage(),
+            $request->method->value,
+            $request->path,
+            $e->getFile(),
+            $e->getLine(),
+        ));
 
+        // Full trace only in debug mode (dev/install), never in production.
         $body = $this->debug
             ? (string) $e
             : 'Interner Fehler – bitte versuchen Sie es später erneut.';
