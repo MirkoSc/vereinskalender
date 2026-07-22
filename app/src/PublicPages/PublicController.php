@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\PublicPages;
 
+use App\Domain\Palette;
 use App\Domain\VermietungArt;
 use App\Http\Request;
 use App\Http\Response;
@@ -340,12 +341,34 @@ final readonly class PublicController
         $auswaertsFarbe = $this->settings->get('auswaerts_farbe', '#57606a');
         $spielfreiFarbe = $this->settings->get('spielfrei_farbe', '#775c3c');
 
-        $cssLines = ['--auswaerts: ' . $auswaertsFarbe . ';', '--spielfrei: ' . $spielfreiFarbe . ';'];
+        // Defense in depth (K1): these colors reach the public <style> block
+        // unescaped (layout.php). Every write path validates colors against
+        // the palette, but an admin event correction (EventStore::correct)
+        // applies a RAW payload without that check - a corrupted farbe like
+        // "</style><script>..." would otherwise break out of the style
+        // element (persistent XSS). Filter again HERE, at the output: only
+        // palette hex values pass; a bad value drops its variable (the
+        // frontend already falls back to a neutral color) instead of being
+        // emitted verbatim.
+        $cssVar = static fn(string $name, mixed $farbe): ?string => Palette::isValid((string) $farbe)
+            ? sprintf('%s: %s;', $name, (string) $farbe)
+            : null;
+
+        $cssLines = array_values(array_filter([
+            $cssVar('--auswaerts', $auswaertsFarbe),
+            $cssVar('--spielfrei', $spielfreiFarbe),
+        ]));
         foreach ($teams as $team) {
-            $cssLines[] = sprintf('--team-%d: %s;', $team['id'], $team['farbe']);
+            $line = $cssVar(sprintf('--team-%d', (int) $team['id']), $team['farbe']);
+            if ($line !== null) {
+                $cssLines[] = $line;
+            }
         }
         foreach ($venues as $venue) {
-            $cssLines[] = sprintf('--venue-%d: %s;', $venue['id'], $venue['farbe']);
+            $line = $cssVar(sprintf('--venue-%d', (int) $venue['id']), $venue['farbe']);
+            if ($line !== null) {
+                $cssLines[] = $line;
+            }
         }
 
         return [
