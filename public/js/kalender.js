@@ -1330,6 +1330,10 @@
                 // die Range selbst bleibt weiterhin statisch, s. Kommentar
                 // oben bei den State-Variablen.
                 visibleRange: { start: listeHorizontStart(), end: `${listeHorizontEnde()}T00:00:00` },
+                // FullCalendar zeigt den Wochentag neben dem Datum nur, wenn
+                // listDaySideFormat explizit gesetzt ist (Default liefert
+                // keinen sideText).
+                listDaySideFormat: { weekday: 'long' },
             },
         },
         resources: (info, success) => success(aktuelleRessourcen()),
