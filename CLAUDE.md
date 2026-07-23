@@ -9,7 +9,7 @@ Dokument – oder es wird hier im selben PR bewusst geändert.
 
 ## 1. Harte Umgebungs-Constraints (niemals verletzen)
 
-- Shared Hosting bei shared hosting: **kein SSH, kein Git, kein Composer, kein
+- Hosting bei einem Shared-Hosting-Anbieter: **kein SSH, kein Git, kein Composer, kein
   `exec()`/`shell_exec()`** auf dem Server.
 - Deployment nur über Release-ZIPs (GitHub Releases) + setup.php/Self-Updater.
 - **PHP 8.5**: fehler- und deprecation-frei; moderne Sprachfeatures (Enums,
@@ -248,7 +248,7 @@ Error-Handler (`Http/Kernel`) loggt nie den vollen Exception-String (ein
 Stacktrace trägt bei `zend.exception_ignore_args=Off` die Funktionsargumente,
 z. B. das Klartext-Passwort aus dem Login-Pfad), sondern nur
 Exception-Klasse, `getMessage()`, Request-Methode/-Pfad und Fehlerort; die
-Hoster-Ini setzt zusätzlich `zend.exception_ignore_args=On` (Defense in
+php.ini des Shared-Hosting-Anbieters setzt zusätzlich `zend.exception_ignore_args=On` (Defense in
 Depth). Farbwerte, die in den öffentlichen `<style>`-Block fließen, werden
 an der AUSGABE gegen `Palette` gefiltert (nicht nur beim Schreiben) – eine
 per Event-Korrektur eingeschleuste Nicht-Palette-Farbe kann so nicht aus dem
@@ -286,7 +286,7 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
 
 ## 6. ICS-Import
 
-- Hoster-Cronjob ruft `bin/import_ics.php` alle 10 Min per HTTP auf
+- Der Cronjob des Hoster-Kontrollpanels ruft `bin/import_ics.php` alle 10 Min per HTTP auf
   (Secret-Token aus config.php).
 - Sync pro Event über `(import_source_id, ics_uid)`: unbekannt → INSERT;
   bekannt + sync_hash geändert → UPDATE (Verlegung: UID bleibt,
@@ -940,8 +940,9 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
 
 ## 11. Entwicklungs-Konventionen
 
-- Lokal: docker-compose mit PHP 8.5 + MySQL, produktionsnah
-  (disable_functions=exec,shell_exec,…; realistische Limits); App läuft per
+- Lokal: docker-compose mit PHP 8.5 + MySQL, produktionsnah zum
+  Shared-Hosting-Anbieter (disable_functions=exec,shell_exec,…; realistische
+  Limits); App läuft per
   `docker compose up`.
 - CI unter PHP 8.5 mit `error_reporting(E_ALL)`; Deprecations = Fehler.
   Fremdbibliotheken vor Aufnahme auf PHP-8.5-Kompatibilität prüfen.

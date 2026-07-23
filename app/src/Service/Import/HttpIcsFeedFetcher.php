@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Service\Import;
 
 /**
- * Plain streams client (no curl dependency, works on shared hosting). Short
+ * Plain streams client (no curl dependency, works on restrictive shared hosting). Short
  * timeout: the import runs inside PHP request limits (CLAUDE.md section 2).
  */
 final class HttpIcsFeedFetcher implements IcsFeedFetcher

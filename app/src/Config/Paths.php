@@ -7,7 +7,7 @@ namespace App\Config;
 /**
  * Resolves all filesystem paths relative to the release root.
  *
- * Production layout on shared hosting (see CLAUDE.md section 3):
+ * Production layout on a shared hosting provider (see CLAUDE.md section 3):
  *   /web      docroot shim (requires current/public/index.php)
  *   /current  active release = release root
  *   /shared   persistent data, sibling of the release root

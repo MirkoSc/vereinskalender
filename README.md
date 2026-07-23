@@ -1,9 +1,9 @@
 # Vereinskalender
 
 Webkalender für einen Fußballverein: Sportplatz-Belegung (Training) und
-Spielplan mit automatischem Import von fussball.de. Läuft auf shared hosting
-Shared Hosting (PHP 8.5 + MySQL/MariaDB) – ohne SSH, ohne Composer auf dem
-Server. Architektur und Konventionen: siehe [CLAUDE.md](CLAUDE.md).
+Spielplan mit automatischem Import von fussball.de. Läuft auf Shared Hosting
+bei einem Webhoster (PHP 8.5 + MySQL/MariaDB) – ohne SSH, ohne Composer auf
+dem Server. Architektur und Konventionen: siehe [CLAUDE.md](CLAUDE.md).
 
 **Funktionen:** eine Kalenderseite mit vier Darstellungen (Tag/Woche/Monat/
 Liste) für Platzbelegung (wiederkehrende Trainingsslots mit Ausnahmen und
@@ -12,9 +12,9 @@ Verfügbarkeitsansicht, Kalender-Abos (ICS-Feeds), Web-Push bei Sperrungen und
 Spielverlegungen, PWA mit Offline-Unterstützung, Event-Historie mit
 Rückroll-Funktion, Self-Update, Backups, Saison-Assistent.
 
-## Installation auf shared hosting (Kontrollpanel)
+## Installation bei einem Shared-Hosting-Anbieter
 
-1. **Vorbereiten im Kontrollpanel**
+1. **Vorbereiten im Kontrollpanel des Hosters**
    - Per FTP ein eigenes Verzeichnis mit einem `web`-Unterordner anlegen
      und die Subdomain/Domain im Kontrollpanel **auf den `web`-Unterordner** zeigen
      lassen. Die Anwendung legt ihre Daten eine Ebene über dem DocumentRoot
@@ -97,7 +97,7 @@ docker compose exec app php bin/migrate.php
 docker compose run --rm --no-deps app php bin/build_setup.php
 ```
 
-Die Docker-Umgebung spiegelt das Shared-Hosting-Layout: `docker/web/` ist der
+Die Docker-Umgebung spiegelt das Layout eines typischen Shared-Hosting-Anbieters: `docker/web/` ist der
 DocumentRoot mit dem Produktions-Shim, das Repo ist als `current/` gemountet,
 `docker/shared/` entspricht dem persistenten `shared/`-Verzeichnis.
 

@@ -7,7 +7,7 @@ namespace App\Http;
 /**
  * Streams static assets from public/ through PHP.
  *
- * On shared hosting the docroot contains only the shim index.php; Apache cannot
+ * On this shared hosting setup the docroot contains only the shim index.php; Apache cannot
  * serve files above it, so every asset request is rewritten to the front
  * controller and answered here. The realpath guard below is security
  * critical: shared/config.php lives one level above the release root.
