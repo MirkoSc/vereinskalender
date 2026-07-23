@@ -9,7 +9,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {
-    expandiereSlotOccurrences, eventsAusBundle, naechsterTermin,
+    expandiereSlotOccurrences, eventsAusBundle, naechsterTermin, vorherigerTermin,
 } = require('../../public/js/offline-events.js');
 
 const fixturesDir = path.join(__dirname, '..', 'fixtures', 'parity');
@@ -156,4 +156,60 @@ test('naechsterTermin: laufende Sperrung zählt nicht - sie steckt schon im Batc
         sperrungen: [{ start: '2026-11-20T00:00:00', ende: '2027-01-15T23:59:00' }],
     };
     assert.equal(naechsterTermin(b, '2026-12-02'), null);
+});
+
+// ---- Issue #81: vorherigerTermin (Abbruchbedingung der Vergangenheits-
+// Nachladung) - Spiegelbild von naechsterTermin: dieselbe untere-Schranke-
+// Garantie, nur rückwärts (nie FRÜHER als der echte letzte Termin davor,
+// null nur wenn nachweislich keiner mehr vorausgeht). ----
+
+test('vorherigerTermin liefert null, wenn davor nichts mehr liegt', () => {
+    assert.equal(vorherigerTermin(leeresBundle, '2026-01-01'), null);
+});
+
+test('vorherigerTermin findet den letzten Termin jenseits einer langen Lücke', () => {
+    const b = {
+        ...leeresBundle,
+        spiele: [{ start: '2026-11-15T15:00:00' }, { start: '2027-03-07T14:00:00' }],
+    };
+    assert.equal(vorherigerTermin(b, '2027-02-01'), '2026-11-15');
+});
+
+test('vorherigerTermin ignoriert Termine im bereits geladenen Bereich', () => {
+    const b = { ...leeresBundle, spiele: [{ start: '2026-11-15T15:00:00' }] };
+    assert.equal(vorherigerTermin(b, '2026-11-15'), null);
+});
+
+test('vorherigerTermin zählt einen Termin am Tag direkt vor `von` mit', () => {
+    const b = { ...leeresBundle, spiele: [{ start: '2026-12-01T15:00:00' }] };
+    assert.equal(vorherigerTermin(b, '2026-12-02'), '2026-12-01');
+});
+
+test('vorherigerTermin berücksichtigt Trainings-Slots als Regel, nicht als Liste', () => {
+    // Slot lief nur in der Hinrunde bis 2026-11-30: letzter Montag davor
+    const b = {
+        ...leeresBundle,
+        slots: [{
+            id: 1, wochentage: [1], gueltig_ab: '2026-08-01', gueltig_bis: '2026-11-30',
+        }],
+    };
+    assert.equal(vorherigerTermin(b, '2026-12-02'), '2026-11-30');
+});
+
+test('vorherigerTermin ignoriert noch nicht begonnene Slots', () => {
+    const b = {
+        ...leeresBundle,
+        slots: [{ id: 1, wochentage: [1], gueltig_ab: '2027-03-01', gueltig_bis: '2027-06-30' }],
+    };
+    assert.equal(vorherigerTermin(b, '2026-12-02'), null);
+});
+
+test('vorherigerTermin nimmt das späteste über alle Termintypen hinweg', () => {
+    const b = {
+        ...leeresBundle,
+        spiele: [{ start: '2026-08-08T14:00:00' }],
+        sperrungen: [{ start: '2026-09-12T00:00:00', ende: '2026-09-13T23:59:00' }],
+        vermietungen: [{ start: '2026-10-10T18:00:00', ende: '2026-10-10T23:00:00' }],
+    };
+    assert.equal(vorherigerTermin(b, '2026-12-02'), '2026-10-10');
 });

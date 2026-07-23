@@ -20,6 +20,9 @@ final readonly class StatController
         'ansicht_tag', 'ansicht_woche', 'ansicht_monat', 'ansicht_liste',
         // Issue #56: je gewählter Stufe des Termintyp-Filters (kalender.js)
         'filter_typ_spiel', 'filter_typ_training',
+        // Issue #81: Einschalten des "Vergangenheit anzeigen"-Schalters in
+        // der Terminliste (kalender.js)
+        'liste_vergangenheit',
     ];
 
     public function __construct(private UsageStatRepository $stats)

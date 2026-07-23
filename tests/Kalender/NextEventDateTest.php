@@ -104,4 +104,80 @@ final class NextEventDateTest extends TestCase
     {
         self::assertNull(NextEventDate::frueheste([null, null]));
     }
+
+    // ---- Issue #81: ausSlotsVor()/spaeteste() - Spiegelbild für die
+    // Vergangenheits-Nachladung der Terminliste ("Vergangenheit anzeigen"). ----
+
+    public function testNoSlotsMeansNothingPrecedes(): void
+    {
+        self::assertNull(NextEventDate::ausSlotsVor([], '2026-12-02'));
+    }
+
+    public function testFindsLastOccurrenceBeforeALongGap(): void
+    {
+        // slot only ran in the first half of the season: the last Monday on
+        // or before 2026-11-30 is 2026-11-30 itself
+        $slot = self::slot(['gueltig_bis' => '2026-11-30']);
+
+        self::assertSame('2026-11-30', NextEventDate::ausSlotsVor([$slot], '2027-03-01'));
+    }
+
+    public function testGoesBackToThePreviousMatchingWeekday(): void
+    {
+        // 2026-12-03 is a Thursday; the previous Monday is 2026-11-30
+        self::assertSame('2026-11-30', NextEventDate::ausSlotsVor([self::slot()], '2026-12-04'));
+    }
+
+    public function testNotYetStartedSlotContributesNothing(): void
+    {
+        $slot = self::slot(['gueltig_ab' => '2027-03-01']);
+
+        self::assertNull(NextEventDate::ausSlotsVor([$slot], '2026-12-02'));
+    }
+
+    public function testSlotStartingAfterItsPreviousWeekdayContributesNothing(): void
+    {
+        // still valid on 2026-12-01/02 but only starts after the previous Monday
+        $slot = self::slot(['gueltig_ab' => '2026-12-02']);
+
+        self::assertNull(NextEventDate::ausSlotsVor([$slot], '2026-12-04'));
+    }
+
+    public function testTakesTheLatestAcrossSlotsAndWeekdays(): void
+    {
+        $slots = [
+            self::slot(['id' => 1, 'wochentage' => '[1]']),          // Monday 2026-11-30
+            self::slot(['id' => 2, 'wochentage' => [4, 6]]),          // Saturday 2026-12-05
+        ];
+
+        self::assertSame('2026-12-05', NextEventDate::ausSlotsVor($slots, '2026-12-07'));
+    }
+
+    public function testOccurrenceOnTheDayBeforeVorCounts(): void
+    {
+        // strictly before `vor`, so the very previous day is fair game
+        $slot = self::slot(['wochentage' => '[3]']); // 2026-12-02 is a Wednesday
+
+        self::assertSame('2026-12-02', NextEventDate::ausSlotsVor([$slot], '2026-12-03'));
+    }
+
+    /**
+     * Same asymmetry as ausSlots(): ignoring exceptions may make the answer
+     * too recent (one extra empty batch loading backwards) but never too
+     * far back, which would drop existing history off the top of the list.
+     */
+    public function testIgnoresExceptionsAndStaysAnUpperBound(): void
+    {
+        self::assertSame('2026-11-30', NextEventDate::ausSlotsVor([self::slot()], '2026-12-04'));
+    }
+
+    public function testSpaetesteIgnoresNullCandidates(): void
+    {
+        self::assertSame('2027-03-07', NextEventDate::spaeteste([null, '2027-01-10', null, '2027-03-07']));
+    }
+
+    public function testSpaetesteIsNullWhenEveryCandidateIsNull(): void
+    {
+        self::assertNull(NextEventDate::spaeteste([null, null]));
+    }
 }

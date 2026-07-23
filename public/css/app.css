@@ -264,6 +264,35 @@ main {
     font-size: 0.9rem;
 }
 
+/* Issue #81: Vergangenheits-Batches wachsen die Dokumenthöhe OBERHALB der
+   Scrollposition ein - Chromes/Firefoxs native CSS-Scroll-Anchoring
+   ("overflow-anchor", per Default an) korrigiert das zwar ebenfalls, tut das
+   aber GLEICHZEITIG mit unserer eigenen, getesteten Korrektur
+   (scrollAnkerZiel() in nachlade.js) und verfälscht sie dadurch
+   unvorhersehbar (beobachtet: erwartete Zielposition ~96px, tatsächlich
+   834px). `overflow-anchor: none` schaltet den Browser-Mechanismus ab, damit
+   ausschließlich unsere deterministische Berechnung greift. Betrifft nur das
+   Nachladen nach unten (Issue #4/#31) nicht, das unterhalb der Scrollposition
+   anhängt - dort greift natives Scroll-Anchoring ohnehin nie ein. */
+html {
+    overflow-anchor: none;
+}
+
+/* Issue #81: Schalter "Vergangenheit anzeigen" oberhalb der Terminliste -
+   Touch-Ziel >= 44px (CLAUDE.md Abschnitt 8), analog .segmented label. */
+.liste-vergangenheit-leiste {
+    margin-bottom: 0.5rem;
+}
+
+.liste-vergangenheit-schalter {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 44px;
+    padding: 0.25rem 0.25rem;
+    cursor: pointer;
+}
+
 dialog.sheet {
     border: none;
     border-radius: 12px;
