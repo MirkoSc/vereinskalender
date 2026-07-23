@@ -54,21 +54,23 @@ final readonly class EventFeedService
 
     /**
      * The full /api/events payload: the events of the requested range plus
-     * `naechster` - the date of the next event AFTER `bis` (Issue #52). The
-     * Terminliste needs a stop condition that does not guess from empty
-     * batches; see naechsterTermin() for what the value guarantees.
+     * `naechster` - the date of the next event AFTER `bis` (Issue #52) - and
+     * `vorheriger` - the date of the last event BEFORE `von` (Issue #81). Both
+     * are stop conditions that do not guess from empty batches; see
+     * naechsterTermin()/vorherigerTermin() for what the values guarantee.
      *
      * @param array<string, mixed> $query
-     * @return array{events: list<array<string, mixed>>, naechster: ?string}
+     * @return array{events: list<array<string, mixed>>, naechster: ?string, vorheriger: ?string}
      */
     public function feed(array $query): array
     {
-        // events() validates von/bis first, so $bis is a valid date below
+        // events() validates von/bis first, so both are valid dates below
         $events = $this->events($query);
 
         return [
             'events' => $events,
             'naechster' => $this->naechsterTermin(trim((string) ($query['bis'] ?? ''))),
+            'vorheriger' => $this->vorherigerTermin(trim((string) ($query['von'] ?? ''))),
         ];
     }
 
@@ -99,6 +101,24 @@ final readonly class EventFeedService
             $this->restrictions->naechsterBeginnNach($nachDatum),
             $this->vermietungen->naechsterBeginnNach($nachDatum),
             NextEventDate::ausSlots($this->slots->findGueltigNach($bis), $bis),
+        ]);
+    }
+
+    /**
+     * Date of the last event strictly before `$von`, or null when none
+     * precedes at all (Issue #81, "Vergangenheit anzeigen" toggle in der
+     * Terminliste) - mirror of naechsterTermin(), same lower/upper-bound
+     * reasoning facing the other direction.
+     */
+    public function vorherigerTermin(string $von): ?string
+    {
+        $vorDatum = $von . ' 00:00:00';
+
+        return NextEventDate::spaeteste([
+            $this->matches->vorherigerAnstossVor($vorDatum),
+            $this->restrictions->vorherigerBeginnVor($vorDatum),
+            $this->vermietungen->vorherigerBeginnVor($vorDatum),
+            NextEventDate::ausSlotsVor($this->slots->findGueltigVor($von), $von),
         ]);
     }
 

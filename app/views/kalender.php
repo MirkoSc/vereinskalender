@@ -27,6 +27,23 @@
          kombination ohne Treffer (z. B. "Nur Spiele" + "Nur manuelle"). -->
     <p id="kalender-leer-hinweis" class="liste-lade-indikator" hidden aria-live="polite"></p>
 
+    <!-- Issue #81: Terminliste startet standardmäßig bei "heute"; der
+         Schalter lädt vergangene Termine gebatcht nach oben nach. Nur in der
+         Listen-Darstellung sichtbar (kalender.js aktualisiert "hidden" auf
+         dem gemeinsamen Container bei jedem Darstellungswechsel) - Indikator/
+         Hinweis/Sentinel liegen bewusst DARIN, damit sie mit demselben
+         "hidden" automatisch mitverschwinden statt außerhalb der Liste ohne
+         die zugehörige Checkbox als Kontext stehen zu bleiben. -->
+    <div id="liste-vergangenheit-leiste" class="liste-vergangenheit-leiste" hidden>
+        <label class="liste-vergangenheit-schalter">
+            <input type="checkbox" id="liste-vergangenheit-toggle">
+            Vergangenheit anzeigen
+        </label>
+        <p id="liste-vergangenheit-lade-indikator" class="liste-lade-indikator" hidden aria-live="polite">Lädt frühere Termine…</p>
+        <p id="liste-vergangenheit-erschoepft-hinweis" class="liste-lade-indikator" hidden>Keine früheren Termine</p>
+        <div id="liste-vergangenheit-sentinel" aria-hidden="true"></div>
+    </div>
+
     <div id="kalender"></div>
     <p id="liste-lade-indikator" class="liste-lade-indikator" hidden aria-live="polite">Lädt weitere Termine…</p>
     <p id="liste-erschoepft-hinweis" class="liste-lade-indikator" hidden>Keine weiteren Termine</p>

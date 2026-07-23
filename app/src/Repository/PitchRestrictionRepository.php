@@ -67,4 +67,18 @@ final readonly class PitchRestrictionRepository
 
         return $wert === false || $wert === null ? null : substr((string) $wert, 0, 10);
     }
+
+    /**
+     * Start date of the latest restriction beginning strictly before `$vor`
+     * (datetime), or null if none precedes - mirror of naechsterBeginnNach()
+     * for the Terminliste's "Vergangenheit anzeigen" toggle (Issue #81).
+     */
+    public function vorherigerBeginnVor(string $vor): ?string
+    {
+        $stmt = $this->pdo->prepare('SELECT MAX(von) FROM pitch_restriction WHERE von < ?');
+        $stmt->execute([$vor]);
+        $wert = $stmt->fetchColumn();
+
+        return $wert === false || $wert === null ? null : substr((string) $wert, 0, 10);
+    }
 }

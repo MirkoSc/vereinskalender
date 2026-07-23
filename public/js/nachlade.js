@@ -1,7 +1,8 @@
-// Pure helpers for the Terminliste-Nachladen (Issue #4): batch boundaries
-// and event de-duplication. Extracted from kalender.js so this logic is
-// unit-testable with plain Node (`node --test tests/js`) without a bundler
-// or JS test framework (CLAUDE.md section 2/12: no build step).
+// Pure helpers for the Terminliste-Nachladen (Issue #4, Vergangenheit Issue
+// #81): batch boundaries and event de-duplication. Extracted from kalender.js
+// so this logic is unit-testable with plain Node (`node --test tests/js`)
+// without a bundler or JS test framework (CLAUDE.md section 2/12: no build
+// step).
 
 (() => {
     const toIsoDate = (date) => {
@@ -11,17 +12,17 @@
         return `${jahr}-${monat}-${tag}`;
     };
 
-    // Wochenbeginn (Montag, 00:00 Uhr - firstDay:1 in kalender.js) der Woche
-    // von `heute` (Issue #26): die Terminliste ist auf Mobilgeräten die
-    // DEFAULT-Ansicht von Platzbelegung/Spielplan (nicht nur ein optionaler
-    // Modus), ihre untere Grenze bestimmt deshalb auch, ob "diese Woche"
-    // vollständig erscheint. Ein Start bei "heute" statt Wochenbeginn ließ
-    // bereits vergangene Tage der laufenden Woche unsichtbar wirken.
-    const wochenStart = (heute) => {
-        const start = new Date(heute);
+    // Mitternacht des übergebenen Tages (Issue #81: "heute" ist der oberste
+    // Tag der Terminliste). Vor Issue #81 startete die Liste bewusst am
+    // Wochenanfang (Montag) statt bei "heute" (Issue #26: sonst fehlten
+    // bereits vergangene Tage der laufenden Woche). Diese Absicht bleibt
+    // gewahrt - die vergangenen Tage sind jetzt über den Schalter
+    // "Vergangenheit anzeigen" erreichbar (s. vorherigeLadeGrenzen/
+    // sichtbareListenEvents unten und CLAUDE.md Abschnitt 8) statt automatisch
+    // sichtbar zu sein.
+    const mitternacht = (datum) => {
+        const start = new Date(datum);
         start.setHours(0, 0, 0, 0);
-        const diffZuMontag = (start.getDay() + 6) % 7; // So=0 -> 6, Mo=1 -> 0, ...
-        start.setDate(start.getDate() - diffZuMontag);
         return start;
     };
 
@@ -100,15 +101,67 @@
     // ist und nicht mehr ein Zähler leerer Batches.
     const sollAutomatischWeiterladen = (batchWarLeer, erschoepft) => batchWarLeer && !erschoepft;
 
+    // ---- Issue #81: Vergangenheit per Schalter nach oben nachladen ----
+    //
+    // Spiegelbild von naechsteBatchGrenze/naechsteLadeGrenzen: `von` wächst
+    // rückwärts statt `bis` vorwärts. `vorheriger` (analog `naechster`) ist
+    // das Datum des letzten Termins VOR der bisher geladenen unteren Grenze,
+    // oder null, wenn nichts mehr davor liegt (EventFeedService::
+    // vorherigerTermin() bzw. VKOfflineEvents.vorherigerTermin() offline).
+    // Ein Sprung über eine Lücke funktioniert genau wie bei naechsteLadeGrenzen
+    // - nur rückwärts.
+    const vorherigeBatchGrenze = (bisher, batchTage) => {
+        const vorherige = new Date(`${bisher}T00:00:00`);
+        vorherige.setDate(vorherige.getDate() - batchTage);
+        return toIsoDate(vorherige);
+    };
+
+    // Vor dem allerersten Aufruf ist `vorheriger` noch unbekannt (undefined,
+    // wie `listeNaechster` vor dem ersten Forward-Batch) - das liefert hier
+    // bereits die richtige erste Rückwärts-Grenze (bis = geladenAb, von =
+    // geladenAb - batchTage), eine eigene "erster Batch"-Sonderbehandlung wie
+    // bei naechsterMonatEnde/listeLadeKette ist für die Vergangenheit nicht
+    // nötig (kein "mindestens ein kompletter Monat"-Kriterium).
+    const vorherigeLadeGrenzen = (geladenAb, vorheriger, batchTage) => {
+        if (istErschoepft(vorheriger)) {
+            return null;
+        }
+        const bis = vorheriger < geladenAb ? vorheriger : geladenAb;
+
+        return { von: vorherigeBatchGrenze(bis, batchTage), bis };
+    };
+
+    // Default "heute oben" (Issue #81): Termine vor heute bleiben ausgeblendet,
+    // bis der Schalter "Vergangenheit anzeigen" aktiv ist - auch wenn sie
+    // bereits im Cache liegen (z. B. nach einem Aus-/Einschalten in derselben
+    // Sitzung, ohne dafür erneut zu laden).
+    const sichtbareListenEvents = (events, heuteIso, vergangenheitAktiv) => (
+        vergangenheitAktiv ? events : events.filter((event) => event.start >= heuteIso)
+    );
+
+    // Scrollanker (Issue #81): neue Termine werden OBERHALB der aktuellen
+    // Scrollposition eingefügt (anders als das Nachladen nach unten), das
+    // vergrößert die Dokumenthöhe VOR dem sichtbaren Bereich - ohne
+    // Korrektur springt der Viewport sichtbar nach unten. Die Korrektur
+    // verschiebt scrollY um genau die neu hinzugekommene Höhe, damit dasselbe
+    // Element optisch an derselben Stelle stehen bleibt.
+    const scrollAnkerZiel = (vorherigeHoehe, neueHoehe, vorherigerScrollY) => (
+        vorherigerScrollY + (neueHoehe - vorherigeHoehe)
+    );
+
     const api = {
         toIsoDate,
-        wochenStart,
+        mitternacht,
         naechsterMonatEnde,
         naechsteBatchGrenze,
         naechsteLadeGrenzen,
         istErschoepft,
         mergeEvents,
         sollAutomatischWeiterladen,
+        vorherigeBatchGrenze,
+        vorherigeLadeGrenzen,
+        sichtbareListenEvents,
+        scrollAnkerZiel,
     };
 
     if (typeof module !== 'undefined' && module.exports) {

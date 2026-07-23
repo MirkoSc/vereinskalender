@@ -49,6 +49,21 @@ final readonly class TrainingSlotRepository
     }
 
     /**
+     * Slots already valid before `$datum` (date). Mirror of findGueltigNach()
+     * for the Terminliste's "Vergangenheit anzeigen" toggle (Issue #81) - the
+     * previous occurrence itself is computed by NextEventDate::ausSlotsVor().
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function findGueltigVor(string $datum): array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM training_slot WHERE gueltig_ab < ? ORDER BY id');
+        $stmt->execute([$datum]);
+
+        return $stmt->fetchAll();
+    }
+
+    /**
      * Slots whose validity range overlaps [von, bis].
      *
      * @return list<array<string, mixed>>

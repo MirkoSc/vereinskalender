@@ -6,32 +6,24 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-    wochenStart, naechsterMonatEnde, naechsteBatchGrenze, naechsteLadeGrenzen, istErschoepft,
-    mergeEvents, sollAutomatischWeiterladen,
+    mitternacht, naechsterMonatEnde, naechsteBatchGrenze, naechsteLadeGrenzen, istErschoepft,
+    mergeEvents, sollAutomatischWeiterladen, vorherigeBatchGrenze, vorherigeLadeGrenzen,
+    sichtbareListenEvents, scrollAnkerZiel,
 } = require('../../public/js/nachlade.js');
 
-// Issue #26: die Terminliste (Mobil-Default von Platzbelegung/Spielplan)
-// darf beim initialen Öffnen nicht bei "heute" beginnen, sonst fehlen
-// bereits vergangene Tage der laufenden Woche - der sichtbare Bereich muss
-// den vollen Wochenanfang (Montag, firstDay:1) abdecken.
-test('wochenStart liefert Montag 00:00 für einen Wochentag in der Mitte der Woche', () => {
-    // Donnerstag
-    assert.equal(wochenStart(new Date(2026, 6, 16, 14, 30)).toDateString(), new Date(2026, 6, 13).toDateString());
-});
-
-test('wochenStart bleibt am Montag selbst unverändert (nur Uhrzeit auf 00:00)', () => {
-    assert.equal(wochenStart(new Date(2026, 6, 13, 23, 59)).toDateString(), new Date(2026, 6, 13).toDateString());
-});
-
-test('wochenStart springt am Sonntag auf den Montag davor zurück (ISO-Wochenende)', () => {
-    assert.equal(wochenStart(new Date(2026, 6, 19, 9, 0)).toDateString(), new Date(2026, 6, 13).toDateString());
-});
-
-test('wochenStart setzt die Uhrzeit auf Mitternacht', () => {
-    const start = wochenStart(new Date(2026, 6, 16, 23, 59, 59));
+// Issue #81: "heute" ist der oberste Tag der Terminliste (statt des früheren
+// Wochenanfangs Montag, Issue #26) - mitternacht() liefert dafür nur noch die
+// Tagesgrenze, ohne Wochenlogik.
+test('mitternacht setzt die Uhrzeit auf 00:00, ändert den Tag nicht', () => {
+    const start = mitternacht(new Date(2026, 6, 16, 23, 59, 59));
+    assert.equal(start.toDateString(), new Date(2026, 6, 16).toDateString());
     assert.equal(start.getHours(), 0);
     assert.equal(start.getMinutes(), 0);
     assert.equal(start.getSeconds(), 0);
+});
+
+test('mitternacht am Tag selbst bleibt unverändert (nur Uhrzeit auf 00:00)', () => {
+    assert.equal(mitternacht(new Date(2026, 6, 13, 0, 0, 1)).toDateString(), new Date(2026, 6, 13).toDateString());
 });
 
 test('naechsterMonatEnde deckt den kompletten nächsten Monat ab - Monatsanfang', () => {
@@ -296,4 +288,145 @@ test('Mobiler Scroll-Trigger lädt nach einem leeren Batch selbständig weiter',
 
     assert.deepEqual(listeEvents.map((e) => e.id), ['mrz-1']);
     assert.equal(antworten.length, 0);
+});
+
+// ---- Issue #81: Terminliste - heute oben, Vergangenheit per Schalter ----
+
+test('vorherigeBatchGrenze schiebt die Grenze um die Batch-Tage zurück', () => {
+    assert.equal(vorherigeBatchGrenze('2026-10-01', 31), '2026-08-31');
+});
+
+test('vorherigeBatchGrenze über einen Monatswechsel mit weniger Tagen', () => {
+    assert.equal(vorherigeBatchGrenze('2026-03-03', 31), '2026-01-31');
+});
+
+test('vorherigeLadeGrenzen überspringt eine Terminlücke in EINEM Schritt', () => {
+    // geladen ab 02.12., der letzte Termin davor liegt laut Server schon am
+    // 15.08. - der nächste (rückwärts geladene) Batch endet dort, statt sich
+    // in 31-Tage-Schritten durch die Lücke zurückzutasten.
+    assert.deepEqual(vorherigeLadeGrenzen('2026-12-02', '2026-08-15', 31), {
+        von: '2026-07-15',
+        bis: '2026-08-15',
+    });
+});
+
+test('vorherigeLadeGrenzen lädt ohne Lücke nahtlos weiter zurück', () => {
+    assert.deepEqual(vorherigeLadeGrenzen('2026-10-01', '2026-09-28', 31), {
+        von: '2026-08-28',
+        bis: '2026-09-28',
+    });
+});
+
+test('vorherigeLadeGrenzen liefert null, sobald nichts mehr davorliegt', () => {
+    assert.equal(vorherigeLadeGrenzen('2026-08-15', null, 31), null);
+});
+
+test('vorherigeLadeGrenzen vor dem allerersten Batch (vorheriger noch unbekannt)', () => {
+    // wie listeNaechster vor dem ersten Forward-Batch ist vorheriger hier
+    // undefined - der erste Rückwärts-Batch endet an der bisher geladenen
+    // unteren Grenze (heute) und reicht batchTage weiter zurück.
+    assert.deepEqual(vorherigeLadeGrenzen('2026-07-23', undefined, 31), {
+        von: '2026-06-22',
+        bis: '2026-07-23',
+    });
+});
+
+// Default: "heute" ist der oberste Tag (Issue #81) - Termine vor heute
+// bleiben verborgen, auch wenn sie (z. B. nach einem vorherigen Einschalten
+// des Schalters in derselben Sitzung) bereits im Cache liegen.
+test('sichtbareListenEvents blendet Vergangenes standardmäßig aus', () => {
+    const events = [
+        { id: '1', start: '2026-07-20T10:00:00' }, // vor heute
+        { id: '2', start: '2026-07-23T00:00:00' }, // heute, Mitternacht
+        { id: '3', start: '2026-07-23T18:00:00' }, // heute
+        { id: '4', start: '2026-08-01T10:00:00' }, // Zukunft
+    ];
+
+    assert.deepEqual(
+        sichtbareListenEvents(events, '2026-07-23', false).map((e) => e.id),
+        ['2', '3', '4'],
+    );
+});
+
+test('sichtbareListenEvents zeigt bei aktivem Schalter auch Vergangenes', () => {
+    const events = [
+        { id: '1', start: '2026-07-20T10:00:00' },
+        { id: '2', start: '2026-08-01T10:00:00' },
+    ];
+
+    assert.deepEqual(
+        sichtbareListenEvents(events, '2026-07-23', true).map((e) => e.id),
+        ['1', '2'],
+    );
+});
+
+// Scrollanker (Issue #81): neue Termine wachsen die Dokumenthöhe VOR dem
+// sichtbaren Bereich - die Korrektur muss genau die neu hinzugekommene Höhe
+// zu scrollY addieren, damit derselbe Inhalt optisch stehen bleibt.
+test('scrollAnkerZiel gleicht die neu eingefügte Höhe oberhalb der Scrollposition aus', () => {
+    // Seite war 4000px hoch, Nutzer stand bei 800px Scrollposition; ein
+    // Vergangenheits-Batch fügt 600px oberhalb ein - neue Ziel-Scrollposition
+    // ist 800 + 600 = 1400px, derselbe Inhalt bleibt im Viewport stehen.
+    assert.equal(scrollAnkerZiel(4000, 4600, 800), 1400);
+});
+
+test('scrollAnkerZiel bleibt unverändert, wenn sich die Höhe nicht ändert', () => {
+    assert.equal(scrollAnkerZiel(4000, 4000, 800), 800);
+});
+
+// Simulation der Vergangenheits-Ladekette (analog ladeAlles/macheServer oben):
+// Batches wachsen nach oben (`von` sinkt), Duplikate durch überlappende
+// Batches werden per id dedupliziert, die Kette endet erst bei
+// vorheriger === null ("keine früheren Termine").
+const macheVergangenheitsServer = (terminDaten) => {
+    const requests = [];
+    const feed = (von, bis) => {
+        requests.push({ von, bis });
+        const imBereich = terminDaten.filter((d) => d >= von && d <= bis);
+        const davor = terminDaten.filter((d) => d < von);
+
+        return {
+            events: imBereich.map((d) => ({ id: d, start: `${d}T10:00:00` })),
+            vorheriger: davor.length > 0 ? davor[davor.length - 1] : null,
+        };
+    };
+
+    return { feed, requests };
+};
+
+test('Vergangenheit lädt gebatcht nach oben, ohne Duplikate, bis "keine früheren Termine" (Issue #81)', () => {
+    const server = macheVergangenheitsServer([
+        '2025-09-12', '2025-10-24', '2026-06-15', // vor der Lücke
+        '2026-07-10', '2026-07-18', // näher an heute
+    ]);
+    const heute = '2026-07-23';
+
+    let events = [];
+    let geladenAb = heute;
+    let vorheriger;
+    let erschoepft = false;
+    let runden = 0;
+
+    while (!erschoepft) {
+        const schritt = vorherigeLadeGrenzen(geladenAb, vorheriger, 31);
+        if (schritt === null) {
+            break;
+        }
+        assert.ok((runden += 1) < 50, 'Vergangenheits-Nachladen terminiert nicht');
+        const antwort = server.feed(schritt.von, schritt.bis);
+        events = mergeEvents(events, antwort.events);
+        geladenAb = schritt.von;
+        vorheriger = antwort.vorheriger;
+        erschoepft = istErschoepft(vorheriger);
+    }
+
+    assert.deepEqual(events.map((e) => e.id).sort(), [
+        '2025-09-12', '2025-10-24', '2026-06-15', '2026-07-10', '2026-07-18',
+    ].sort());
+    assert.equal(erschoepft, true);
+
+    // ein erneuter Lauf über bereits geladene Batches darf keine Duplikate
+    // erzeugen
+    const nochmal = mergeEvents(events, server.feed(geladenAb, heute).events);
+    assert.equal(nochmal.length, events.length);
 });

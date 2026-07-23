@@ -230,8 +230,52 @@
         return frueheste;
     };
 
+    // Port von EventFeedService::vorherigerTermin (Issue #81): Datum des
+    // letzten Termins VOR `von`, oder null, wenn nichts mehr davorliegt -
+    // Spiegelbild von naechsterTermin, damit die Terminliste ihre
+    // Vergangenheits-Schranke auch offline aus demselben Bundle bekommt (kein
+    // Zusatz-Request-Sonderweg, CLAUDE.md Abschnitt 8).
+    const vorherigerTermin = (bundle, von) => {
+        const bisDatum = formatDate(addDays(parseDate(von), -1));
+        let spaeteste = null;
+        const kandidat = (datum) => {
+            if (datum !== null && (spaeteste === null || datum > spaeteste)) {
+                spaeteste = datum;
+            }
+        };
+
+        for (const spiel of bundle.spiele) {
+            const datum = spiel.start.slice(0, 10);
+            if (datum <= bisDatum) {
+                kandidat(datum);
+            }
+        }
+        for (const eintrag of [...bundle.sperrungen, ...(bundle.vermietungen ?? [])]) {
+            const datum = eintrag.start.slice(0, 10);
+            if (datum <= bisDatum) {
+                kandidat(datum);
+            }
+        }
+        for (const slot of bundle.slots) {
+            if (slot.gueltig_ab > bisDatum) {
+                continue;
+            }
+            const ende = slot.gueltig_bis < bisDatum ? slot.gueltig_bis : bisDatum;
+            const endeDate = parseDate(ende);
+            for (const weekday of slot.wochentage) {
+                const offset = (isoWeekday(endeDate) - weekday + 7) % 7;
+                const datum = formatDate(addDays(endeDate, -offset));
+                if (datum >= slot.gueltig_ab) {
+                    kandidat(datum);
+                }
+            }
+        }
+
+        return spaeteste;
+    };
+
     const api = {
-        expandiereSlotOccurrences, eventsAusBundle, inKickoffRange, overlapsRange, naechsterTermin,
+        expandiereSlotOccurrences, eventsAusBundle, inKickoffRange, overlapsRange, naechsterTermin, vorherigerTermin,
     };
 
     if (typeof module !== 'undefined' && module.exports) {
