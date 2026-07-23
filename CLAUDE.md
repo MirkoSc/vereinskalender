@@ -593,17 +593,24 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
 - **Terminliste mit Nachladen**: `listNachlade` ist eine der vier
   Darstellungen (Issue #37, per Umschalter erreichbar, nicht mehr an eine
   Ansicht/Bildschirmbreite gebunden); ihr sichtbarer Bereich beginnt beim
-  Wechsel dorthin immer am Wochenanfang (Montag) der laufenden Woche, nicht
-  bei „heute" – sonst fehlten beim ersten Öffnen bereits vergangene Tage der
-  aktuellen Woche (Issue #26). Sie zeigt initial mindestens den kompletten
-  nächsten Monat und lädt beim Scrollen ans Listenende weitere Batches nach
-  (`von`/`bis` wächst schrittweise, die API kennt keine Pagination).
-  Client-seitiger Cache dedupliziert nach Event-`id` (spätester Stand
-  gewinnt, z. B. bei einer verlegten Partie); aktive Filter setzen Cache und
-  Bereich auf den initialen Monat zurück. Reine Frontend-Logik
-  (`public/js/nachlade.js`, unit-getestet mit `node --test tests/js`).
-  **Abbruch und Lücken** (Issue #52): Das Ende der Kette wird NIE aus leeren
-  Batches abgeleitet – maßgeblich ist allein `naechster` aus der
+  Wechsel dorthin standardmäßig bei **„heute"** als oberstem Tag (Issue #81).
+  Bis Issue #81 begann sie stattdessen bewusst am Wochenanfang (Montag) der
+  laufenden Woche (Issue #26: sonst fehlten beim ersten Öffnen bereits
+  vergangene Tage der aktuellen Woche) – diese Absicht ist seit Issue #81
+  über den Schalter „Vergangenheit anzeigen" (oberhalb der Liste) gewahrt:
+  die vergangenen Tage der laufenden Woche sind einen Tap entfernt statt
+  automatisch sichtbar. Nach vorne zeigt sie initial mindestens den
+  kompletten nächsten Monat und lädt beim Scrollen ans Listenende weitere
+  Batches nach (`von`/`bis` wächst schrittweise, die API kennt keine
+  Pagination). Client-seitiger Cache dedupliziert nach Event-`id` (spätester
+  Stand gewinnt, z. B. bei einer verlegten Partie); aktive Filter setzen
+  Cache und Bereich auf den initialen Monat zurück – der
+  Vergangenheits-Schalter bleibt dabei unangetastet in seinem gewählten
+  Zustand (kein Filter, ein eigener, in localStorage gemerkter Zustand).
+  Reine Frontend-Logik (`public/js/nachlade.js`, unit-getestet mit
+  `node --test tests/js`).
+  **Abbruch und Lücken nach vorne** (Issue #52): Das Ende der Kette wird NIE
+  aus leeren Batches abgeleitet – maßgeblich ist allein `naechster` aus der
   Feed-Antwort (Abschnitt 7). `naechster === null` beendet die Kette und
   zeigt „keine weiteren Termine"; liegt `naechster` hinter dem geladenen
   Bereich (Winterpause), **springt** der nächste Batch direkt dorthin,
@@ -615,6 +622,43 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   mobile Scroll-Trigger weiterhin selbständig weiter (Issue #46: ein
   unveränderter Sentinel löst keinen neuen IntersectionObserver-Trigger
   aus) – das bleibt nötig, weil `naechster` nur eine untere Schranke ist.
+  **Vergangenheit per Schalter** (Issue #81): „Vergangenheit anzeigen"
+  (Checkbox oberhalb der Liste, Touch-Ziel ≥ 44 px, Default „aus", Zustand
+  in localStorage `kalender_liste_vergangenheit` gemerkt) lädt Termine VOR
+  „heute" gebatcht nach OBEN nach – spiegelbildlich zum Nachladen nach
+  vorne: `EventFeedService::vorherigerTermin()`/`vorherigerAnstossVor()` usw.
+  (Repository-Methoden, `NextEventDate::ausSlotsVor()`/`spaeteste()`) sind
+  das exakte Gegenstück zu `naechsterTermin()`/`ausSlots()`/`frueheste()` und
+  liefern das Datum des letzten Termins VOR `von` als `vorheriger`-Feld
+  neben `naechster` in derselben `/api/events`-Antwort; ein Lücken-Sprung
+  funktioniert wie bei `naechster`, nur rückwärts
+  (`vorherigeLadeGrenzen`/`vorherigeBatchGrenze` in `nachlade.js`). Die
+  FullCalendar-View-Range der Liste reicht dafür technisch immer von einem
+  fernen Vergangenheits- bis zum Zukunfts-Horizont; ob ein geladener
+  Vergangenheits-Termin TATSÄCHLICH angezeigt wird, entscheidet – analog
+  `platzFarbDarstellung()` (Issue #57) – ausschließlich eine reine
+  Rendering-Funktion (`sichtbareListenEvents()`), NIE der Datensatz selbst:
+  ein Aus-/Einschalten des Schalters in derselben Sitzung blendet bereits
+  geladene Vergangenheit sofort um, ohne neu zu laden. Ein eigener Sentinel
+  VOR `#kalender` im DOM (FullCalendar verwaltet `#kalender` selbst, ein
+  Kind-Sentinel würde jeden Re-Render nicht überleben) löst per
+  IntersectionObserver weitere Batches beim Scrollen an den oberen Rand aus,
+  mit derselben „nach einem leeren Batch selbständig weiterladen"-Regel wie
+  beim Nachladen nach unten (Issue #46). **Scrollanker**: neue Termine
+  wachsen die Dokumenthöhe OBERHALB der aktuellen Scrollposition – ohne
+  Korrektur springt der Viewport sichtbar nach unten; `scrollAnkerZiel()`
+  (reine Funktion, `nachlade.js`) verschiebt `scrollY` um genau die neu
+  hinzugekommene Höhe (`document.documentElement.scrollHeight`-Differenz vor/
+  nach `calendar.refetchEvents()`), damit derselbe Termin optisch stehen
+  bleibt. Ist wirklich nichts mehr davor, erscheint „Keine früheren
+  Termine". Die Nutzung des Schalters zählt in usage_stat
+  (`liste_vergangenheit`, `StatController`-Whitelist). Offline identisch:
+  `vorherigerTermin()` ist als reiner Port in `public/js/offline-events.js`
+  aus demselben Bundle berechnet (kein Zusatz-Request-Sonderweg), analog
+  `naechsterTermin()` – wie dort bewusst NICHT paritätsgetestet (MIN/MAX-
+  Abfrage serverseitig vs. Array-Scan clientseitig; verbindlich ist nur die
+  Schranken-Eigenschaft, eine Abweichung kostet höchstens einen leeren
+  Batch).
 - Mobile-Patterns: Bottom-Sheets, Chip-Filter, Segmented Control,
   Touch-Ziele ≥ 44 px.
 - **Legende** (Issue #38): EINE Komponente für Spielstätten-, Platz- und
@@ -968,7 +1012,18 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   Lücke > 1 Jahr beendet die Kette nicht, „wirklich kein Termin mehr" endet
   terminierend mit Abschlusshinweis, Slot-Regel als frühester Kandidat,
   laufende Sperrung zählt nicht als „nächster"; Filter senken die Schranke
-  nicht); **Platzfarb-Darstellung** (Issue #57,
+  nicht); **Terminliste Vergangenheit per Schalter** (Issue #81:
+  `vorherigerTermin()`/`vorherigerAnstossVor()`/`vorherigerBeginnVor()`/
+  `findGueltigVor()`/`ausSlotsVor()`/`spaeteste()` als exaktes Spiegelbild der
+  Issue-#52-Gegenstücke – Lücken-Sprung rückwärts, laufende/berührende
+  Termine „am Grenztag" zählen nicht als „vorheriger", Slot-Regel als
+  spätester Kandidat, Filter heben die Schranke nicht an; Default „heute"
+  oben in `tests/js/nachlade.test.js` sowie `tests/js/offline-events.test.js`
+  (`vorherigerTermin()`-Port); Schalter ein → gebatchte Vergangenheits-Batches
+  ohne Duplikate (Merge nach id); Abbruch nach hinten („keine früheren
+  Termine" bei `vorheriger === null`); `scrollAnkerZiel()` als reine Funktion
+  für den stabilen Scroll-Anker beim Einfügen oberhalb der Scrollposition);
+  **Platzfarb-Darstellung** (Issue #57,
   `tests/js/kalender-pitch.test.js`: vollständige Matrix Darstellung × Breite
   × Platzfilter über `platzFarbDarstellung()`, komponiert mit
   `hatResourceSpalten()` – Hintergrund nur in Tag/Woche ohne Spalten, Punkt

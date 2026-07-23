@@ -92,6 +92,20 @@ final readonly class MatchRepository
     }
 
     /**
+     * Kickoff date of the latest match strictly before `$vor` (datetime), or
+     * null if none precedes. Mirror of naechsterAnstossNach() for the
+     * Terminliste's "Vergangenheit anzeigen" toggle (Issue #81).
+     */
+    public function vorherigerAnstossVor(string $vor): ?string
+    {
+        $stmt = $this->pdo->prepare('SELECT MAX(anstoss) FROM `match` WHERE anstoss < ?');
+        $stmt->execute([$vor]);
+        $wert = $stmt->fetchColumn();
+
+        return $wert === false || $wert === null ? null : substr((string) $wert, 0, 10);
+    }
+
+    /**
      * Home matches without a reliable pitch assignment (hint layer in the
      * availability view, CLAUDE.md section 7).
      *

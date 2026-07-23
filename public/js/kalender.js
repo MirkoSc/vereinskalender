@@ -622,9 +622,15 @@
             }
             const daten = await response.json();
             // `naechster` (Issue #52): Datum des nächsten Termins nach `bis`,
-            // null = danach kommt nichts mehr. Trägt die Abbruchbedingung der
-            // Terminliste; die Grid-Ansichten ignorieren das Feld.
-            return { events: daten.events, naechster: daten.naechster ?? null };
+            // null = danach kommt nichts mehr. `vorheriger` (Issue #81) ist
+            // das Spiegelbild davon für die Vergangenheit. Beide tragen nur
+            // die Abbruchbedingung der Terminliste; die Grid-Ansichten
+            // ignorieren die Felder.
+            return {
+                events: daten.events,
+                naechster: daten.naechster ?? null,
+                vorheriger: daten.vorheriger ?? null,
+            };
         } catch (error) {
             const bundle = await window.VKOffline?.load();
             if (!bundle) {
@@ -666,13 +672,15 @@
                     }
                     return String(e.venue_id) === filters.venue;
                 });
-            // Issue #52: dieselbe Auskunft wie online, aus dem kompletten
+            // Issue #52/#81: dieselbe Auskunft wie online, aus dem kompletten
             // Bundle berechnet - offline gibt es dadurch KEIN abweichendes
-            // Abbruchverhalten. Wie serverseitig ohne Team-/Bereichs-/
-            // Venue-Filter (untere Schranke, s. offline-events.js).
+            // Abbruchverhalten in beide Richtungen. Wie serverseitig ohne
+            // Team-/Bereichs-/Venue-Filter (untere/obere Schranke, s.
+            // offline-events.js).
             return {
                 events: bundleEvents,
                 naechster: window.VKOfflineEvents.naechsterTermin(bundle, bis),
+                vorheriger: window.VKOfflineEvents.vorherigerTermin(bundle, von),
             };
         }
     };
@@ -709,6 +717,16 @@
     const listeLadeIndikator = document.querySelector('#liste-lade-indikator');
     const listeErschoepftHinweis = document.querySelector('#liste-erschoepft-hinweis');
     const listeSentinel = document.querySelector('#liste-sentinel');
+    // Issue #81: Schalter "Vergangenheit anzeigen" + Nachlade-UI oberhalb der
+    // Liste (Sentinel VOR #kalender im DOM, damit Scrollen an den oberen
+    // Rand der Seite ihn erreicht - #kalender selbst ist FullCalendar-
+    // verwaltet, ein Kind-Sentinel würde jeden Re-Render nicht überleben).
+    const listeVergangenheitLeiste = document.querySelector('#liste-vergangenheit-leiste');
+    const listeVergangenheitToggle = document.querySelector('#liste-vergangenheit-toggle');
+    const listeVergangenheitLadeIndikator = document.querySelector('#liste-vergangenheit-lade-indikator');
+    const listeVergangenheitErschoepftHinweis = document.querySelector('#liste-vergangenheit-erschoepft-hinweis');
+    const listeVergangenheitSentinel = document.querySelector('#liste-vergangenheit-sentinel');
+    const LISTE_VERGANGENHEIT_KEY = 'kalender_liste_vergangenheit';
     // Issue #53: Zeitraum-Anzeige neben der Überschrift "Kalender" statt in
     // FullCalendars eigener Toolbar - s. Kommentar bei listeTitelAktualisieren
     // und aktualisiereGridZeitraum weiter unten.
@@ -724,19 +742,43 @@
     let listeErschoepft = false;
     let listeAktiv = false; // true solange die Liste die aktuell aktive View ist
     let listeLaedt = false;
+    // Issue #81: Schalter-Zustand (localStorage, Default "aus") und Fortschritt
+    // der Vergangenheits-Ladekette - Spiegelbild von listeGeladenBis/
+    // listeNaechster/listeErschoepft/listeLaedt, nur rückwärts. Bleibt beim
+    // Zurücksetzen wegen eines Filterwechsels (listeZuruecksetzen) erhalten,
+    // der Schalter selbst ist keine Filter-Einstellung.
+    let listeVergangenheitAktiv = localStorage.getItem(LISTE_VERGANGENHEIT_KEY) === '1';
+    let listeVergangenheitGeladenAb = null;
+    let listeVergangenheitVorheriger;
+    let listeVergangenheitErschoepft = false;
+    let listeVergangenheitLaedt = false;
     // Generation-Zähler (bei jedem listeZuruecksetzen erhöht): schützt vor
     // einer veralteten Hintergrund-Ladekette, die nach schnellem Wechsel
     // weg von und zurück zur Liste (oder einem Filterwechsel mitten im
     // Laden) auf einen bereits verworfenen Cache weiterschreiben würde.
     let listeGeneration = 0;
 
-    // Wochenbeginn statt "heute" (Issue #26): unabhängig davon, welcher
-    // Modus initial aktiv ist (Issue #37: mobil "Tag", sonst "Woche" - s.
-    // `modus` weiter unten), zeigt die Liste beim Wechsel dorthin immer den
-    // Wochenanfang, nicht "heute" - sonst fehlten beim ersten Öffnen bereits
-    // vergangene Tage der laufenden Woche. Details/Test bei wochenStart() in
-    // nachlade.js.
-    const listeStart = () => window.VKNachlade.wochenStart(new Date());
+    // "Heute" ist der oberste Tag der Terminliste (Issue #81). Vor Issue #81
+    // startete die Liste bewusst am Wochenanfang statt bei "heute" (Issue
+    // #26: sonst fehlten bereits vergangene Tage der laufenden Woche) - diese
+    // Absicht bleibt über den Schalter "Vergangenheit anzeigen" gewahrt
+    // (sichtbareListenEvents weiter unten), s. CLAUDE.md Abschnitt 8.
+    const listeStart = () => window.VKNachlade.mitternacht(new Date());
+
+    // Die FullCalendar-View-Range (s. Kommentar bei `views` weiter unten)
+    // reicht IMMER bis weit in die Vergangenheit zurück, unabhängig vom
+    // Schalter - sonst würden bereits geladene Vergangenheits-Termine beim
+    // Rendern von FullCalendar verworfen, sobald der Schalter einmal
+    // eingeschaltet war. Was TATSÄCHLICH sichtbar ist, entscheidet allein
+    // sichtbareListenEvents() anhand von listeVergangenheitAktiv - dieselbe
+    // Trennung "Datensatz vs. Darstellung" wie bei platzFarbDarstellung
+    // (Issue #57).
+    const listeHorizontStart = () => {
+        const start = new Date();
+        start.setFullYear(start.getFullYear() - LISTE_HORIZONT_JAHRE);
+        start.setHours(0, 0, 0, 0);
+        return start;
+    };
 
     const listeHorizontEnde = () => {
         const ende = new Date();
@@ -744,15 +786,28 @@
         return window.VKNachlade.toIsoDate(ende);
     };
 
+    // Der Hinweis "Keine früheren Termine" ergibt nur Sinn, solange der
+    // Schalter an ist - sonst bliebe er nach einem Ausschalten unverändert
+    // stehen, direkt unter der jetzt wieder unmarkierten Checkbox.
+    const listeVergangenheitErschoepftHinweisAktualisieren = () => {
+        if (listeVergangenheitErschoepftHinweis) {
+            listeVergangenheitErschoepftHinweis.hidden = !(listeVergangenheitAktiv && listeVergangenheitErschoepft);
+        }
+    };
+
     const listeZuruecksetzen = () => {
         listeEvents = [];
         listeGeladenBis = null;
         listeNaechster = undefined;
         listeErschoepft = false;
+        listeVergangenheitGeladenAb = null;
+        listeVergangenheitVorheriger = undefined;
+        listeVergangenheitErschoepft = false;
         listeGeneration += 1;
         if (listeErschoepftHinweis) {
             listeErschoepftHinweis.hidden = true;
         }
+        listeVergangenheitErschoepftHinweisAktualisieren();
     };
 
     const listeIndikatorSetzen = (aktiv) => {
@@ -790,7 +845,13 @@
             if (!zeitraumEl || !listeAktiv || calendar.view.type !== 'listNachlade') {
                 return;
             }
-            const von = new Date(`${window.VKNachlade.toIsoDate(listeStart())}T00:00:00`);
+            // Issue #81: mit aktivem Schalter beginnt der tatsächlich
+            // geladene/gezeigte Bereich am ältesten Vergangenheits-Batch,
+            // nicht mehr an "heute".
+            const vonIso = listeVergangenheitAktiv && listeVergangenheitGeladenAb
+                ? listeVergangenheitGeladenAb
+                : window.VKNachlade.toIsoDate(listeStart());
+            const von = new Date(`${vonIso}T00:00:00`);
             const bisIso = listeGeladenBis ?? window.VKNachlade.toIsoDate(listeStart());
             const bis = new Date(`${bisIso}T00:00:00`);
             zeitraumEl.textContent = window.VKKalenderTitel.zeitraumText('liste', von, bis, isMobile);
@@ -872,6 +933,145 @@
         listeTitelAktualisieren();
     };
 
+    // ---- Issue #81: Vergangenheit per Schalter nach oben nachladen ----
+    // Spiegelbild von listeIndikatorSetzen/ladeEinenBatch/listeNaechsterSchritt/
+    // ladeNaechstenBatch oben - `von` wächst rückwärts statt `bis` vorwärts,
+    // `vorheriger` (EventFeedService::vorherigerTermin) ist das Gegenstück zu
+    // `naechster`. Läuft nur, solange listeVergangenheitAktiv (Schalter an).
+    const listeVergangenheitIndikatorSetzen = (aktiv) => {
+        listeVergangenheitLaedt = aktiv;
+        if (listeVergangenheitLadeIndikator) {
+            listeVergangenheitLadeIndikator.hidden = !aktiv;
+        }
+    };
+
+    const ladeEinenVergangenheitsBatch = async (params, von, bisGrenze) => {
+        if (bisGrenze <= von) {
+            return;
+        }
+        listeVergangenheitIndikatorSetzen(true);
+        try {
+            const { events, vorheriger } = await fetchEventsRange(von, bisGrenze, params);
+            listeEvents = window.VKNachlade.mergeEvents(listeEvents, events);
+            listeVergangenheitGeladenAb = von;
+            listeVergangenheitVorheriger = vorheriger;
+            if (window.VKNachlade.istErschoepft(vorheriger)) {
+                listeVergangenheitErschoepft = true;
+                listeVergangenheitErschoepftHinweisAktualisieren();
+            }
+        } finally {
+            listeVergangenheitIndikatorSetzen(false);
+        }
+    };
+
+    // Vor dem allerersten Vergangenheits-Batch ist listeVergangenheitVorheriger
+    // noch unbekannt (undefined) - vorherigeLadeGrenzen liefert dafür bereits
+    // den richtigen ersten Rückwärts-Schritt (s. nachlade.js), eine eigene
+    // Sonderbehandlung wie bei listeLadeKette/naechsterMonatEnde ist hier
+    // nicht nötig.
+    const listeVergangenheitNaechsterSchritt = () => window.VKNachlade.vorherigeLadeGrenzen(
+        listeVergangenheitGeladenAb ?? window.VKNachlade.toIsoDate(listeStart()),
+        listeVergangenheitVorheriger,
+        LIST_BATCH_TAGE,
+    );
+
+    const ladeVergangenheitsNaechstenBatch = async (params) => {
+        const schritt = listeVergangenheitNaechsterSchritt();
+        if (schritt === null) {
+            return false;
+        }
+        await ladeEinenVergangenheitsBatch(params, schritt.von, schritt.bis);
+
+        return true;
+    };
+
+    // Neue Vergangenheits-Termine werden OBERHALB der aktuellen Scrollposition
+    // eingefügt (anders als das Nachladen nach unten) - ohne Korrektur würde
+    // der Viewport sichtbar nach unten springen. scrollAnkerZiel (nachlade.js)
+    // gleicht das aus.
+    //
+    // Ein fester Frame-Vorsprung (requestAnimationFrame) reicht dafür NICHT
+    // und ist zudem unzuverlässig: refetchEvents() liest hier zwar synchron
+    // aus dem Cache, aber fetchEventsRange() selbst wartet zuvor auf einen
+    // echten Netzwerk-Request (ladeEinenVergangenheitsBatch/-Kette) - je nach
+    // Latenz kann das deutlich länger dauern als ein paar Frames, und
+    // FullCalendars eigenes (Preact-basiertes) Rendering patcht das DOM erst
+    // danach; ein zu früh gemessenes rAF sah reproduzierbar noch die ALTE
+    // Höhe. rAF selbst feuert außerdem NIE in einem nicht sichtbaren/nicht
+    // fokussierten Tab (verifiziert: ein isoliert registriertes rAF blieb in
+    // genau dieser Automatisierungs-Umgebung dauerhaft aus) - genau der Fall,
+    // wenn der Nutzer während der Hintergrund-Ladekette (Desktop, s.
+    // listeVergangenheitLadeKette) den Tab wechselt. Ein MutationObserver auf
+    // #kalender wartet stattdessen auf die TATSÄCHLICHE DOM-Änderung,
+    // unabhängig davon, wie lange sie braucht UND unabhängig von der
+    // Tab-Sichtbarkeit; `scrollHeight` direkt im Callback zu lesen erzwingt
+    // bereits synchron ein aktuelles Layout, ein zusätzliches rAF ist dafür
+    // nicht nötig.
+    const listeVergangenheitNeuRendern = () => {
+        const vorherigeHoehe = document.documentElement.scrollHeight;
+        const vorherigerScrollY = window.scrollY;
+        const kalenderEl = document.querySelector('#kalender');
+        if (kalenderEl) {
+            const observer = new MutationObserver(() => {
+                observer.disconnect();
+                const neueHoehe = document.documentElement.scrollHeight;
+                window.scrollTo(0, window.VKNachlade.scrollAnkerZiel(vorherigeHoehe, neueHoehe, vorherigerScrollY));
+            });
+            observer.observe(kalenderEl, { childList: true, subtree: true });
+        }
+        calendar.refetchEvents();
+        listeTitelAktualisieren();
+    };
+
+    // Lädt Vergangenheits-Batches, solange der Schalter an ist - auf
+    // Desktop-Breiten läuft die Kette bis zur Erschöpfung im Hintergrund
+    // weiter (analog listeLadeKette), mobil bricht sie nach einem Batch ab
+    // und wartet auf den Scroll-Trigger (listeVergangenheitWeiterLaden).
+    const listeVergangenheitLadeKette = async (params) => {
+        const generation = listeGeneration;
+        const nochAktuell = () => generation === listeGeneration;
+        try {
+            while (listeVergangenheitAktiv && nochAktuell()) {
+                if (!await ladeVergangenheitsNaechstenBatch(params)) {
+                    return;
+                }
+                if (!nochAktuell()) {
+                    return;
+                }
+                listeVergangenheitNeuRendern();
+                if (isMobile) {
+                    return;
+                }
+            }
+        } catch (error) {
+            console.error('Terminliste: Vergangenheit laden fehlgeschlagen', error);
+        }
+    };
+
+    // Scroll an den oberen Rand (mobil): mindestens einen weiteren
+    // Vergangenheits-Batch nachladen, analog listeWeiterLaden.
+    const listeVergangenheitWeiterLaden = async () => {
+        if (!listeVergangenheitAktiv || calendar.view.type !== 'listNachlade'
+            || listeVergangenheitErschoepft || listeVergangenheitLaedt) {
+            return;
+        }
+        const params = window.VKKalenderEvents.baueEventsParams(filters);
+        try {
+            let batchWarLeer;
+            do {
+                const vorLaenge = listeEvents.length;
+                if (!await ladeVergangenheitsNaechstenBatch(params)) {
+                    break;
+                }
+                batchWarLeer = listeEvents.length === vorLaenge;
+            } while (listeVergangenheitAktiv
+                && window.VKNachlade.sollAutomatischWeiterladen(batchWarLeer, listeVergangenheitErschoepft));
+            listeVergangenheitNeuRendern();
+        } catch (error) {
+            console.error('Terminliste: Vergangenheit nachladen fehlgeschlagen', error);
+        }
+    };
+
     // Lädt den ersten Batch (mind. kompletter nächster Monat, Issue #4) und
     // rendert ihn sofort; auf Desktop-Breiten (kein Scroll-Nachladen nötig,
     // Issue #31) läuft die Ladekette danach im Hintergrund weiter, bis die
@@ -943,12 +1143,17 @@
     };
 
     // Filterwechsel während die Liste aktiv ist: Cache verwerfen und die
-    // Ladekette neu starten (die View-Range bleibt unverändert - sie ist
-    // statisch, s.o.).
+    // Ladekette(n) neu starten (die View-Range bleibt unverändert - sie ist
+    // statisch, s.o.). Issue #81: der Vergangenheits-Schalter bleibt dabei in
+    // seinem gewählten Zustand - ist er an, startet auch seine Ladekette neu.
     const listeFilterGeaendert = () => {
         listeZuruecksetzen();
         listeNeuRendern();
-        listeLadeKette(window.VKKalenderEvents.baueEventsParams(filters));
+        const params = window.VKKalenderEvents.baueEventsParams(filters);
+        listeLadeKette(params);
+        if (listeVergangenheitAktiv) {
+            listeVergangenheitLadeKette(params);
+        }
     };
 
     // IntersectionObserver statt Scroll-Event-Heuristik (Issue #24): ein
@@ -963,6 +1168,45 @@
         : null;
     if (listeSentinelObserver && listeSentinel) {
         listeSentinelObserver.observe(listeSentinel);
+    }
+
+    // Issue #81: Sentinel VOR #kalender im DOM - Scrollen an den oberen Rand
+    // löst das Nachladen weiterer Vergangenheits-Batches aus, analog dem
+    // Sentinel am Listenende. Feuert harmlos auch außerhalb der Liste
+    // (listeVergangenheitWeiterLaden prüft calendar.view.type selbst).
+    const listeVergangenheitSentinelObserver = listeVergangenheitSentinel
+        ? new IntersectionObserver((entries) => {
+            if (entries.some((entry) => entry.isIntersecting)) {
+                listeVergangenheitWeiterLaden();
+            }
+        })
+        : null;
+    if (listeVergangenheitSentinelObserver && listeVergangenheitSentinel) {
+        listeVergangenheitSentinelObserver.observe(listeVergangenheitSentinel);
+    }
+
+    // Schalter "Vergangenheit anzeigen" (Issue #81): Zustand in localStorage
+    // gemerkt (Default "aus"), Nutzung in usage_stat gezählt. Ein
+    // Zurückschalten auf "aus" verwirft den Vergangenheits-Cache NICHT -
+    // erneutes Einschalten in derselben Sitzung zeigt ihn sofort wieder,
+    // ohne neu zu laden (sichtbareListenEvents blendet ihn nur clientseitig
+    // aus/ein).
+    if (listeVergangenheitToggle) {
+        listeVergangenheitToggle.checked = listeVergangenheitAktiv;
+        listeVergangenheitToggle.addEventListener('change', () => {
+            listeVergangenheitAktiv = listeVergangenheitToggle.checked;
+            localStorage.setItem(LISTE_VERGANGENHEIT_KEY, listeVergangenheitAktiv ? '1' : '0');
+            listeVergangenheitErschoepftHinweisAktualisieren();
+            // Ein bereits gefüllter Cache (voriges Einschalten in derselben
+            // Sitzung) erscheint/verschwindet dadurch OBERHALB der aktuellen
+            // Scrollposition - dieselbe Anker-Korrektur wie beim Nachladen
+            // selbst nötig, in beide Richtungen.
+            listeVergangenheitNeuRendern();
+            if (listeVergangenheitAktiv) {
+                beacon('liste_vergangenheit');
+                listeVergangenheitLadeKette(window.VKKalenderEvents.baueEventsParams(filters));
+            }
+        });
     }
 
     const isMobile = window.matchMedia('(max-width: 767px)').matches;
@@ -1003,6 +1247,11 @@
     const aktualisiereModusButtons = () => {
         for (const m of window.VKKalenderAnsicht.MODI) {
             document.querySelector(`.fc-ansicht${m}-button`)?.classList.toggle('fc-button-active', m === modus);
+        }
+        // Issue #81: der Schalter "Vergangenheit anzeigen" ergibt nur in der
+        // Terminliste selbst einen Sinn.
+        if (listeVergangenheitLeiste) {
+            listeVergangenheitLeiste.hidden = modus !== 'liste';
         }
     };
 
@@ -1072,7 +1321,15 @@
         views: {
             listNachlade: {
                 type: 'list',
-                visibleRange: { start: listeStart(), end: `${listeHorizontEnde()}T00:00:00` },
+                // Issue #81: die technische FC-Range reicht IMMER von einem
+                // fernen Vergangenheits- bis zum Zukunfts-Horizont (nicht nur
+                // von "heute"), sonst würde FullCalendar bereits geladene
+                // Vergangenheits-Termine verwerfen, sobald der Schalter
+                // einmal aktiv war. Was TATSÄCHLICH angezeigt wird, filtert
+                // allein sichtbareListenEvents() im `events`-Callback unten -
+                // die Range selbst bleibt weiterhin statisch, s. Kommentar
+                // oben bei den State-Variablen.
+                visibleRange: { start: listeHorizontStart(), end: `${listeHorizontEnde()}T00:00:00` },
             },
         },
         resources: (info, success) => success(aktuelleRessourcen()),
@@ -1092,7 +1349,7 @@
         // großzügig, dass keine Grid-Ansicht sie je zufällig anfragt.
         events: async (info, success, failure) => {
             const params = window.VKKalenderEvents.baueEventsParams(filters);
-            const istListenFetch = info.startStr.slice(0, 10) === window.VKNachlade.toIsoDate(listeStart())
+            const istListenFetch = info.startStr.slice(0, 10) === window.VKNachlade.toIsoDate(listeHorizontStart())
                 && info.endStr.slice(0, 10) === listeHorizontEnde();
 
             if (istListenFetch) {
@@ -1100,10 +1357,21 @@
                     listeZuruecksetzen();
                     listeAktiv = true;
                     listeLadeKette(params);
+                    if (listeVergangenheitAktiv) {
+                        listeVergangenheitLadeKette(params);
+                    }
                 }
-                const gefiltert = merkeVermietungen(applyClientFilters(listeEvents));
-                aktualisiereLeerHinweis(gefiltert);
-                success(gefiltert.map(toFcEvent));
+                // Issue #81: "heute" ist der oberste Tag, solange der
+                // Schalter aus ist - auch bereits gecachte Vergangenheit
+                // (z. B. nach einem Aus-/Einschalten in derselben Sitzung)
+                // bleibt dann ausgeblendet.
+                const sichtbar = merkeVermietungen(window.VKNachlade.sichtbareListenEvents(
+                    applyClientFilters(listeEvents),
+                    window.VKNachlade.toIsoDate(listeStart()),
+                    listeVergangenheitAktiv,
+                ));
+                aktualisiereLeerHinweis(sichtbar);
+                success(sichtbar.map(toFcEvent));
                 listeTitelAktualisieren();
                 return;
             }

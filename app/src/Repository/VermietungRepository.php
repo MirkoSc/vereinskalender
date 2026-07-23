@@ -52,6 +52,20 @@ final readonly class VermietungRepository
     }
 
     /**
+     * Start date of the latest Vermietung beginning strictly before `$vor`
+     * (datetime), or null if none precedes - mirror of naechsterBeginnNach()
+     * for the Terminliste's "Vergangenheit anzeigen" toggle (Issue #81).
+     */
+    public function vorherigerBeginnVor(string $vor): ?string
+    {
+        $stmt = $this->pdo->prepare('SELECT MAX(von) FROM vermietung WHERE von < ?');
+        $stmt->execute([$vor]);
+        $wert = $stmt->fetchColumn();
+
+        return $wert === false || $wert === null ? null : substr((string) $wert, 0, 10);
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
     public function find(int $id): ?array
