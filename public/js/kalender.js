@@ -1401,11 +1401,32 @@
         if (neu === modus) {
             return;
         }
+        const vorherigerModus = modus;
         modus = neu;
         localStorage.setItem('kalender_ansicht', modus);
         beacon(window.VKKalenderAnsicht.statMetrik(modus));
         aktualisiereModusButtons();
         calendar.changeView(window.VKKalenderAnsicht.fcViewName(modus, istBreit()));
+        // Die Liste fetcht ihre statische Multi-Jahres-Range (listeHorizontStart
+        // .. listeHorizontEnde) und übergibt FullCalendar dabei per success()
+        // nur die per sichtbareListenEvents() bereits gefilterte Teilmenge -
+        // ohne aktiven Schalter "Vergangenheit anzeigen" (Issue #81, Default
+        // aus) fehlt die Vergangenheit darin. FullCalendars lazyFetching merkt
+        // sich als "bereits geladen" aber die komplette angefragte Range, nicht
+        // die tatsächlich gelieferte Teilmenge (Vendor-Bundle:
+        // `t.start<e.fetchRange.start||t.end>e.fetchRange.end`) - jeder
+        // Wechsel WEG von der Liste landet mit seiner (viel engeren) Range
+        // innerhalb dieser Multi-Jahres-Range und bekäme ohne einen expliziten
+        // Refetch die unvollständige Event-Liste der Liste weiterserviert,
+        // Vergangenheit inklusive fehlend, bis ein Reload einen echten Fetch
+        // erzwingt. Woche/Monat sollen die Vergangenheit des jeweils
+        // sichtbaren Zeitraums dagegen automatisch zeigen (anders als die
+        // Liste) - ein erzwungener Refetch beim Verlassen der Liste behebt
+        // das ursächlich, statt sich auf den (hier falschen) Cache zu
+        // verlassen.
+        if (vorherigerModus === 'liste') {
+            calendar.refetchEvents();
+        }
     };
 
     const ansichtButton = (m, text) => ({ text, hint: text, click: () => setzeModus(m) });
