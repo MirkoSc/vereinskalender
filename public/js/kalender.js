@@ -2197,6 +2197,7 @@
     const bookingFeedback = document.querySelector('#booking-feedback');
     const bookingSubmit = bookingForm.querySelector('button[type="submit"]');
     const bookingTitle = document.querySelector('#booking-title');
+    const bookingModusFeld = document.querySelector('#booking-modus-feld');
     const wochentageFeld = document.querySelector('#booking-wochentage-feld');
     const gueltigFeld = document.querySelector('#booking-gueltig-feld');
     const datumFeld = document.querySelector('#booking-datum-feld');
@@ -2219,20 +2220,58 @@
     }
 
     const bookingTitles = {
-        '': 'Belegung eintragen',
+        '': 'Serie eintragen',
         alle: 'Alle Termine der Serie bearbeiten',
         nachfolgende: 'Diesen und folgende Termine bearbeiten',
         einzeln: 'Einzelnen Termin bearbeiten',
     };
 
-    const openBookingDialog = (scope, slotId, datum, prefill) => {
+    // Issue #83: an Einzeltermin is - technically - a training_slot with one
+    // weekday and gueltig_ab == gueltig_bis (CLAUDE.md section 3), the exact
+    // one-day shape the 'einzeln' edit scope already produces. "einzelUI"
+    // controls only which fields the dialog shows (Wochentage + Gültig
+    // ab/bis vs. a plain Datum); it is independent of the submitted
+    // edit_scope, which stays 'alle' both for a brand-new Einzeltermin and
+    // for the direct edit of an already one-day slot (no split needed).
+    const bookingTitleFor = (scope, einzelUI) => {
+        if (scope === '') {
+            return einzelUI ? 'Einzeltermin eintragen' : bookingTitles[''];
+        }
+        if (scope === 'alle' && einzelUI) {
+            return 'Termin bearbeiten';
+        }
+        return bookingTitles[scope];
+    };
+
+    const setBookingFieldMode = (einzelUI) => {
+        wochentageFeld.hidden = einzelUI;
+        gueltigFeld.hidden = einzelUI;
+        datumFeld.hidden = !einzelUI;
+        bookingForm.elements.gueltig_ab.required = !einzelUI;
+        bookingForm.elements.gueltig_bis.required = !einzelUI;
+        bookingForm.elements.datum_neu.required = einzelUI;
+    };
+
+    const applyBookingModus = (einzelUI) => {
+        setBookingFieldMode(einzelUI);
+        bookingTitle.textContent = bookingTitleFor(bookingScope, einzelUI);
+    };
+
+    // Segmented control is only visible for a brand-new booking (see
+    // openBookingDialog below); the radios still carry the correct value
+    // while hidden during an edit so the submitted "modus" field matches
+    // what the dialog actually shows.
+    for (const radio of bookingModusFeld.querySelectorAll('input[name="modus"]')) {
+        radio.addEventListener('change', () => applyBookingModus(radio.value === 'einzeltermin'));
+    }
+
+    const openBookingDialog = (scope, slotId, datum, prefill, einzelUI = scope === 'einzeln') => {
         bookingForm.reset();
         bookingFeedback.textContent = '';
         bookingFeedback.className = '';
         bookingSubmit.textContent = 'Speichern';
         warnungenBestaetigt = false;
         bookingScope = scope;
-        bookingTitle.textContent = bookingTitles[scope];
 
         bookingForm.elements.edit_scope.value = scope;
         bookingForm.elements.slot_id.value = slotId !== null ? String(slotId) : '';
@@ -2253,14 +2292,13 @@
             }
         }
 
-        // 'einzeln' edits one concrete date instead of weekdays + validity
-        const einzeln = scope === 'einzeln';
-        wochentageFeld.hidden = einzeln;
-        gueltigFeld.hidden = einzeln;
-        datumFeld.hidden = !einzeln;
-        bookingForm.elements.gueltig_ab.required = !einzeln;
-        bookingForm.elements.gueltig_bis.required = !einzeln;
-        bookingForm.elements.datum_neu.required = einzeln;
+        // Modus toggle only for a brand-new booking; editing decides the UI
+        // automatically from the slot itself (openEdit/startEdit below).
+        bookingModusFeld.hidden = scope !== '';
+        for (const radio of bookingModusFeld.querySelectorAll('input[name="modus"]')) {
+            radio.checked = radio.value === (einzelUI ? 'einzeltermin' : 'serie');
+        }
+        applyBookingModus(einzelUI);
         // 'nachfolgende' starts at the clicked occurrence, the server pins it
         bookingForm.elements.gueltig_ab.readOnly = scope === 'nachfolgende';
 
@@ -2283,7 +2321,7 @@
         });
     }
 
-    const startEdit = (props, scope) => {
+    const startEdit = (props, scope, einzelUI = scope === 'einzeln') => {
         const datum = props.start.slice(0, 10);
         openBookingDialog(scope, props.slot_id, datum, {
             team_ids: props.team_ids,
@@ -2294,13 +2332,16 @@
             gueltig_ab: scope === 'nachfolgende' ? datum : props.gueltig_ab,
             gueltig_bis: props.gueltig_bis,
             datum_neu: datum,
-        });
+        }, einzelUI);
     };
 
     const openEdit = (props) => {
-        if (props.gueltig_ab === props.gueltig_bis) {
-            // one-day booking: no series, nothing to ask
-            startEdit(props, 'alle');
+        // Issue #83: a slot with one weekday and gueltig_ab == gueltig_bis
+        // is already a one-day booking (freshly created as an Einzeltermin,
+        // or the result of an earlier "nur dieser"-split) - there is no
+        // series to ask about, skip straight to the simple single-date edit.
+        if (props.gueltig_ab === props.gueltig_bis && (props.wochentage ?? []).length === 1) {
+            startEdit(props, 'alle', true);
             return;
         }
         scopeProps = props;

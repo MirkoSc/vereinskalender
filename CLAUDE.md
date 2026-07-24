@@ -83,7 +83,23 @@ sind KEINE Projektionen.
   „alle Termine" (Updated-Event), „dieser und alle folgenden" (Split:
   Updated kürzt gueltig_bis + Created für die Fortsetzung, atomar in einer
   Transaktion), „nur dieser" (slot_exception-Event + Created eines
-  Eintages-Slots, atomar).
+  Eintages-Slots, atomar). **Einzeltermin** (Issue #83): ein Eintages-Slot
+  ist damit nicht mehr nur Nebenprodukt des „nur dieser"-Splits, sondern im
+  Anlege-Dialog direkt wählbar (Segmented Control „Serie"/„Einzeltermin",
+  nur beim Neuanlegen sichtbar) – Teams, Platz, Datum, Beginn, Ende, ohne
+  Wochentage/Gültigkeitszeitraum. Kein neues Aggregat, keine Migration,
+  keine Sonderroute: der Client sendet `modus=einzeltermin` + `datum_neu`
+  statt wochentage[]/gueltig_ab/gueltig_bis; `BookingService::
+  applyEinzeltermin()` leitet vor der üblichen Validierung/Konfliktprüfung
+  daraus den einen Wochentag sowie gueltig_ab == gueltig_bis == diesem
+  Datum ab – derselbe Schreibpfad, dasselbe created-Event wie ein
+  Serientermin. Bearbeiten eines bereits bestehenden Eintages-Slots (ein
+  Wochentag + gueltig_ab == gueltig_bis, erkennbar unabhängig davon, ob er
+  als Einzeltermin angelegt oder per „nur dieser" abgespalten wurde)
+  überspringt die dreistufige Umfangs-Rückfrage automatisch und zeigt
+  direkt die einfache Einzel-Bearbeitung (Datum statt Wochentage/
+  Gültigkeitszeitraum); der Schreibvorgang bleibt Umfang „alle" (Update in
+  place, keine Exception, kein Split).
 - **slot_exception**: slot_id FK, datum, grund.
 - **pitch_restriction**: pitch_id FK, von, bis,
   art ('gesperrt'|'eingeschraenkt'), grund (Pflicht). 'gesperrt' →
@@ -1002,6 +1018,15 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   Slot-Expansion inkl. mehrerer Teams und Wochentage, Ausnahmen,
   Restriktionen; **alle drei Bearbeitungs-Umfänge** (alle / ab hier mit
   atomarem Split / nur dieser) inkl. Verhalten bei Transaktionsabbruch;
+  **Einzeltermin** (Issue #83: `BookingService::applyEinzeltermin()` leitet
+  aus `modus=einzeltermin` + `datum_neu` einen Wochentag und
+  gueltig_ab == gueltig_bis == diesem Datum ab, inkl. 1–7-Grenzfall
+  So/Mo – `testCreateEinzelterminDerivesWeekdayFromDate` – und fehlendem
+  Datum als Validierungsfehler; Expansion liefert für den erzeugten Slot
+  genau eine Occurrence am richtigen Datum; Konfliktprüfung greift
+  identisch zum Serienformular; Bearbeiten eines bereits bestehenden
+  Eintages-Slots bleibt beim Umfang „alle" – Update in place ohne
+  slot_exception/Split, `testUpdateEinzeltagesSlotInPlaceSkipsSplit`);
   ICS-Sync (insert/update/skip/abgesagt, Verlegung per gleicher UID);
   VenueMatcher (Mehrfach-Begriffe, Priorität, case-insensitive, heim vs.
   auswärts); Konfliktprüfung (gesperrt blockiert, eingeschraenkt warnt);
