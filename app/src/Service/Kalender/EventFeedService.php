@@ -140,10 +140,13 @@ final readonly class EventFeedService
         }
 
         $typ = (string) ($query['typ'] ?? '');
-        $teamFilter = ($query['team'] ?? '') !== '' ? (int) $query['team'] : null;
-        $bereichFilterRaw = trim((string) ($query['bereich'] ?? ''));
-        $bereichIdFilter = $this->resolveBereichIdFilter($bereichFilterRaw);
-        $venueFilter = trim((string) ($query['venue'] ?? ''));
+        // Issue #86: team/bereich/venue sind kommaseparierte Mehrfachauswahl
+        // (analog dem Arten-Filter) - ein leerer Wert bleibt "kein Filter",
+        // ein einzelner Wert (auch alte geteilte Links) verhält sich exakt
+        // wie zuvor.
+        $teamFilter = array_map(intval(...), self::splitFilterList((string) ($query['team'] ?? '')));
+        $bereichIdFilter = $this->resolveBereichIdFilterList((string) ($query['bereich'] ?? ''));
+        $venueFilterTokens = self::splitFilterList((string) ($query['venue'] ?? ''));
 
         $teams = [];
         foreach ($this->teams->findAll() as $team) {
@@ -169,14 +172,16 @@ final readonly class EventFeedService
         $spielfreiFarbe = $this->settings->get('spielfrei_farbe', '#775c3c');
         $serializer = new EventSerializer($teams, $pitches, $venues, $this->venueMatcher, $auswaertsFarbe, $spielfreiFarbe, $sportheime, $raeume);
 
-        // a multi-team booking matches when ANY of its teams matches
+        // a multi-team booking matches when ANY of its teams matches; the
+        // team/bereich filters themselves also match when ANY selected id
+        // hits (Issue #86: mehrere Teams/Bereiche gleichzeitig)
         $matchesTeams = function (array $teamIds) use ($teamFilter, $bereichIdFilter, $teams): bool {
-            if ($teamFilter !== null && !in_array($teamFilter, $teamIds, true)) {
+            if ($teamFilter !== [] && array_intersect($teamFilter, $teamIds) === []) {
                 return false;
             }
-            if ($bereichIdFilter !== null) {
+            if ($bereichIdFilter !== []) {
                 foreach ($teamIds as $teamId) {
-                    if ((int) ($teams[$teamId]['bereich_id'] ?? 0) === $bereichIdFilter) {
+                    if (in_array((int) ($teams[$teamId]['bereich_id'] ?? 0), $bereichIdFilter, true)) {
                         return true;
                     }
                 }
@@ -189,15 +194,25 @@ final readonly class EventFeedService
         // $spielfrei is only ever true for a match event (Issue #65); the
         // other serialized types default it to false, which keeps them out
         // of venue=spielfrei and out of the "no longer includes byes"
-        // exclusion below without touching their call sites.
-        $matchesVenue = function (?int $venueId, bool $spielfrei = false) use ($venueFilter): bool {
-            return match ($venueFilter) {
-                '' => true,
-                'heim' => $venueId !== null,
-                'auswaerts' => !$spielfrei && $venueId === null,
-                'spielfrei' => $spielfrei,
-                default => $venueId === (int) $venueFilter,
-            };
+        // exclusion below without touching their call sites. Mehrere
+        // Venue-Tokens (Issue #86) matchen, wenn IRGENDEINER trifft.
+        $matchesVenue = function (?int $venueId, bool $spielfrei = false) use ($venueFilterTokens): bool {
+            if ($venueFilterTokens === []) {
+                return true;
+            }
+            foreach ($venueFilterTokens as $token) {
+                $treffer = match ($token) {
+                    'heim' => $venueId !== null,
+                    'auswaerts' => !$spielfrei && $venueId === null,
+                    'spielfrei' => $spielfrei,
+                    default => $venueId === (int) $token,
+                };
+                if ($treffer) {
+                    return true;
+                }
+            }
+
+            return false;
         };
 
         $events = [];
@@ -226,7 +241,7 @@ final readonly class EventFeedService
             // restrictions as background layer of the occupancy view
             foreach ($this->restrictions->findOverlapping($von . ' 00:00:00', $bis . ' 23:59:59') as $restriction) {
                 $event = $serializer->sperrung($restriction);
-                if (!$matchesVenue($event['venue_id']) || ($teamFilter !== null || $bereichIdFilter !== null)) {
+                if (!$matchesVenue($event['venue_id']) || ($teamFilter !== [] || $bereichIdFilter !== [])) {
                     // restrictions have no team; hide them under team filters
                     continue;
                 }
@@ -255,7 +270,7 @@ final readonly class EventFeedService
         // Issue #36: Vermietungen only ever appear in the merged feed
         // (typ=''), never under typ=belegung/spiel; they have no team, so an
         // active team/bereich filter hides them (same as restrictions above)
-        if ($typ === '' && $teamFilter === null && $bereichIdFilter === null) {
+        if ($typ === '' && $teamFilter === [] && $bereichIdFilter === []) {
             foreach ($this->vermietungen->findInRange($von . ' 00:00:00', $bis . ' 23:59:59') as $vermietung) {
                 $event = $serializer->vermietung($vermietung);
                 if (!$matchesVenue($event['venue_id'])) {
@@ -271,17 +286,33 @@ final readonly class EventFeedService
     }
 
     /**
-     * `bereich=` is a numeric bereich id going forward; old shared filter
-     * links still carry the former enum string (G/F/E/D/C/Herren, CLAUDE.md
-     * section 7) - resolved via its kuerzel. An unresolvable non-empty value
-     * matches no team (returns an id no bereich can ever have) rather than
-     * silently ignoring the filter.
+     * `bereich=` ist eine kommaseparierte Liste numerischer Bereichs-IDs
+     * (Issue #86); alte geteilte Links tragen noch einen einzelnen Wert im
+     * früheren Enum-String (G/F/E/D/C/Herren, CLAUDE.md Abschnitt 7) - pro
+     * Token via resolveBereichIdFilter() aufgelöst. Ein nicht auflösbarer
+     * Token trifft keinen Bereich (-1, s. dort) statt den Filter für dieses
+     * Token stillschweigend zu ignorieren.
+     * @return list<int>
      */
-    private function resolveBereichIdFilter(string $bereichFilterRaw): ?int
+    private function resolveBereichIdFilterList(string $bereichFilterRaw): array
     {
-        if ($bereichFilterRaw === '') {
-            return null;
+        $ids = [];
+        foreach (self::splitFilterList($bereichFilterRaw) as $token) {
+            $ids[] = $this->resolveBereichIdFilter($token);
         }
+
+        return $ids;
+    }
+
+    /**
+     * `bereich=` ist eine numerische Bereichs-ID going forward; alte geteilte
+     * Filter-Links tragen noch den früheren Enum-String (G/F/E/D/C/Herren,
+     * CLAUDE.md Abschnitt 7) - resolved via its kuerzel. An unresolvable
+     * non-empty value matches no team (returns an id no bereich can ever
+     * have) rather than silently ignoring the filter.
+     */
+    private function resolveBereichIdFilter(string $bereichFilterRaw): int
+    {
         if (ctype_digit($bereichFilterRaw)) {
             return (int) $bereichFilterRaw;
         }
@@ -289,5 +320,21 @@ final readonly class EventFeedService
         $legacy = $this->bereiche->findByKuerzel($bereichFilterRaw);
 
         return $legacy !== null ? (int) $legacy['id'] : -1;
+    }
+
+    /**
+     * Kommaseparierte Mehrfachauswahl-Filter (Issue #86, analog dem
+     * Arten-Filter): leere Tokens (doppeltes Komma, führendes/folgendes
+     * Komma, oder der Eingabewert selbst leer) werden verworfen, damit ein
+     * leerer Wert weiterhin "kein Filter" bedeutet statt einen nie
+     * treffenden leeren String in die Liste aufzunehmen.
+     * @return list<string>
+     */
+    private static function splitFilterList(string $raw): array
+    {
+        return array_values(array_filter(
+            array_map(trim(...), explode(',', $raw)),
+            static fn(string $token): bool => $token !== '',
+        ));
     }
 }

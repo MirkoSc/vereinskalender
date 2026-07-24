@@ -35,8 +35,15 @@
     // ---- filter (Issue #8: Filter-Button + Panel/Bottom-Sheet, Chips nur
     // für Abweichungen vom Default, URL teilbar) ----
 
+    // Issue #86: Mehrfachauswahl wie beim Kalender-Filter-Sheet - eine
+    // kommaseparierte Liste, ''=alle Plätze.
+    const pitchSingleLabel = (wert) => appData.pitches.find((p) => String(p.id) === wert)?.name ?? `#${wert}`;
     const filterDefinitionen = [
-        { key: 'pitch', default: '', label: (wert) => `Platz: ${appData.pitches.find((p) => String(p.id) === wert)?.name ?? `#${wert}`}` },
+        {
+            key: 'pitch',
+            default: '',
+            label: (wert) => `Platz: ${String(wert ?? '').split(',').filter((w) => w !== '').map(pitchSingleLabel).join(', ')}`,
+        },
     ];
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -55,9 +62,11 @@
     };
 
     const pitchChips = document.querySelector('#filter-pitch-chips');
+    const gewaehlteWerte = (key) => filters[key].split(',').filter((w) => w !== '');
     const renderFilterUi = () => {
         const abweichungen = window.VKFilter.aktiveAbweichungen(filters, filterDefinitionen);
-        window.VKFilter.aktualisiereChipRow(pitchChips, (wert) => wert === filters.pitch);
+        const gewaehlt = gewaehlteWerte('pitch');
+        window.VKFilter.aktualisiereChipRow(pitchChips, (wert) => gewaehlt.includes(wert));
         filterChips.replaceChildren();
         for (const chip of abweichungen) {
             const li = document.createElement('li');
@@ -86,10 +95,15 @@
             render(lastData);
         }
     };
-    // Issue #82: Einfachauswahl-Chip statt <select> - ein Klick auf den
-    // bereits aktiven Chip setzt "Alle Plätze" zurück, ein Klick auf einen
-    // anderen ersetzt die Auswahl (kein Extra-"Alle"-Chip nötig).
-    const setzeEinfachFilter = (key, wert) => setzeFilter(key, filters[key] === wert ? '' : wert);
+    // Issue #86: Mehrfachauswahl-Chip statt <select> - ein Klick schaltet
+    // den Platz in der kommaseparierten Liste um (analog dem Arten-Filter,
+    // Issue #63); `kanonischeReihenfolge` sortiert das Ergebnis fest, damit
+    // derselbe Auswahl-Zustand immer denselben teilbaren Link ergibt.
+    const toggleMehrfachFilter = (key, wert, kanonischeReihenfolge) => {
+        const aktiv = gewaehlteWerte(key);
+        const neu = aktiv.includes(wert) ? aktiv.filter((w) => w !== wert) : [...aktiv, wert];
+        setzeFilter(key, kanonischeReihenfolge.filter((w) => neu.includes(w)).join(','));
+    };
 
     document.querySelector('#filter-button').addEventListener('click', () => filterDialog.showModal());
     document.querySelector('#filter-close').addEventListener('click', () => filterDialog.close());
@@ -111,13 +125,12 @@
     }
     // a pitch removed/deactivated since the choice was stored would otherwise
     // filter every venue block down to zero pitches with no visible cause
-    if (!appData.pitches.some((p) => String(p.id) === filters.pitch)) {
-        filters.pitch = '';
-    }
+    filters.pitch = gewaehlteWerte('pitch').filter((w) => appData.pitches.some((p) => String(p.id) === w)).join(',');
+    const pitchWerte = appData.pitches.map((p) => String(p.id));
     window.VKFilter.erzeugeChipRow(
         pitchChips,
         appData.pitches.map((p) => ({ wert: String(p.id), label: `${p.name} (${p.venue_name})` })),
-        (wert) => setzeEinfachFilter('pitch', wert),
+        (wert) => toggleMehrfachFilter('pitch', wert, pitchWerte),
     );
 
     renderFilterUi();
@@ -157,16 +170,17 @@
         const total = windowEnd - windowStart;
 
         // large screens always show every pitch (CLAUDE.md/Issue #7: "wie
-        // bisher"); the chip row only takes effect below the breakpoint
-        const pitchFilter = isWideVerf ? '' : filters.pitch;
+        // bisher"); the chip row only takes effect below the breakpoint.
+        // Issue #86: Mehrfachauswahl - ein Treffer genügt.
+        const pitchFilter = isWideVerf ? [] : gewaehlteWerte('pitch');
         // large screens keep the plain zustand-coloring "wie bisher"; the
         // pitch-color distinction only kicks in for "Alle" below the breakpoint
-        const alleKombiniert = !isWideVerf && pitchFilter === '';
+        const alleKombiniert = !isWideVerf && pitchFilter.length === 0;
 
         for (const venue of data.venues) {
-            const plaetze = pitchFilter === ''
+            const plaetze = pitchFilter.length === 0
                 ? venue.plaetze
-                : venue.plaetze.filter((p) => String(p.id) === pitchFilter);
+                : venue.plaetze.filter((p) => pitchFilter.includes(String(p.id)));
             if (plaetze.length === 0) {
                 continue;
             }

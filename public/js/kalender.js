@@ -25,14 +25,21 @@
     // sind die geteilte DOM-Logik dafür, Optionen und Wiring bleiben hier je
     // Filter.) ----
 
-    const bereichLabel = (bereichId) => bereichName(Number(bereichId));
-    const venueLabel = (wert) => {
+    // Issue #86: Team/Bereich/Spielstätte/Platz sind Mehrfachauswahl-Filter
+    // wie die Arten (Issue #63) - kommaseparierte Liste, ''=alle. Jede
+    // <key>SingleLabel-Funktion löst dafür EINEN Token auf; mehrfachLabel()
+    // joint mehrere zu einem Chip-Text ("Team: E2, Herren I").
+    const teamSingleLabel = (wert) => activeTeams.find((t) => String(t.id) === wert)?.name ?? wert;
+    const bereichSingleLabel = (wert) => bereichName(Number(wert));
+    const venueSingleLabel = (wert) => {
         if (wert === 'heim') return 'Nur Heim';
         if (wert === 'auswaerts') return 'Nur Auswärts';
         if (wert === 'spielfrei') return 'Nur Spielfrei';
         return appData.venues.find((v) => String(v.id) === wert)?.name ?? `Ort #${wert}`;
     };
-    const pitchLabel = (id) => appData.pitches.find((p) => String(p.id) === id)?.name ?? `Platz #${id}`;
+    const pitchSingleLabel = (id) => appData.pitches.find((p) => String(p.id) === id)?.name ?? `Platz #${id}`;
+    const mehrfachLabel = (wert, singleLabel) => String(wert ?? '').split(',').filter((w) => w !== '')
+        .map(singleLabel).join(', ');
 
     // Issue #63: Labels der Sportheim-Termin-Arten kommen aus appData
     // (PublicController::stammdaten() reicht das PHP-Enum durch) - kein
@@ -41,24 +48,22 @@
     const artName = (wert) => vermietungArten.find((a) => a.wert === wert)?.label ?? wert;
     const artHinweis = (wert) => vermietungArten.find((a) => a.wert === wert)?.hinweis
         ?? 'Sportheim belegt';
-    const artLabel = (wert) => String(wert ?? '').split(',').filter((a) => a !== '')
-        .map(artName).join(', ');
 
     // Platzfilter gilt in jeder Ansicht (Issue #6/#11/#37) - in den
     // Ressourcen-Views (Tag/Woche, breit) reduziert er die Platz-Spalten,
     // sonst filtert er die Termine direkt (applyPitchFilter).
     const filterDefinitionen = [
-        { key: 'team', default: '', label: (wert) => `Team: ${activeTeams.find((t) => String(t.id) === wert)?.name ?? wert}` },
-        { key: 'bereich', default: '', label: (wert) => `Bereich: ${bereichLabel(wert)}` },
-        { key: 'venue', default: '', label: (wert) => `Ort: ${venueLabel(wert)}` },
-        { key: 'pitch', default: '', label: (wert) => `Platz: ${pitchLabel(wert)}` },
+        { key: 'team', default: '', label: (wert) => `Team: ${mehrfachLabel(wert, teamSingleLabel)}` },
+        { key: 'bereich', default: '', label: (wert) => `Bereich: ${mehrfachLabel(wert, bereichSingleLabel)}` },
+        { key: 'venue', default: '', label: (wert) => `Ort: ${mehrfachLabel(wert, venueSingleLabel)}` },
+        { key: 'pitch', default: '', label: (wert) => `Platz: ${mehrfachLabel(wert, pitchSingleLabel)}` },
         { key: 'manuell', default: '', label: (wert) => (wert === 'nur' ? 'Nur manuelle Termine' : 'Ohne manuelle Termine') },
         { key: 'vermietung', default: '', label: (wert) => (wert === 'nur' ? 'Nur Sportheim-Termine' : 'Ohne Sportheim-Termine') },
         // Issue #63: schränkt NUR die Sportheim-Termine auf einzelne Arten
         // ein (kommaseparierte Mehrfachauswahl). Eigener Filter statt weiterer
         // Stufen von `vermietung`, damit dessen alte Werte ''/'ohne'/'nur'
         // ihre Bedeutung behalten und geteilte Alt-Links unverändert wirken.
-        { key: 'art', default: '', label: (wert) => `Sportheim-Termine: ${artLabel(wert)}` },
+        { key: 'art', default: '', label: (wert) => `Sportheim-Termine: ${mehrfachLabel(wert, artName)}` },
         // Issue #56: dreistufiger Termintyp-Filter, rein clientseitig wie
         // manuell/vermietung - /api/events kennt ihn nicht (s. baueEventsParams).
         { key: 'typ', default: '', label: (wert) => (wert === 'spiel' ? 'Nur Spiele' : 'Nur Trainings') },
@@ -66,14 +71,22 @@
 
     const urlParams = new URLSearchParams(window.location.search);
     const filters = window.VKFilter.leseFilterAusUrl(urlParams, filterDefinitionen);
-    // Issue #27: alte geteilte Links trugen den Bereich als Enum-String
-    // (G/F/E/D/C/Herren) statt der numerischen bereich_id - einmalig beim
-    // Laden auf die ID normalisieren, damit die Bereich-Chips UND
-    // clientseitiger Offline-Filter (der die ID vergleicht) den Link weiter
-    // verstehen.
-    if (filters.bereich !== '' && !/^\d+$/.test(filters.bereich)) {
-        const legacy = appData.bereiche.find((b) => b.kuerzel === filters.bereich);
-        filters.bereich = legacy ? String(legacy.id) : '';
+    // Issue #27: alte geteilte Links trugen den Bereich als einzelnen
+    // Enum-String (G/F/E/D/C/Herren) statt der numerischen bereich_id -
+    // einmalig beim Laden auf die ID normalisieren, damit die Bereich-Chips
+    // UND clientseitiger Offline-Filter (der die ID vergleicht) den Link
+    // weiter verstehen. Issue #86: bereich ist jetzt eine kommaseparierte
+    // Mehrfachauswahl - pro Token auflösen statt den ganzen Wert als einen
+    // Enum-String zu behandeln, sonst würde z. B. "1,2" fälschlich als
+    // unbekanntes Kürzel verworfen.
+    if (filters.bereich !== '') {
+        filters.bereich = filters.bereich.split(',').filter((w) => w !== '').map((token) => {
+            if (/^\d+$/.test(token)) {
+                return token;
+            }
+            const legacy = appData.bereiche.find((b) => b.kuerzel === token);
+            return legacy ? String(legacy.id) : null;
+        }).filter((token) => token !== null).join(',');
     }
     if (!urlParams.has('pitch')) {
         // vor Issue #8 wurde der Platzfilter nur in localStorage gehalten;
@@ -110,18 +123,20 @@
         history.replaceState(null, '', window.location.pathname + (query ? `?${query}` : ''));
     };
 
-    // Issue #82: eine Chip-Gruppe je Filter; `mehrfach` unterscheidet die
-    // Arten-Chips (Issue #63, mehrere gleichzeitig aktiv, kommasepariert)
-    // von allen übrigen (genau ein oder kein Chip aktiv). Die Liste treibt
+    // Issue #82/#86: eine Chip-Gruppe je Filter; `mehrfach` unterscheidet die
+    // Mehrfachauswahl-Filter (Team/Bereich/Spielstätte/Platz, Issue #86, und
+    // die Arten, Issue #63 - mehrere gleichzeitig aktiv, kommasepariert) von
+    // den übrigen Zustands-Filtern (Termintyp/Manuell/Sportheim-Termine:
+    // genau ein oder kein Chip aktiv). Die Liste treibt
     // aktualisiereChipGruppen() - den aria-pressed-Abgleich nach jeder
     // Filteränderung, egal ob per Chip-Klick, Chip-Entfernen in der
     // Aktive-Filter-Zeile oder #filter-reset.
     const artRow = document.querySelector('#filter-art-row');
     const chipGruppen = [
-        { key: 'team', container: document.querySelector('#filter-team-chips') },
-        { key: 'bereich', container: document.querySelector('#filter-bereich-chips') },
-        { key: 'venue', container: document.querySelector('#filter-venue-chips') },
-        { key: 'pitch', container: document.querySelector('#filter-pitch-chips') },
+        { key: 'team', container: document.querySelector('#filter-team-chips'), mehrfach: true },
+        { key: 'bereich', container: document.querySelector('#filter-bereich-chips'), mehrfach: true },
+        { key: 'venue', container: document.querySelector('#filter-venue-chips'), mehrfach: true },
+        { key: 'pitch', container: document.querySelector('#filter-pitch-chips'), mehrfach: true },
         { key: 'typ', container: document.querySelector('#filter-typ-chips') },
         { key: 'manuell', container: document.querySelector('#filter-manuell-chips') },
         { key: 'vermietung', container: document.querySelector('#filter-vermietung-chips') },
@@ -189,22 +204,36 @@
         filters[key] = wert;
         onFilterChange();
     };
-    // Einfachauswahl-Filter (alle außer 'art'): ein Klick auf den bereits
-    // aktiven Chip setzt den Filter zurück auf den Default (''), ein Klick
-    // auf einen anderen ersetzt die Auswahl - kein Extra-"Alle"-Chip nötig,
-    // analog dem Ab-/Anwählen bei den Arten-Chips.
+    // Einfachauswahl-Filter (Termintyp/Manuell/Sportheim-Termine): ein Klick
+    // auf den bereits aktiven Chip setzt den Filter zurück auf den Default
+    // (''), ein Klick auf einen anderen ersetzt die Auswahl - kein
+    // Extra-"Alle"-Chip nötig.
     const setzeEinfachFilter = (key, wert) => setzeFilter(key, filters[key] === wert ? '' : wert);
+    // Mehrfachauswahl-Filter (Team/Bereich/Spielstätte/Platz, Issue #86, und
+    // die Arten, Issue #63): ein Klick schaltet den Wert in der komma-
+    // separierten Liste um. `kanonischeReihenfolge` sortiert das Ergebnis in
+    // einer festen Reihenfolge (unabhängig von der Klick-Reihenfolge), damit
+    // derselbe Auswahl-Zustand immer denselben teilbaren Link ergibt.
+    const gewaehlteWerte = (key) => filters[key].split(',').filter((w) => w !== '');
+    const toggleMehrfachFilter = (key, wert, kanonischeReihenfolge) => {
+        const aktiv = gewaehlteWerte(key);
+        const neu = aktiv.includes(wert) ? aktiv.filter((w) => w !== wert) : [...aktiv, wert];
+        setzeFilter(key, kanonischeReihenfolge.filter((w) => neu.includes(w)).join(','));
+    };
 
+    const teamWerte = activeTeams.map((t) => String(t.id));
     window.VKFilter.erzeugeChipRow(
         document.querySelector('#filter-team-chips'),
         activeTeams.map((t) => ({ wert: String(t.id), label: `${t.name} (${teamBereichName(t)})` })),
-        (wert) => setzeEinfachFilter('team', wert),
+        (wert) => toggleMehrfachFilter('team', wert, teamWerte),
     );
+    const bereichWerte = appData.bereiche.map((b) => String(b.id));
     window.VKFilter.erzeugeChipRow(
         document.querySelector('#filter-bereich-chips'),
         appData.bereiche.map((b) => ({ wert: String(b.id), label: b.name })),
-        (wert) => setzeEinfachFilter('bereich', wert),
+        (wert) => toggleMehrfachFilter('bereich', wert, bereichWerte),
     );
+    const venueWerte = ['heim', 'auswaerts', 'spielfrei', ...appData.venues.map((v) => String(v.id))];
     window.VKFilter.erzeugeChipRow(
         document.querySelector('#filter-venue-chips'),
         [
@@ -213,7 +242,7 @@
             { wert: 'spielfrei', label: 'Nur Spielfrei' },
             ...appData.venues.map((v) => ({ wert: String(v.id), label: v.name })),
         ],
-        (wert) => setzeEinfachFilter('venue', wert),
+        (wert) => toggleMehrfachFilter('venue', wert, venueWerte),
     );
 
     // Issue #56: zusätzlich zur generischen 'filternutzung' (onFilterChange)
@@ -261,32 +290,27 @@
     // Issue #63: Art-Chips (Mehrfachauswahl) zu den Sportheim-Terminen. Die
     // Reihe wird aus appData gerendert, damit eine neue Art im PHP-Enum ohne
     // Frontend-Änderung erscheint.
-    const gewaehlteArten = () => filters.art.split(',').filter((a) => a !== '');
+    const artWerte = vermietungArten.map((a) => a.wert);
     window.VKFilter.erzeugeChipRow(
         document.querySelector('#filter-art-chips'),
         vermietungArten.map((art) => ({ wert: art.wert, label: art.label })),
-        (wert) => {
-            const aktiv = gewaehlteArten();
-            const neu = aktiv.includes(wert) ? aktiv.filter((a) => a !== wert) : [...aktiv, wert];
-            // kanonische Reihenfolge (wie im Enum), damit derselbe Zustand
-            // immer denselben teilbaren Link ergibt
-            setzeFilter('art', vermietungArten.map((a) => a.wert).filter((w) => neu.includes(w)).join(','));
-        },
+        (wert) => toggleMehrfachFilter('art', wert, artWerte),
     );
 
-    // Platzfilter (Issue #6/#11/#37: immer sichtbar) - ein entfernter/
-    // deaktivierter Platz seit der letzten Speicherung würde sonst keinen
-    // Chip mehr treffen, während filters.pitch noch die veraltete id trägt,
-    // und dadurch still jeden Termin herausfiltern.
-    if (!appData.pitches.some((p) => String(p.id) === filters.pitch)) {
-        filters.pitch = '';
-    }
+    // Platzfilter (Issue #6/#11/#37: immer sichtbar; Issue #86: Mehrfach-
+    // auswahl wie Team/Bereich/Spielstätte) - ein zwischenzeitlich entfernter/
+    // deaktivierter Platz würde sonst keinen Chip mehr treffen, während
+    // filters.pitch noch die veraltete id trägt, und dadurch still jeden
+    // Termin herausfiltern.
+    const gueltigePitchWerte = gewaehlteWerte('pitch').filter((w) => appData.pitches.some((p) => String(p.id) === w));
+    filters.pitch = gueltigePitchWerte.join(',');
+    const pitchWerte = appData.pitches.map((p) => String(p.id));
     window.VKFilter.erzeugeChipRow(
         document.querySelector('#filter-pitch-chips'),
         appData.pitches.map((p) => ({ wert: String(p.id), label: `${p.name} (${p.venue_name})` })),
         (wert) => {
             beacon('platzauswahl');
-            setzeEinfachFilter('pitch', wert);
+            toggleMehrfachFilter('pitch', wert, pitchWerte);
         },
     );
 
@@ -605,18 +629,20 @@
         extendedProps: e,
     });
 
-    // Einzelplatz (Issue #6/#11/#37): in den Ressourcen-Views (Tag/Woche,
-    // breit) reduziert aktuelleRessourcen() bereits die SPALTEN auf den
-    // gewählten Platz - ein zusätzlicher Event-Filter wäre dort wirkungslos.
-    // In jeder anderen Ansicht (Monat, Liste, schmale Tag/Woche) filtert er
-    // die Termine direkt. Filtert Belegungen, Sperrungen und Spiele auf genau
-    // diesen Platz - Auswärtsspiele haben nie eine pitch_id und fallen dabei
-    // automatisch heraus.
-    const applyPitchFilter = (events) => (
-        !window.VKKalenderAnsicht.hatResourceSpalten(modus, istBreit()) && filters.pitch !== ''
-            ? events.filter((e) => String(e.pitch_id) === filters.pitch)
-            : events
-    );
+    // Platzauswahl (Issue #6/#11/#37, Mehrfachauswahl seit Issue #86): in den
+    // Ressourcen-Views (Tag/Woche, breit) reduziert aktuelleRessourcen()
+    // bereits die SPALTEN auf die gewählten Plätze - ein zusätzlicher
+    // Event-Filter wäre dort wirkungslos. In jeder anderen Ansicht (Monat,
+    // Liste, schmale Tag/Woche) filtert er die Termine direkt. Filtert
+    // Belegungen, Sperrungen und Spiele auf einen der gewählten Plätze -
+    // Auswärtsspiele haben nie eine pitch_id und fallen dabei automatisch
+    // heraus.
+    const applyPitchFilter = (events) => {
+        const gewaehlt = gewaehlteWerte('pitch');
+        return !window.VKKalenderAnsicht.hatResourceSpalten(modus, istBreit()) && gewaehlt.length > 0
+            ? events.filter((e) => gewaehlt.includes(String(e.pitch_id)))
+            : events;
+    };
 
     // Alle clientseitigen Filter zusammen anwenden (auch im Offline-Pfad, da
     // fetchEventsRange auch dort schon fertige Event-Objekte liefert).
@@ -675,39 +701,47 @@
             }
             window.VKOffline.showBanner(bundle);
             // Issue #37: kein typ-Filter mehr nötig - das Bundle liefert
-            // bereits alle Termintypen, wie der Online-Feed (typ='').
+            // bereits alle Termintypen, wie der Online-Feed (typ=''). Issue
+            // #86: team/bereich/venue sind Mehrfachauswahl - Spiegelbild von
+            // EventFeedService::events() ($matchesTeams/$matchesVenue), damit
+            // offline und online dasselbe Ergebnis liefern.
             const bundleEvents = window.VKOfflineEvents.eventsAusBundle(bundle, von, bis)
                 .filter((e) => {
-                    if (filters.team === '') {
+                    const gewaehlt = gewaehlteWerte('team');
+                    if (gewaehlt.length === 0) {
                         return true;
                     }
-                    // multi-team bookings match when ANY team matches
-                    return (e.team_ids ?? [e.team_id]).some((id) => String(id) === filters.team);
+                    // multi-team bookings match when ANY selected team matches
+                    return (e.team_ids ?? [e.team_id]).some((id) => gewaehlt.includes(String(id)));
                 })
                 .filter((e) => {
-                    if (filters.bereich === '') {
+                    const gewaehlt = gewaehlteWerte('bereich');
+                    if (gewaehlt.length === 0) {
                         return true;
                     }
                     return (e.team_ids ?? [e.team_id]).some(
-                        (id) => String(appData.teams.find((t) => t.id === id)?.bereich_id) === filters.bereich,
+                        (id) => gewaehlt.includes(String(appData.teams.find((t) => t.id === id)?.bereich_id)),
                     );
                 })
                 .filter((e) => {
-                    if (filters.venue === '') {
+                    const gewaehlt = gewaehlteWerte('venue');
+                    if (gewaehlt.length === 0) {
                         return true;
                     }
-                    if (filters.venue === 'heim') {
-                        return e.venue_id !== null;
-                    }
-                    if (filters.venue === 'auswaerts') {
-                        // Issue #65: ein Bye hat ebenfalls venue_id null,
-                        // zählt aber nicht als Auswärtsspiel.
-                        return !e.spielfrei && e.venue_id === null;
-                    }
-                    if (filters.venue === 'spielfrei') {
-                        return e.spielfrei === true;
-                    }
-                    return String(e.venue_id) === filters.venue;
+                    return gewaehlt.some((token) => {
+                        if (token === 'heim') {
+                            return e.venue_id !== null;
+                        }
+                        if (token === 'auswaerts') {
+                            // Issue #65: ein Bye hat ebenfalls venue_id null,
+                            // zählt aber nicht als Auswärtsspiel.
+                            return !e.spielfrei && e.venue_id === null;
+                        }
+                        if (token === 'spielfrei') {
+                            return e.spielfrei === true;
+                        }
+                        return String(e.venue_id) === token;
+                    });
                 });
             // Issue #52/#81: dieselbe Auskunft wie online, aus dem kompletten
             // Bundle berechnet - offline gibt es dadurch KEIN abweichendes
@@ -1258,9 +1292,10 @@
     );
 
     // Alle Plätze + eine synthetische "Auswärts"-Spalte für Spiele ohne
-    // pitch_id (Issue #37); bei gewähltem Einzelplatz nur dessen Spalte (bzw.
-    // die Auswärts-Spalte, falls "Auswärts" selbst gewählt wäre - aktuell
-    // nicht wählbar, das Dropdown listet nur echte Plätze).
+    // pitch_id (Issue #37); bei gewählten Plätzen (Issue #86: Mehrfachauswahl)
+    // nur deren Spalten (bzw. die Auswärts-Spalte, falls "Auswärts" selbst
+    // gewählt wäre - aktuell nicht wählbar, die Chip-Reihe listet nur echte
+    // Plätze).
     //
     // Issue #57: bewusst NICHT mehr an die Breite gekoppelt (vorher: schmal =
     // leere Liste). FullCalendar cacht das Ergebnis; wurde es schmal als leer
@@ -1276,7 +1311,8 @@
             { id: RESOURCE_SPORTHEIM_ID, title: 'Sportheim' },
             { id: RESOURCE_SPIELFREI_ID, title: 'Spielfrei' },
         ];
-        return filters.pitch !== '' ? alle.filter((r) => r.id === filters.pitch) : alle;
+        const gewaehlt = gewaehlteWerte('pitch');
+        return gewaehlt.length > 0 ? alle.filter((r) => gewaehlt.includes(r.id)) : alle;
     };
 
     // Aktiv-Markierung der vier Umschalter-Buttons: customButtons bekommen
