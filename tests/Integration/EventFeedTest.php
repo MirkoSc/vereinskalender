@@ -271,6 +271,45 @@ final class EventFeedTest extends DatabaseTestCase
     }
 
     /**
+     * Issue #86: team/bereich/venue accept a comma-separated list, matching
+     * ANY of the selected values (analog dem Arten-Filter, Issue #63) - e.g.
+     * "nur die Spiele von zwei Teams" statt nur einem. Legacy enum tokens
+     * (Issue #27) still resolve per comma-separated entry, and a venue
+     * filter may combine a specific id with a special value (heim/auswaerts/
+     * spielfrei).
+     */
+    public function testMultiValueFiltersMatchAnySelectedValue(): void
+    {
+        $herrenTeam = $this->createTeam('Herren 1', 'Herren');
+        $dTeam = $this->createTeam('D1', 'D');
+        $this->createMatch($this->teamId, [
+            'anstoss' => '2026-08-08 15:00:00',
+            'ort_text' => 'Sportanlage Musterstadt',
+        ]);
+        $this->createMatch($herrenTeam, ['anstoss' => '2026-08-08 16:00:00']);
+        $this->createMatch($dTeam, ['anstoss' => '2026-08-08 17:00:00']);
+
+        $feed = $this->eventFeedService();
+        $range = ['von' => '2026-08-03', 'bis' => '2026-08-09', 'typ' => 'spiel'];
+
+        self::assertCount(
+            2,
+            $feed->events([...$range, 'team' => $this->teamId . ',' . $herrenTeam]),
+            'matches events of either selected team, not the third',
+        );
+        self::assertCount(
+            2,
+            $feed->events([...$range, 'bereich' => 'E,Herren']),
+            'legacy enum tokens resolved per comma-separated entry',
+        );
+        self::assertCount(
+            3,
+            $feed->events([...$range, 'venue' => $this->venueId . ',auswaerts']),
+            'multiple venue tokens (specific id + special value) match together',
+        );
+    }
+
+    /**
      * Issue #27: `bereich=` filters by the bereich aggregate's numeric id
      * going forward, not just the transitional legacy enum string.
      */

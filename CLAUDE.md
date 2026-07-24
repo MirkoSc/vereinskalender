@@ -403,24 +403,30 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
 - **Alle Filter im Filter-Sheet sind Chip-Gruppen, kein `<select>`** (Issue
   #82): Team, Bereich, Spielstätte, Platz, Termintyp, Manuelle Termine und
   Sportheim-Termine folgen damit derselben Bedienung wie der Arten-Filter
-  (Issue #63) – ein Tap wählt/wechselt/löscht direkt. Bei den
-  Einfachauswahl-Filtern (alle außer `art`) setzt ein Klick auf den bereits
-  aktiven Chip auf den Default (`''`) zurück, ein Klick auf einen anderen
-  Chip ersetzt die Auswahl – kein eigener „Alle"-Chip nötig, analog dem
-  Ab-/Anwählen bei den Arten-Chips. `window.VKFilter.erzeugeChipRow`/
-  `aktualisiereChipRow` (`filter.js`) sind die geteilte DOM-Mechanik dafür,
-  gemeinsam genutzt von `kalender.js` und `verfuegbarkeit.js`; Optionsliste
-  und Wiring je Filter bleiben in der jeweiligen Ansicht. Rein clientseitig
-  wie zuvor – URL-Persistenz, Chip-Zeile der aktiven Abweichungen und
-  Offline-Verhalten sind unverändert, nur die Eingabe im Sheet selbst wurde
-  ersetzt.
-- Platzfilter (`filter-pitch`, clientseitig, `/api/events` kennt ihn nicht):
-  immer sichtbar (Issue #37). In den Ressourcen-Views (Tag/Woche, ab der
-  Desktop-Sidebar-Schwelle ~1100 px) reduziert ein gewählter Einzelplatz die
-  Platz-SPALTEN auf genau diesen Platz (inkl. der synthetischen „Auswärts"-
-  und, Issue #65, „Spielfrei"-Spalte für Spiele ohne `pitch_id`); in jeder
-  anderen Kombination (Monat, Liste, schmale Tag-/Wochenansicht) filtert er
-  stattdessen die Termine direkt. Ohne Einzelplatz-Auswahl trägt „Alle
+  (Issue #63) – ein Tap wählt/wechselt/löscht direkt. `window.VKFilter.
+  erzeugeChipRow`/`aktualisiereChipRow` (`filter.js`) sind die geteilte
+  DOM-Mechanik dafür, gemeinsam genutzt von `kalender.js` und
+  `verfuegbarkeit.js`; Optionsliste und Wiring je Filter bleiben in der
+  jeweiligen Ansicht. Rein clientseitig wie zuvor – URL-Persistenz,
+  Chip-Zeile der aktiven Abweichungen und Offline-Verhalten sind unverändert,
+  nur die Eingabe im Sheet selbst wurde ersetzt. **Mehrfachauswahl** (Issue
+  #86): Team, Bereich, Spielstätte und Platz sind – wie schon die Arten
+  (Issue #63) – Mehrfachauswahl-Filter (mehrere Chips gleichzeitig aktiv,
+  kommaseparierte Liste, z. B. „nur die Spiele zweier Teams"); ein Klick
+  schaltet den jeweiligen Chip in der Liste um. Termintyp, Manuelle Termine
+  und Sportheim-Termine bleiben dagegen Einfachauswahl (Alle/Ohne/Nur bzw.
+  Alle/Spiel/Training sind sich gegenseitig ausschließende Zustände, keine
+  Liste von Elementen) – dort setzt ein Klick auf den bereits aktiven Chip
+  auf den Default (`''`) zurück, ein Klick auf einen anderen ersetzt die
+  Auswahl, kein eigener „Alle"-Chip nötig.
+- Platzfilter (`filter-pitch`, clientseitig, `/api/events` kennt ihn nicht,
+  Mehrfachauswahl seit Issue #86): immer sichtbar (Issue #37). In den
+  Ressourcen-Views (Tag/Woche, ab der Desktop-Sidebar-Schwelle ~1100 px)
+  reduziert eine Platzauswahl die Platz-SPALTEN auf genau die gewählten
+  Plätze (inkl. der synthetischen „Auswärts"- und, Issue #65,
+  „Spielfrei"-Spalte für Spiele ohne `pitch_id`); in jeder anderen
+  Kombination (Monat, Liste, schmale Tag-/Wochenansicht) filtert er
+  stattdessen die Termine direkt. Ohne Platzauswahl trägt „Alle
   Plätze" die Platzfarbe als Ersatz für die fehlenden Spalten an den Termin –
   mit Platz-Kürzel (Fallback Platzname) als Text-Präfix vor dem Titel;
   Auswärtsspiele (nie eine `pitch_id`) bilden dabei die eigene Gruppe
@@ -512,9 +518,15 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   übergangsweise weiter – aufgelöst über `bereich.kuerzel`, Issue #27),
   `venue=<id>`, `venue=heim`, `venue=auswaerts`, `venue=spielfrei` (Issue
   #65 – ein spielfreier Termin hat ebenfalls `venue_id=null`, `venue=
-  auswaerts` schließt ihn deshalb explizit aus). Mehr-Team-Slots matchen,
-  wenn EIN Team den Filter erfüllt; API liefert `team_ids` zusätzlich zu
-  `team_id` (= erstes Team, bestimmt Farbe).
+  auswaerts` schließt ihn deshalb explizit aus). **Mehrfachauswahl** (Issue
+  #86): `team`/`bereich`/`venue` akzeptieren eine kommaseparierte Liste von
+  Werten, ein Termin matcht, wenn IRGENDEINER trifft (`team=5,7` zeigt z. B.
+  nur die Spiele zweier Teams) – ein einzelner Wert (auch ein alter
+  geteilter Link) verhält sich exakt wie zuvor, `EventFeedService::
+  splitFilterList()` ist die geteilte Tokenisierung dafür. Mehr-Team-Slots
+  matchen zusätzlich, wenn EIN Team des Slots EINEN der Filter-Werte erfüllt;
+  API liefert `team_ids` zusätzlich zu `team_id` (= erstes Team, bestimmt
+  Farbe).
 - Vereinssicht „Bei uns" = voreingestellte Filterkombination (Heimspiele +
   Belegungen + Restriktionen je Verein), keine eigene Datenlogik.
 - Teamfarben als CSS-Variablen aus der DB (`:root { --team-<id>: … }`).
@@ -1042,7 +1054,13 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   `hatResourceSpalten()` – Hintergrund nur in Tag/Woche ohne Spalten, Punkt
   nur im Monat, „keine" in Ressourcen-Views/Liste/bei Einzelplatz, und
   derselbe Termin liefert je Darstellung ein anderes Ergebnis – die
-  Eigenschaft, die die eingebackene Variante verletzte); **Offline-
+  Eigenschaft, die die eingebackene Variante verletzte); **Mehrfachauswahl-
+  Filter** (Issue #86: `EventFeedService::events()` matcht bei mehreren
+  kommaseparierten `team`/`bereich`/`venue`-Werten, wenn IRGENDEINER trifft
+  – `testMultiValueFiltersMatchAnySelectedValue` in `EventFeedTest.php`,
+  inkl. gemischter Venue-Token wie `<id>,auswaerts` und pro Komma-Token
+  aufgelöster Legacy-Bereichs-Enum-Strings; ein einzelner Wert bleibt
+  regressionsfrei identisch zum Verhalten vor Issue #86); **Offline-
   Paritätstests** (Issue #25): goldene Fixtures
   (`tests/fixtures/parity/bundle.json` + `cases.json`, inkl. beider
   DST-Wochenenden, überlappender Slots, mehrtägiger vor dem Zeitraum
