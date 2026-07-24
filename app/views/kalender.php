@@ -50,77 +50,58 @@
     <div id="liste-sentinel" aria-hidden="true"></div>
 </section>
 
+<!-- Issue #82: jeder Filter ist eine Chip-Gruppe statt eines <select> - ein
+     Tap wählt/wechselt die Auswahl direkt, kein Dropdown-Umweg. Die Chips
+     selbst rendert kalender.js aus appData (analog den bereits chip-basierten
+     Arten aus Issue #63); die Container hier sind bewusst leer. -->
 <dialog id="filter-dialog" class="sheet filter-sheet">
     <h3>Filter</h3>
-    <label class="filter">
-        Team
-        <select id="filter-team">
-            <option value="">Alle Teams</option>
-        </select>
-    </label>
-    <label class="filter">
-        Bereich
-        <select id="filter-bereich">
-            <option value="">Alle Bereiche</option>
-        </select>
-    </label>
-    <label class="filter">
-        Spielstätte
-        <select id="filter-venue">
-            <option value="">Alle Orte</option>
-            <option value="heim">Nur Heim</option>
-            <option value="auswaerts">Nur Auswärts</option>
-            <option value="spielfrei">Nur Spielfrei</option>
-        </select>
-    </label>
+    <div class="filter" id="filter-team-row">
+        <span class="filter-label" id="filter-team-label">Team</span>
+        <div class="chip-toggle-row" id="filter-team-chips" role="group" aria-labelledby="filter-team-label"></div>
+    </div>
+    <div class="filter" id="filter-bereich-row">
+        <span class="filter-label" id="filter-bereich-label">Bereich</span>
+        <div class="chip-toggle-row" id="filter-bereich-chips" role="group" aria-labelledby="filter-bereich-label"></div>
+    </div>
+    <div class="filter" id="filter-venue-row">
+        <span class="filter-label" id="filter-venue-label">Spielstätte</span>
+        <div class="chip-toggle-row" id="filter-venue-chips" role="group" aria-labelledby="filter-venue-label"></div>
+    </div>
 
     <!-- Platzfilter (Issue #6/#11/#37: immer sichtbar). In den Ressourcen-
          Views (Tag/Woche, ab der Desktop-Sidebar-Schwelle) reduziert ein
          Einzelplatz die Platz-Spalten; sonst faerbt/gruppiert "Alle" nach
          Platzfarbe + Kürzel. -->
-    <label class="filter">
-        Platz
-        <select id="filter-pitch">
-            <option value="">Alle Plätze</option>
-        </select>
-    </label>
+    <div class="filter" id="filter-pitch-row">
+        <span class="filter-label" id="filter-pitch-label">Platz</span>
+        <div class="chip-toggle-row" id="filter-pitch-chips" role="group" aria-labelledby="filter-pitch-label"></div>
+    </div>
 
     <!-- Issue #56: Termintyp Spiel/Training ein-/ausblenden; rein
          clientseitig wie Platz-/Manuell-/Vermietungsfilter, /api/events
          kennt ihn nicht (Offline-Parität, Ressourcen-Spalten, Nachlade-Cache
          bleiben unberührt). -->
-    <label class="filter">
-        Termintyp
-        <select id="filter-typ">
-            <option value="">Alle Termine</option>
-            <option value="spiel">Nur Spiele</option>
-            <option value="training">Nur Trainings</option>
-        </select>
-    </label>
+    <div class="filter" id="filter-typ-row">
+        <span class="filter-label" id="filter-typ-label">Termintyp</span>
+        <div class="chip-toggle-row" id="filter-typ-chips" role="group" aria-labelledby="filter-typ-label"></div>
+    </div>
 
     <!-- Issue #12: manuell erfasste Spiele (Freundschaftsspiele, Turniere)
          ein-/ausblenden bzw. isoliert anzeigen; rein clientseitig wie der
          Platzfilter, das API-Feld "manuell" trägt das Kalenderteam. -->
-    <label class="filter">
-        Manuelle Termine
-        <select id="filter-manuell">
-            <option value="">Alle Termine</option>
-            <option value="ohne">Ohne manuelle</option>
-            <option value="nur">Nur manuelle</option>
-        </select>
-    </label>
+    <div class="filter" id="filter-manuell-row">
+        <span class="filter-label" id="filter-manuell-label">Manuelle Termine</span>
+        <div class="chip-toggle-row" id="filter-manuell-chips" role="group" aria-labelledby="filter-manuell-label"></div>
+    </div>
 
     <!-- Issue #36: Sportheim-Termine ein-/ausblenden bzw. isoliert anzeigen;
          rein clientseitig wie der Manuell-Filter, funktioniert dadurch auch
          offline (das Feld ist im Bundle enthalten). -->
-    <label class="filter">
-        Sportheim-Termine
-        <select id="filter-vermietung">
-            <option value="">Alle Termine</option>
-            <option value="ohne">Ohne Sportheim-Termine</option>
-            <option value="nur">Nur Sportheim-Termine</option>
-        </select>
-    </label>
+    <div class="filter" id="filter-vermietung-row">
+        <span class="filter-label" id="filter-vermietung-label">Sportheim-Termine</span>
+        <div class="chip-toggle-row" id="filter-vermietung-chips" role="group" aria-labelledby="filter-vermietung-label"></div>
+    </div>
 
     <!-- Issue #63: schränkt die Sportheim-Termine auf einzelne Arten ein
          (Mehrfachauswahl, keine = alle). Die Chips selbst rendert
