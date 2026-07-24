@@ -813,6 +813,14 @@
     let listeErschoepft = false;
     let listeAktiv = false; // true solange die Liste die aktuell aktive View ist
     let listeLaedt = false;
+    // Issue #87: laufend vom IntersectionObserver aktualisierter SICHTBARKEITS-
+    // Zustand des unteren Sentinels (nicht nur ein einmaliges "hat gerade
+    // gefeuert") - s. Kommentar bei listeIndikatorSetzen für den Grund.
+    let listeSentinelSichtbar = false;
+    // Issue #87: Reentrancy-Schutz für die GESAMTE Kette in listeWeiterLaden
+    // (mehrere Batches), getrennt von listeLaedt (nur EIN Batch-Fetch) - s.
+    // dort.
+    let listeWeiterLaedt = false;
     // Issue #81: Schalter-Zustand (localStorage, Default "aus") und Fortschritt
     // der Vergangenheits-Ladekette - Spiegelbild von listeGeladenBis/
     // listeNaechster/listeErschoepft/listeLaedt, nur rückwärts. Bleibt beim
@@ -823,6 +831,10 @@
     let listeVergangenheitVorheriger;
     let listeVergangenheitErschoepft = false;
     let listeVergangenheitLaedt = false;
+    // Issue #87: Spiegelbild von listeSentinelSichtbar für den oberen Sentinel.
+    let listeVergangenheitSentinelSichtbar = false;
+    // Issue #87: Spiegelbild von listeWeiterLaedt für listeVergangenheitWeiterLaden.
+    let listeVergangenheitWeiterLaedt = false;
     // Generation-Zähler (bei jedem listeZuruecksetzen erhöht): schützt vor
     // einer veralteten Hintergrund-Ladekette, die nach schnellem Wechsel
     // weg von und zurück zur Liste (oder einem Filterwechsel mitten im
@@ -885,6 +897,30 @@
         listeLaedt = aktiv;
         if (listeLadeIndikator) {
             listeLadeIndikator.hidden = !aktiv;
+        }
+        // Issue #87: IntersectionObserver-Callbacks feuern nur bei einem
+        // WECHSEL der Sichtbarkeit, nicht solange der Sentinel unverändert
+        // sichtbar BLEIBT - zwei Fälle verlieren dadurch sonst den
+        // Nachlade-Trigger: (1) der Sentinel wird schon während des
+        // allerersten, noch laufenden Batches sichtbar (eine eng gefilterte
+        // Liste ist oft schon nach diesem einen Batch so kurz, dass der
+        // Sentinel sofort im Viewport steht) - der Observer feuert dann,
+        // BEVOR der Batch zurück ist, listeWeiterLaden() bricht wegen
+        // listeLaedt sofort ab, und da der Sentinel danach einfach sichtbar
+        // BLEIBT, gibt es keinen weiteren Wechsel, der den Observer erneut
+        // feuern ließe. (2) der Sentinel wurde schon VOR einem späteren
+        // Auslöser sichtbar (z. B. dem Einschalten von "Vergangenheit
+        // anzeigen") und bleibt es seither ununterbrochen - der Observer
+        // feuert für den davon neu gestarteten Ladevorgang dann nie. Beide
+        // Fälle löst derselbe Check hier: sobald ein Ladevorgang zu Ende
+        // ist, den zuletzt vom Observer gemeldeten Sichtbarkeits-Zustand
+        // erneut auswerten, statt auf einen weiteren Wechsel zu warten. Nur
+        // auf Mobile nötig - auf Desktop läuft listeLadeKette() unabhängig
+        // vom Sentinel bis zur Erschöpfung durch (s. dort); ein Nachholen
+        // hier würde mit ihrem eigenen Ladeschritt um denselben Cursor
+        // (listeGeladenBis) konkurrieren.
+        if (!aktiv && isMobile && listeSentinelSichtbar) {
+            listeWeiterLaden();
         }
     };
 
@@ -1014,6 +1050,10 @@
         if (listeVergangenheitLadeIndikator) {
             listeVergangenheitLadeIndikator.hidden = !aktiv;
         }
+        // Issue #87: Spiegelbild von listeIndikatorSetzen weiter oben.
+        if (!aktiv && isMobile && listeVergangenheitSentinelSichtbar) {
+            listeVergangenheitWeiterLaden();
+        }
     };
 
     const ladeEinenVergangenheitsBatch = async (params, von, bisGrenze) => {
@@ -1122,10 +1162,12 @@
     // Scroll an den oberen Rand (mobil): mindestens einen weiteren
     // Vergangenheits-Batch nachladen, analog listeWeiterLaden.
     const listeVergangenheitWeiterLaden = async () => {
+        // Issue #87: Spiegelbild des Reentrancy-Schutzes in listeWeiterLaden.
         if (!listeVergangenheitAktiv || calendar.view.type !== 'listNachlade'
-            || listeVergangenheitErschoepft || listeVergangenheitLaedt) {
+            || listeVergangenheitErschoepft || listeVergangenheitLaedt || listeVergangenheitWeiterLaedt) {
             return;
         }
+        listeVergangenheitWeiterLaedt = true;
         const params = window.VKKalenderEvents.baueEventsParams(filters);
         try {
             let batchWarLeer;
@@ -1140,6 +1182,8 @@
             listeVergangenheitNeuRendern();
         } catch (error) {
             console.error('Terminliste: Vergangenheit nachladen fehlgeschlagen', error);
+        } finally {
+            listeVergangenheitWeiterLaedt = false;
         }
     };
 
@@ -1194,9 +1238,17 @@
     // hier selbst weiterladen, bis wieder Termine gefunden werden oder die
     // Kette wirklich erschöpft ist (sollAutomatischWeiterladen).
     const listeWeiterLaden = async () => {
-        if (!listeAktiv || calendar.view.type !== 'listNachlade' || listeErschoepft || listeLaedt) {
+        // Issue #87: listeWeiterLaedt schützt zusätzlich zu listeLaedt (das
+        // nur EINEN Batch-Fetch markiert) die GANZE Kette hier gegen
+        // Reentrancy - listeIndikatorSetzen ruft diese Funktion nach jedem
+        // einzelnen Batch erneut auf, solange der Sentinel sichtbar bleibt
+        // (s. dort); ohne diesen Schutz würde genau DAS während der
+        // eigenen do-while-Schleife hier zu einem verschachtelten
+        // Doppel-Fetch derselben Range führen.
+        if (!listeAktiv || calendar.view.type !== 'listNachlade' || listeErschoepft || listeLaedt || listeWeiterLaedt) {
             return;
         }
+        listeWeiterLaedt = true;
         const params = window.VKKalenderEvents.baueEventsParams(filters);
         try {
             let batchWarLeer;
@@ -1210,6 +1262,8 @@
             listeNeuRendern();
         } catch (error) {
             console.error('Terminliste: Nachladen fehlgeschlagen', error);
+        } finally {
+            listeWeiterLaedt = false;
         }
     };
 
@@ -1230,9 +1284,14 @@
     // IntersectionObserver statt Scroll-Event-Heuristik (Issue #24): ein
     // Sentinel-Element am Listenende statt window.scrollY/scrollHeight - das
     // funktioniert unabhängig davon, ob überhaupt eine Scrollbar existiert.
+    // Issue #87: der Callback hält zusätzlich listeSentinelSichtbar aktuell
+    // (nicht nur "hat gerade gefeuert") - s. Kommentar bei
+    // listeIndikatorSetzen, wo dieser Zustand nach jedem Ladevorgang erneut
+    // ausgewertet wird.
     const listeSentinelObserver = listeSentinel
         ? new IntersectionObserver((entries) => {
-            if (entries.some((entry) => entry.isIntersecting)) {
+            listeSentinelSichtbar = entries.some((entry) => entry.isIntersecting);
+            if (listeSentinelSichtbar) {
                 listeWeiterLaden();
             }
         })
@@ -1245,9 +1304,12 @@
     // löst das Nachladen weiterer Vergangenheits-Batches aus, analog dem
     // Sentinel am Listenende. Feuert harmlos auch außerhalb der Liste
     // (listeVergangenheitWeiterLaden prüft calendar.view.type selbst).
+    // Issue #87: hält listeVergangenheitSentinelSichtbar aktuell, Spiegelbild
+    // von oben.
     const listeVergangenheitSentinelObserver = listeVergangenheitSentinel
         ? new IntersectionObserver((entries) => {
-            if (entries.some((entry) => entry.isIntersecting)) {
+            listeVergangenheitSentinelSichtbar = entries.some((entry) => entry.isIntersecting);
+            if (listeVergangenheitSentinelSichtbar) {
                 listeVergangenheitWeiterLaden();
             }
         })
