@@ -36,6 +36,15 @@ use App\Service\ValidationException;
  * conflicts and never warns - it is surfaced purely as a hint
  * (ConflictCheckResult::$hinweise), kept out of $conflicts/$warnings so it
  * neither blocks the write nor forces a "Trotzdem speichern?" confirmation.
+ *
+ * Issue #83: creating a slot (and the 'alle' edit scope) additionally
+ * accepts input carrying 'modus' => 'einzeltermin' with a plain 'datum_neu'
+ * instead of wochentage[] + gueltig_ab/gueltig_bis - a single booking is
+ * simply a training_slot with one weekday (derived from that date) and
+ * gueltig_ab == gueltig_bis, the same one-day shape the 'einzeln' edit scope
+ * already produces (CLAUDE.md section 3). No new aggregate, no special
+ * write path - applyEinzeltermin() only reshapes the input before the usual
+ * validate()/checkPayload() runs.
  */
 final readonly class BookingService
 {
@@ -293,7 +302,7 @@ final readonly class BookingService
      */
     public function createSlot(array $input, EventContext $context): array
     {
-        $payload = $this->validate($input);
+        $payload = $this->validate($this->applyEinzeltermin($input));
 
         $result = $this->checkPayload($payload, null, []);
         if ($result->hasConflicts()) {
@@ -471,7 +480,7 @@ final readonly class BookingService
         if ($slotId === null) {
             return [
                 'scope' => 'alle',
-                'payload' => $this->validate($input),
+                'payload' => $this->validate($this->applyEinzeltermin($input)),
                 'datum' => null,
                 'ignore_slot_id' => null,
                 'extra_exceptions' => [],
@@ -507,7 +516,7 @@ final readonly class BookingService
 
             $payload = $this->validate([
                 ...$input,
-                'wochentage' => [(int) new \DateTimeImmutable($datumNeu)->format('N')],
+                'wochentage' => [self::weekdayOf($datumNeu)],
                 'gueltig_ab' => $datumNeu,
                 'gueltig_bis' => $datumNeu,
             ]);
@@ -525,11 +534,46 @@ final readonly class BookingService
 
         return [
             'scope' => 'alle',
-            'payload' => $this->validate($input),
+            'payload' => $this->validate($this->applyEinzeltermin($input)),
             'datum' => null,
             'ignore_slot_id' => $slotId,
             'extra_exceptions' => [],
         ];
+    }
+
+    /**
+     * Issue #83: reshapes a 'modus' => 'einzeltermin' input (plain
+     * 'datum_neu', no wochentage[]/gueltig_ab/gueltig_bis) into the usual
+     * full-picture shape before validate() runs - a single booking is a
+     * training_slot with one weekday, derived from that date, and
+     * gueltig_ab == gueltig_bis. Anything else (the default, 'serie') passes
+     * through unchanged.
+     *
+     * @param array<string, mixed> $input
+     * @return array<string, mixed>
+     */
+    private function applyEinzeltermin(array $input): array
+    {
+        if ((string) ($input['modus'] ?? 'serie') !== 'einzeltermin') {
+            return $input;
+        }
+
+        $datum = self::parseDate((string) ($input['datum_neu'] ?? ''));
+        if ($datum === null) {
+            throw new ValidationException(['datum_neu' => 'Bitte ein gültiges Datum angeben.']);
+        }
+
+        return [
+            ...$input,
+            'wochentage' => [self::weekdayOf($datum)],
+            'gueltig_ab' => $datum,
+            'gueltig_bis' => $datum,
+        ];
+    }
+
+    private static function weekdayOf(string $datum): int
+    {
+        return (int) new \DateTimeImmutable($datum)->format('N');
     }
 
     /**

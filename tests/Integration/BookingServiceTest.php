@@ -7,6 +7,7 @@ namespace App\Tests\Integration;
 use App\Domain\AggregateType;
 use App\Domain\EventType;
 use App\Service\Kalender\ConflictException;
+use App\Service\Kalender\SlotExpander;
 use App\Service\ValidationException;
 use App\Tests\Support\DatabaseTestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -555,5 +556,143 @@ final class BookingServiceTest extends DatabaseTestCase
             self::assertArrayHasKey('beginn', $errors);
             self::assertArrayHasKey('gueltig_ab', $errors);
         }
+    }
+
+    /**
+     * Issue #83: a single booking ("Einzeltermin") is - technically - a
+     * training_slot with one weekday and gueltig_ab == gueltig_bis, the same
+     * one-day shape the 'einzeln' edit scope already produces. The client
+     * sends 'modus' => 'einzeltermin' plus a plain 'datum_neu' instead of
+     * wochentage[]/gueltig_ab/gueltig_bis; BookingService::applyEinzeltermin
+     * derives the full picture from that date.
+     *
+     * @return array<string, mixed>
+     */
+    private function einzelterminInput(array $overrides = []): array
+    {
+        return [
+            'modus' => 'einzeltermin',
+            'team_ids' => [$this->teamId],
+            'pitch_id' => $this->pitchId,
+            'beginn' => '19:00',
+            'ende' => '20:30',
+            'datum_neu' => '2026-08-11', // Tuesday
+            ...$overrides,
+        ];
+    }
+
+    public function testCreateEinzeltermin(): void
+    {
+        $result = $this->bookingService()->createSlot($this->einzelterminInput(), $this->context());
+
+        self::assertSame([], $result['warnings']);
+        $slots = $this->dumpTable('training_slot');
+        self::assertCount(1, $slots);
+        self::assertSame([2], json_decode((string) $slots[0]['wochentage'], true), 'Tuesday derived from datum_neu');
+        self::assertSame('2026-08-11', $slots[0]['gueltig_ab']);
+        self::assertSame('2026-08-11', $slots[0]['gueltig_bis'], 'gueltig_ab == gueltig_bis: no series, one day');
+    }
+
+    public function testCreateEinzelterminExpandsToExactlyOneOccurrence(): void
+    {
+        $this->bookingService()->createSlot($this->einzelterminInput(), $this->context());
+
+        $occurrences = SlotExpander::expand($this->dumpTable('training_slot'), [], '2026-08-01', '2026-08-31');
+
+        self::assertCount(1, $occurrences);
+        self::assertSame('2026-08-11', $occurrences[0]->datum);
+        self::assertSame('2026-08-11 19:00:00', $occurrences[0]->start->format('Y-m-d H:i:s'));
+        self::assertSame('2026-08-11 20:30:00', $occurrences[0]->end->format('Y-m-d H:i:s'));
+    }
+
+    /**
+     * @return array<string, array{string, int}>
+     */
+    public static function einzelterminWochentage(): array
+    {
+        return [
+            'Sunday is ISO weekday 7' => ['2026-08-09', 7],
+            'Monday is ISO weekday 1' => ['2026-08-10', 1],
+            'Tuesday is ISO weekday 2' => ['2026-08-11', 2],
+        ];
+    }
+
+    #[DataProvider('einzelterminWochentage')]
+    public function testCreateEinzelterminDerivesWeekdayFromDate(string $datum, int $erwarteterWochentag): void
+    {
+        $result = $this->bookingService()->createSlot(
+            $this->einzelterminInput(['datum_neu' => $datum]),
+            $this->context(),
+        );
+
+        $slot = $this->dumpTable('training_slot')[0];
+        self::assertSame($erwarteterWochentag, json_decode((string) $slot['wochentage'], true)[0]);
+        self::assertSame($datum, $slot['gueltig_ab']);
+        self::assertSame([], $result['warnings']);
+    }
+
+    public function testCreateEinzelterminRejectsMissingDatum(): void
+    {
+        try {
+            $this->bookingService()->createSlot(
+                $this->einzelterminInput(['datum_neu' => '']),
+                $this->context(),
+            );
+            self::fail('Expected validation to fail');
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey('datum_neu', $e->getErrors());
+        }
+        self::assertCount(0, $this->dumpTable('training_slot'));
+    }
+
+    public function testCreateEinzelterminDetectsConflictWithExistingSeries(): void
+    {
+        $booking = $this->bookingService();
+        // Tuesdays 19:00-20:30, running through the Einzeltermin's date
+        $booking->createSlot($this->slotInput(), $this->context());
+
+        try {
+            $booking->createSlot(
+                $this->einzelterminInput(['team_ids' => [$this->createTeam('E2')]]),
+                $this->context(),
+            );
+            self::fail('Expected a conflict');
+        } catch (ConflictException $e) {
+            self::assertStringContainsString('Kollidiert', $e->getConflicts()[0]);
+        }
+
+        self::assertCount(1, $this->dumpTable('training_slot'), 'the Einzeltermin must not be saved');
+    }
+
+    /**
+     * Issue #83: editing an already one-day slot (kalender.js openEdit())
+     * skips the three-way scope question and submits scope 'alle' directly -
+     * there is no series to split off, so the slot is simply updated in
+     * place: same id, no slot_exception, no second slot.
+     */
+    public function testUpdateEinzeltagesSlotInPlaceSkipsSplit(): void
+    {
+        $booking = $this->bookingService();
+        $created = $booking->createSlot($this->einzelterminInput(), $this->context());
+
+        $result = $booking->updateSlot($created['id'], [
+            'edit_scope' => 'alle',
+            'modus' => 'einzeltermin',
+            'datum_neu' => '2026-08-13', // moved to Thursday
+            'team_ids' => [$this->teamId],
+            'pitch_id' => $this->pitchId,
+            'beginn' => '18:00',
+            'ende' => '19:30',
+        ], $this->context());
+
+        self::assertSame($created['id'], $result['id'], 'updated in place, no split into a second slot');
+        self::assertCount(0, $this->dumpTable('slot_exception'), 'no exception - this is not an "einzeln" split');
+
+        $slots = $this->dumpTable('training_slot');
+        self::assertCount(1, $slots);
+        self::assertSame([4], json_decode((string) $slots[0]['wochentage'], true), 'Thursday derived from the new date');
+        self::assertSame('2026-08-13', $slots[0]['gueltig_ab']);
+        self::assertSame('2026-08-13', $slots[0]['gueltig_bis']);
+        self::assertSame('18:00:00', $slots[0]['beginn']);
     }
 }

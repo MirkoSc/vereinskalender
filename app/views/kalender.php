@@ -135,6 +135,19 @@
             <input type="hidden" name="edit_scope">
             <input type="hidden" name="slot_id">
             <input type="hidden" name="datum">
+            <!-- Issue #83: Serie/Einzeltermin nur beim Neuanlegen wählbar -
+                 kalender.js blendet die Reihe beim Bearbeiten aus, weil die
+                 UI dort automatisch aus dem Slot selbst entscheidet
+                 (Eintages-Slot -> einfache Einzel-Bearbeitung, sonst Serie).
+                 "modus" ist kein Domänenfeld, sondern steuert clientseitig
+                 nur die Feldsichtbarkeit; der Server liest es nur, um bei
+                 einem Einzeltermin Wochentag/Gültigkeitszeitraum aus dem
+                 Datum abzuleiten (BookingService::applyEinzeltermin). -->
+            <fieldset class="segmented" id="booking-modus-feld" hidden>
+                <legend>Art</legend>
+                <label><input type="radio" name="modus" value="serie" checked> <span>Serie</span></label>
+                <label><input type="radio" name="modus" value="einzeltermin"> <span>Einzeltermin</span></label>
+            </fieldset>
             <fieldset class="checkbox-group">
                 <legend>Teams (mehrere möglich, z.&nbsp;B. gemeinsames Training)</legend>
                 <div id="booking-teams" class="checkbox-list"></div>

@@ -68,6 +68,18 @@
     box-sizing: border-box;
 }
 
+/* Issue #83: without this, any element with an author "display: flex/grid"
+   rule (.field-row, .segmented, ...) stays visible despite [hidden] - a
+   normal author declaration always wins over the UA stylesheet's
+   "[hidden]{display:none}" regardless of specificity (origin is compared
+   before specificity in the cascade). Surfaced by #booking-gueltig-feld
+   (.field-row) staying visible while toggled hidden for the "nur dieser"/
+   Einzeltermin booking UI; !important restores the attribute's actual
+   contract ("hide, full stop") for every future case too. */
+[hidden] {
+    display: none !important;
+}
+
 body {
     margin: 0;
     font-family: system-ui, sans-serif;
