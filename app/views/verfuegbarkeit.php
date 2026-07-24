@@ -17,16 +17,16 @@
 
     <ul id="filter-chips" class="chip-row filter-narrow" aria-label="Aktive Filter"></ul>
 
+    <!-- Issue #82: Chip-Gruppe statt <select>, analog dem Kalender-Filter-
+         Sheet - ein Tap wählt/wechselt den Platz direkt. -->
     <dialog id="filter-dialog" class="sheet filter-sheet">
         <h3>Filter</h3>
         <!-- Issue #7: unterhalb der Desktop-Sidebar-Schwelle (~1100px) ersetzt
              diese Auswahl die Untereinander-Darstellung aller Plätze. -->
-        <label class="filter">
-            Platz
-            <select id="filter-pitch">
-                <option value="">Alle Plätze</option>
-            </select>
-        </label>
+        <div class="filter" id="filter-pitch-row">
+            <span class="filter-label" id="filter-pitch-label">Platz</span>
+            <div class="chip-toggle-row" id="filter-pitch-chips" role="group" aria-labelledby="filter-pitch-label"></div>
+        </div>
         <div class="dialog-actions">
             <button type="button" class="button" id="filter-close">Fertig</button>
             <button type="button" class="linklike" id="filter-reset">Zurücksetzen</button>

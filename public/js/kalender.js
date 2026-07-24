@@ -18,20 +18,12 @@
     );
 
     // ---- filter controls (Issue #8: Filter-Button + Panel/Bottom-Sheet,
-    // Chips nur für Abweichungen vom Default, URL teilbar) ----
-
-    const teamSelect = document.querySelector('#filter-team');
-    for (const team of activeTeams) {
-        teamSelect.add(new Option(`${team.name} (${teamBereichName(team)})`, String(team.id)));
-    }
-    const bereichSelect = document.querySelector('#filter-bereich');
-    for (const bereich of appData.bereiche) {
-        bereichSelect.add(new Option(bereich.name, String(bereich.id)));
-    }
-    const venueSelect = document.querySelector('#filter-venue');
-    for (const venue of appData.venues) {
-        venueSelect.add(new Option(venue.name, String(venue.id)));
-    }
+    // Chips nur für Abweichungen vom Default, URL teilbar; Issue #82: jeder
+    // Filter im Sheet ist selbst eine Chip-Gruppe statt eines <select> -
+    // ein Tap wählt/wechselt/löscht direkt, analog den Arten-Chips (Issue
+    // #63). window.VKFilter.erzeugeChipRow/aktualisiereChipRow (filter.js)
+    // sind die geteilte DOM-Logik dafür, Optionen und Wiring bleiben hier je
+    // Filter.) ----
 
     const bereichLabel = (bereichId) => bereichName(Number(bereichId));
     const venueLabel = (wert) => {
@@ -76,8 +68,9 @@
     const filters = window.VKFilter.leseFilterAusUrl(urlParams, filterDefinitionen);
     // Issue #27: alte geteilte Links trugen den Bereich als Enum-String
     // (G/F/E/D/C/Herren) statt der numerischen bereich_id - einmalig beim
-    // Laden auf die ID normalisieren, damit Filter-Select UND clientseitiger
-    // Offline-Filter (der die ID vergleicht) den Link weiter verstehen.
+    // Laden auf die ID normalisieren, damit die Bereich-Chips UND
+    // clientseitiger Offline-Filter (der die ID vergleicht) den Link weiter
+    // verstehen.
     if (filters.bereich !== '' && !/^\d+$/.test(filters.bereich)) {
         const legacy = appData.bereiche.find((b) => b.kuerzel === filters.bereich);
         filters.bereich = legacy ? String(legacy.id) : '';
@@ -117,9 +110,45 @@
         history.replaceState(null, '', window.location.pathname + (query ? `?${query}` : ''));
     };
 
+    // Issue #82: eine Chip-Gruppe je Filter; `mehrfach` unterscheidet die
+    // Arten-Chips (Issue #63, mehrere gleichzeitig aktiv, kommasepariert)
+    // von allen übrigen (genau ein oder kein Chip aktiv). Die Liste treibt
+    // aktualisiereChipGruppen() - den aria-pressed-Abgleich nach jeder
+    // Filteränderung, egal ob per Chip-Klick, Chip-Entfernen in der
+    // Aktive-Filter-Zeile oder #filter-reset.
+    const artRow = document.querySelector('#filter-art-row');
+    const chipGruppen = [
+        { key: 'team', container: document.querySelector('#filter-team-chips') },
+        { key: 'bereich', container: document.querySelector('#filter-bereich-chips') },
+        { key: 'venue', container: document.querySelector('#filter-venue-chips') },
+        { key: 'pitch', container: document.querySelector('#filter-pitch-chips') },
+        { key: 'typ', container: document.querySelector('#filter-typ-chips') },
+        { key: 'manuell', container: document.querySelector('#filter-manuell-chips') },
+        { key: 'vermietung', container: document.querySelector('#filter-vermietung-chips') },
+        { key: 'art', container: document.querySelector('#filter-art-chips'), mehrfach: true },
+    ];
+    const aktualisiereChipGruppen = () => {
+        for (const gruppe of chipGruppen) {
+            if (!gruppe.container) {
+                continue;
+            }
+            if (gruppe.mehrfach) {
+                const aktiv = filters[gruppe.key].split(',').filter((a) => a !== '');
+                window.VKFilter.aktualisiereChipRow(gruppe.container, (wert) => aktiv.includes(wert));
+            } else {
+                window.VKFilter.aktualisiereChipRow(gruppe.container, (wert) => wert === filters[gruppe.key]);
+            }
+        }
+        // "Ohne Sportheim-Termine" hat bereits alle ausgeblendet - eine
+        // Art-Auswahl wäre dort gegenstandslos.
+        if (artRow) {
+            artRow.hidden = filters.vermietung === 'ohne';
+        }
+    };
+
     const renderFilterUi = () => {
         const abweichungen = window.VKFilter.aktiveAbweichungen(filters, filterDefinitionen);
-        renderArtChips();
+        aktualisiereChipGruppen();
         filterChips.replaceChildren();
         for (const chip of abweichungen) {
             const li = document.createElement('li');
@@ -158,98 +187,123 @@
 
     const setzeFilter = (key, wert) => {
         filters[key] = wert;
-        const select = document.querySelector(`#filter-${key}`);
-        if (select) {
-            select.value = wert;
-        }
         onFilterChange();
     };
+    // Einfachauswahl-Filter (alle außer 'art'): ein Klick auf den bereits
+    // aktiven Chip setzt den Filter zurück auf den Default (''), ein Klick
+    // auf einen anderen ersetzt die Auswahl - kein Extra-"Alle"-Chip nötig,
+    // analog dem Ab-/Anwählen bei den Arten-Chips.
+    const setzeEinfachFilter = (key, wert) => setzeFilter(key, filters[key] === wert ? '' : wert);
 
-    const manuellSelect = document.querySelector('#filter-manuell');
-    const vermietungSelect = document.querySelector('#filter-vermietung');
-    const typSelect = document.querySelector('#filter-typ');
+    window.VKFilter.erzeugeChipRow(
+        document.querySelector('#filter-team-chips'),
+        activeTeams.map((t) => ({ wert: String(t.id), label: `${t.name} (${teamBereichName(t)})` })),
+        (wert) => setzeEinfachFilter('team', wert),
+    );
+    window.VKFilter.erzeugeChipRow(
+        document.querySelector('#filter-bereich-chips'),
+        appData.bereiche.map((b) => ({ wert: String(b.id), label: b.name })),
+        (wert) => setzeEinfachFilter('bereich', wert),
+    );
+    window.VKFilter.erzeugeChipRow(
+        document.querySelector('#filter-venue-chips'),
+        [
+            { wert: 'heim', label: 'Nur Heim' },
+            { wert: 'auswaerts', label: 'Nur Auswärts' },
+            { wert: 'spielfrei', label: 'Nur Spielfrei' },
+            ...appData.venues.map((v) => ({ wert: String(v.id), label: v.name })),
+        ],
+        (wert) => setzeEinfachFilter('venue', wert),
+    );
 
-    teamSelect.value = filters.team;
-    bereichSelect.value = filters.bereich;
-    venueSelect.value = filters.venue;
-    manuellSelect.value = filters.manuell;
-    vermietungSelect.value = filters.vermietung;
-    typSelect.value = filters.typ;
-    teamSelect.addEventListener('change', () => setzeFilter('team', teamSelect.value));
-    bereichSelect.addEventListener('change', () => setzeFilter('bereich', bereichSelect.value));
-    venueSelect.addEventListener('change', () => setzeFilter('venue', venueSelect.value));
-    manuellSelect.addEventListener('change', () => setzeFilter('manuell', manuellSelect.value));
-    vermietungSelect.addEventListener('change', () => setzeFilter('vermietung', vermietungSelect.value));
-
-    // Issue #63: Art-Chips (Mehrfachauswahl) zu den Sportheim-Terminen.
-    // Bewusst KEIN #filter-art-Select: die Konvention "#filter-<key> ist ein
-    // Select" aus setzeFilter/#filter-reset bleibt damit unangetastet, der
-    // Wert wird ausschließlich über setzeFilter('art', ...) geführt. Die
-    // Reihe wird aus appData gerendert, damit eine neue Art im PHP-Enum
-    // ohne Frontend-Änderung erscheint.
-    const artRow = document.querySelector('#filter-art-row');
-    const artChips = document.querySelector('#filter-art-chips');
-    const gewaehlteArten = () => filters.art.split(',').filter((a) => a !== '');
-    const toggleArt = (wert) => {
-        const aktiv = gewaehlteArten();
-        const neu = aktiv.includes(wert) ? aktiv.filter((a) => a !== wert) : [...aktiv, wert];
-        // kanonische Reihenfolge (wie im Enum), damit derselbe Zustand immer
-        // denselben teilbaren Link ergibt
-        setzeFilter('art', vermietungArten.map((a) => a.wert).filter((w) => neu.includes(w)).join(','));
-    };
-    if (artChips) {
-        for (const art of vermietungArten) {
-            const chip = document.createElement('button');
-            chip.type = 'button';
-            chip.className = 'chip-toggle';
-            chip.dataset.art = art.wert;
-            chip.textContent = art.label;
-            chip.addEventListener('click', () => toggleArt(art.wert));
-            artChips.append(chip);
-        }
-    }
-    // "Ohne Sportheim-Termine" hat bereits alle ausgeblendet - eine
-    // Art-Auswahl wäre dort gegenstandslos.
-    const renderArtChips = () => {
-        if (!artChips) {
-            return;
-        }
-        const aktiv = gewaehlteArten();
-        for (const chip of artChips.children) {
-            chip.setAttribute('aria-pressed', String(aktiv.includes(chip.dataset.art)));
-        }
-        artRow.hidden = filters.vermietung === 'ohne';
-    };
     // Issue #56: zusätzlich zur generischen 'filternutzung' (onFilterChange)
     // je gewählter Stufe eine eigene Metrik - analog den Ansicht-Metriken -
     // damit das Dashboard "Nur Spiele" von "Nur Trainings" unterscheiden kann.
     // Kein Beacon beim Zurücksetzen auf "Alle" (kein Feature-"Nutzen").
-    typSelect.addEventListener('change', () => {
-        if (typSelect.value === 'spiel') {
-            beacon('filter_typ_spiel');
-        } else if (typSelect.value === 'training') {
-            beacon('filter_typ_training');
-        }
-        setzeFilter('typ', typSelect.value);
-    });
+    window.VKFilter.erzeugeChipRow(
+        document.querySelector('#filter-typ-chips'),
+        [
+            { wert: 'spiel', label: 'Nur Spiele' },
+            { wert: 'training', label: 'Nur Trainings' },
+        ],
+        (wert) => {
+            if (filters.typ !== wert) {
+                beacon(wert === 'spiel' ? 'filter_typ_spiel' : 'filter_typ_training');
+            }
+            setzeEinfachFilter('typ', wert);
+        },
+    );
+
+    // Issue #12: manuell erfasste Spiele (Freundschaftsspiele, Turniere)
+    // ein-/ausblenden bzw. isoliert anzeigen; rein clientseitig wie der
+    // Platzfilter, das API-Feld "manuell" trägt das Kalenderteam.
+    window.VKFilter.erzeugeChipRow(
+        document.querySelector('#filter-manuell-chips'),
+        [
+            { wert: 'ohne', label: 'Ohne manuelle Termine' },
+            { wert: 'nur', label: 'Nur manuelle Termine' },
+        ],
+        (wert) => setzeEinfachFilter('manuell', wert),
+    );
+
+    // Issue #36: Sportheim-Termine ein-/ausblenden bzw. isoliert anzeigen;
+    // rein clientseitig wie der Manuell-Filter, funktioniert dadurch auch
+    // offline (das Feld ist im Bundle enthalten).
+    window.VKFilter.erzeugeChipRow(
+        document.querySelector('#filter-vermietung-chips'),
+        [
+            { wert: 'ohne', label: 'Ohne Sportheim-Termine' },
+            { wert: 'nur', label: 'Nur Sportheim-Termine' },
+        ],
+        (wert) => setzeEinfachFilter('vermietung', wert),
+    );
+
+    // Issue #63: Art-Chips (Mehrfachauswahl) zu den Sportheim-Terminen. Die
+    // Reihe wird aus appData gerendert, damit eine neue Art im PHP-Enum ohne
+    // Frontend-Änderung erscheint.
+    const gewaehlteArten = () => filters.art.split(',').filter((a) => a !== '');
+    window.VKFilter.erzeugeChipRow(
+        document.querySelector('#filter-art-chips'),
+        vermietungArten.map((art) => ({ wert: art.wert, label: art.label })),
+        (wert) => {
+            const aktiv = gewaehlteArten();
+            const neu = aktiv.includes(wert) ? aktiv.filter((a) => a !== wert) : [...aktiv, wert];
+            // kanonische Reihenfolge (wie im Enum), damit derselbe Zustand
+            // immer denselben teilbaren Link ergibt
+            setzeFilter('art', vermietungArten.map((a) => a.wert).filter((w) => neu.includes(w)).join(','));
+        },
+    );
+
+    // Platzfilter (Issue #6/#11/#37: immer sichtbar) - ein entfernter/
+    // deaktivierter Platz seit der letzten Speicherung würde sonst keinen
+    // Chip mehr treffen, während filters.pitch noch die veraltete id trägt,
+    // und dadurch still jeden Termin herausfiltern.
+    if (!appData.pitches.some((p) => String(p.id) === filters.pitch)) {
+        filters.pitch = '';
+    }
+    window.VKFilter.erzeugeChipRow(
+        document.querySelector('#filter-pitch-chips'),
+        appData.pitches.map((p) => ({ wert: String(p.id), label: `${p.name} (${p.venue_name})` })),
+        (wert) => {
+            beacon('platzauswahl');
+            setzeEinfachFilter('pitch', wert);
+        },
+    );
 
     document.querySelector('#filter-button').addEventListener('click', () => filterDialog.showModal());
     document.querySelector('#filter-close').addEventListener('click', () => filterDialog.close());
     document.querySelector('#filter-reset').addEventListener('click', () => {
         for (const def of filterDefinitionen) {
             filters[def.key] = def.default;
-            const select = document.querySelector(`#filter-${def.key}`);
-            if (select) {
-                select.value = def.default;
-            }
         }
         onFilterChange();
     });
 
     renderFilterUi();
 
-    // ---- pitch selector (Issue #6/#11/#37: immer sichtbar, unabhängig von
-    // Ansicht/Breite) ----
+    // ---- pitch grouping (Issue #6/#11/#37: Platzfilter-Chips immer
+    // sichtbar, unabhängig von Ansicht/Breite - Aufbau weiter oben bei den
+    // übrigen Filter-Chips) ----
     // Ab der Desktop-Sidebar-Schwelle (~1100px) zeigen Tag/Woche eigene
     // Platz-Spalten (Ressourcen-Views) - dort reduziert eine Einzelplatz-Wahl
     // die Spalten (s. aktuelleRessourcen() weiter unten) statt die Termine zu
@@ -264,23 +318,6 @@
     // Platzfarb-Regel blieben auf dem Wert vom Seitenaufruf stehen.
     const breitMedia = window.matchMedia('(min-width: 1100px)');
     const istBreit = () => breitMedia.matches;
-    const pitchSelect = document.querySelector('#filter-pitch');
-    if (pitchSelect) {
-        for (const pitch of appData.pitches) {
-            pitchSelect.add(new Option(`${pitch.name} (${pitch.venue_name})`, String(pitch.id)));
-        }
-        // a pitch removed/deactivated since the choice was stored would leave
-        // the select showing "Alle Plätze" while filters.pitch still held the
-        // stale id, silently filtering every event away - fall back to ''
-        if (!appData.pitches.some((p) => String(p.id) === filters.pitch)) {
-            filters.pitch = '';
-        }
-        pitchSelect.value = filters.pitch;
-        pitchSelect.addEventListener('change', () => {
-            beacon('platzauswahl');
-            setzeFilter('pitch', pitchSelect.value);
-        });
-    }
     const pitchGruppierungAktiv = () => window.VKKalenderPitch.pitchGruppierungAktiv(
         window.VKKalenderAnsicht.hatResourceSpalten(modus, istBreit()),
         filters.pitch,

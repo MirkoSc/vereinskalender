@@ -54,8 +54,10 @@
         history.replaceState(null, '', window.location.pathname + (query ? `?${query}` : ''));
     };
 
+    const pitchChips = document.querySelector('#filter-pitch-chips');
     const renderFilterUi = () => {
         const abweichungen = window.VKFilter.aktiveAbweichungen(filters, filterDefinitionen);
+        window.VKFilter.aktualisiereChipRow(pitchChips, (wert) => wert === filters.pitch);
         filterChips.replaceChildren();
         for (const chip of abweichungen) {
             const li = document.createElement('li');
@@ -79,12 +81,15 @@
     const setzeFilter = (key, wert) => {
         filters[key] = wert;
         localStorage.setItem('verfuegbarkeit_platz', filters.pitch);
-        pitchSelect.value = filters.pitch;
         renderFilterUi();
         if (lastData) {
             render(lastData);
         }
     };
+    // Issue #82: Einfachauswahl-Chip statt <select> - ein Klick auf den
+    // bereits aktiven Chip setzt "Alle Plätze" zurück, ein Klick auf einen
+    // anderen ersetzt die Auswahl (kein Extra-"Alle"-Chip nötig).
+    const setzeEinfachFilter = (key, wert) => setzeFilter(key, filters[key] === wert ? '' : wert);
 
     document.querySelector('#filter-button').addEventListener('click', () => filterDialog.showModal());
     document.querySelector('#filter-close').addEventListener('click', () => filterDialog.close());
@@ -92,29 +97,28 @@
 
     // ---- pitch selector (Issue #7, narrow screens) ----
     // Below the desktop-sidebar breakpoint the stacked "alle Plätze
-    // untereinander" view gives way to a dropdown: "Alle Plätze" (same
+    // untereinander" view gives way to a chip row: "Alle Plätze" (same
     // stacked blocks, but belegt-Segmente in der jeweiligen Platzfarbe +
     // Platzname als Text) or a single pitch. Restriktionen bleiben in jeder
     // Variante unverändert sichtbar (nur die Platz-Auswahl filtert).
-    // Snapshot once (like kalender.js): the dropdown's visibility is driven
+    // Snapshot once (like kalender.js): the chip row's visibility is driven
     // from this same flag, not a live CSS media query, so it can never
     // disagree with the filtering/coloring logic it drives.
     const isWideVerf = window.matchMedia('(min-width: 1100px)').matches;
     let lastData = null;
-    const pitchSelect = document.querySelector('#filter-pitch');
     for (const button of document.querySelectorAll('.filter-narrow')) {
         button.classList.toggle('filter-narrow-hidden', isWideVerf);
-    }
-    for (const pitch of appData.pitches) {
-        pitchSelect.add(new Option(`${pitch.name} (${pitch.venue_name})`, String(pitch.id)));
     }
     // a pitch removed/deactivated since the choice was stored would otherwise
     // filter every venue block down to zero pitches with no visible cause
     if (!appData.pitches.some((p) => String(p.id) === filters.pitch)) {
         filters.pitch = '';
     }
-    pitchSelect.value = filters.pitch;
-    pitchSelect.addEventListener('change', () => setzeFilter('pitch', pitchSelect.value));
+    window.VKFilter.erzeugeChipRow(
+        pitchChips,
+        appData.pitches.map((p) => ({ wert: String(p.id), label: `${p.name} (${p.venue_name})` })),
+        (wert) => setzeEinfachFilter('pitch', wert),
+    );
 
     renderFilterUi();
 
@@ -153,8 +157,8 @@
         const total = windowEnd - windowStart;
 
         // large screens always show every pitch (CLAUDE.md/Issue #7: "wie
-        // bisher"); the dropdown only takes effect below the breakpoint
-        const pitchFilter = isWideVerf ? '' : pitchSelect.value;
+        // bisher"); the chip row only takes effect below the breakpoint
+        const pitchFilter = isWideVerf ? '' : filters.pitch;
         // large screens keep the plain zustand-coloring "wie bisher"; the
         // pitch-color distinction only kicks in for "Alle" below the breakpoint
         const alleKombiniert = !isWideVerf && pitchFilter === '';

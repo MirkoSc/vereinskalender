@@ -400,6 +400,20 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   einen leeren Batch-Request, eine zu späte würde Termine verschlucken –
   deshalb die Asymmetrie. Berechnung in `EventFeedService::naechsterTermin()`
   (MIN-Abfragen je Quelle + `NextEventDate` für die Slot-Regeln).
+- **Alle Filter im Filter-Sheet sind Chip-Gruppen, kein `<select>`** (Issue
+  #82): Team, Bereich, Spielstätte, Platz, Termintyp, Manuelle Termine und
+  Sportheim-Termine folgen damit derselben Bedienung wie der Arten-Filter
+  (Issue #63) – ein Tap wählt/wechselt/löscht direkt. Bei den
+  Einfachauswahl-Filtern (alle außer `art`) setzt ein Klick auf den bereits
+  aktiven Chip auf den Default (`''`) zurück, ein Klick auf einen anderen
+  Chip ersetzt die Auswahl – kein eigener „Alle"-Chip nötig, analog dem
+  Ab-/Anwählen bei den Arten-Chips. `window.VKFilter.erzeugeChipRow`/
+  `aktualisiereChipRow` (`filter.js`) sind die geteilte DOM-Mechanik dafür,
+  gemeinsam genutzt von `kalender.js` und `verfuegbarkeit.js`; Optionsliste
+  und Wiring je Filter bleiben in der jeweiligen Ansicht. Rein clientseitig
+  wie zuvor – URL-Persistenz, Chip-Zeile der aktiven Abweichungen und
+  Offline-Verhalten sind unverändert, nur die Eingabe im Sheet selbst wurde
+  ersetzt.
 - Platzfilter (`filter-pitch`, clientseitig, `/api/events` kennt ihn nicht):
   immer sichtbar (Issue #37). In den Ressourcen-Views (Tag/Woche, ab der
   Desktop-Sidebar-Schwelle ~1100 px) reduziert ein gewählter Einzelplatz die
@@ -465,9 +479,7 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   `filter-manuell`): clientseitig, `/api/events` kennt ihn nicht; „Nur
   Sportheim-Termine" blendet auch Trainings/Spiele/Sperrungen aus.
   Daneben der Art-Filter (Issue #63, `art`, Chip-Mehrfachauswahl
-  kommasepariert, `''` = alle Arten, Container `#filter-art-chips` –
-  bewusst KEIN `#filter-art`-Select, damit die Konvention „`#filter-<key>`
-  ist ein Select" aus `setzeFilter`/`#filter-reset` gilt). Er ist eine reine
+  kommasepariert, `''` = alle Arten, Container `#filter-art-chips`). Er ist eine reine
   **Teilmengen-Einschränkung auf Sportheim-Termine**: Trainings, Spiele und
   Sperrungen passieren ihn unverändert, sonst würde eine Art-Auswahl den
   ganzen Kalender leerräumen. Bei Stufe „Ohne" ist er gegenstandslos und die
