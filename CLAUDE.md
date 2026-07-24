@@ -646,6 +646,29 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   mobile Scroll-Trigger weiterhin selbständig weiter (Issue #46: ein
   unveränderter Sentinel löst keinen neuen IntersectionObserver-Trigger
   aus) – das bleibt nötig, weil `naechster` nur eine untere Schranke ist.
+  **Verlorener Sentinel-Trigger bei kurzen Listen** (Issue #87, dieselbe
+  Wurzel wie #46, ein weiterer Fall): ein IntersectionObserver-Callback
+  feuert nur bei einem WECHSEL der Sichtbarkeit, nicht solange der Sentinel
+  unverändert sichtbar bleibt. Bei einer eng gefilterten Liste (z. B. nur
+  „Spielfrei") kann der untere Sentinel schon sichtbar werden, WÄHREND der
+  allererste Batch noch lädt (`listeLaedt` bereits `true`) – `listeWeiterLaden()`
+  bricht dann sofort ab, und da der Sentinel danach einfach sichtbar bleibt,
+  feuert der Observer nie wieder; die Liste blieb bislang auf diesem ersten
+  Batch hängen, obwohl `naechster` weitere Termine ankündigt. Derselbe
+  Effekt trifft den oberen Sentinel, wenn „Vergangenheit anzeigen" NACH
+  einer bereits abgeschlossenen Sichtbarkeits-Änderung eingeschaltet wird.
+  Fix: der Observer-Callback hält zusätzlich einen laufenden
+  Sichtbarkeits-Zustand (`listeSentinelSichtbar`/
+  `listeVergangenheitSentinelSichtbar`) aktuell; `listeIndikatorSetzen()`/
+  `listeVergangenheitIndikatorSetzen()` werten ihn nach JEDEM Ladevorgang
+  erneut aus (nur auf Mobile – Desktop treibt seine Kette ohnehin
+  unabhängig vom Sentinel bis zur Erschöpfung durch), statt auf einen
+  weiteren Sichtbarkeits-Wechsel zu warten. Ein Reentrancy-Schutz
+  (`listeWeiterLaedt`/`listeVergangenheitWeiterLaedt`, getrennt von
+  `listeLaedt`/`listeVergangenheitLaedt`, das nur EINEN Batch-Fetch markiert)
+  verhindert dabei einen doppelten Fetch derselben Range, falls dieser
+  erneute Check innerhalb der eigenen laufenden `listeWeiterLaden()`-Kette
+  feuert.
   **Vergangenheit per Schalter** (Issue #81): „Vergangenheit anzeigen"
   (Checkbox oberhalb der Liste, Touch-Ziel ≥ 44 px, Default „aus", Zustand
   in localStorage `kalender_liste_vergangenheit` gemerkt) lädt Termine VOR
