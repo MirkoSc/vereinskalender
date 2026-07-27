@@ -23,10 +23,10 @@
         const naechster = formatDatum(gruppe.naechster_termin);
 
         if (gruppe.typ === 'slot') {
-            return `Kollidiert mit Serie „${gruppe.label}" an ${gruppe.anzahl} Terminen, nächster: ${naechster}.`;
+            return `Doppelbelegung mit Serie „${gruppe.label}" an ${gruppe.anzahl} Terminen, nächster: ${naechster}.`;
         }
         if (gruppe.typ === 'match') {
-            return `Kollidiert mit ${gruppe.anzahl} Spielen gegen ${gruppe.label}, nächstes: ${naechster}.`;
+            return `Doppelbelegung mit ${gruppe.anzahl} Spielen gegen ${gruppe.label}, nächstes: ${naechster}.`;
         }
         if (gruppe.ist_warnung) {
             return `Platz ist an ${gruppe.anzahl} Terminen eingeschränkt nutzbar: ${gruppe.label} (nächster: ${naechster}).`;
@@ -43,7 +43,25 @@
         rest: gruppen.slice(anzahlSichtbar),
     });
 
-    const api = { formatDatum, gruppenBeschriftung, sichtbareGruppen };
+    // Überschrift für den Warnblock (Doppelbelegung): renderKonfliktGruppen()
+    // rendert damit auch die 'eingeschraenkt'-Warnung einer Restriktion - die
+    // Überschrift muss also je nach Art der versammelten Gruppen benannt
+    // werden, statt "Doppelbelegung" pauschal über jede Warnung zu setzen.
+    // Mischt eine Prüfung beides (selten, aber möglich), erscheinen beide
+    // Begriffe. `null`, wenn keine bekannte Warnungsart dabei ist (kommt
+    // aktuell nicht vor, robust gegen künftige Warnungsarten).
+    const WARN_UEBERSCHRIFTEN = {
+        slot: 'Doppelbelegung',
+        match: 'Doppelbelegung',
+        restriktion: 'Eingeschränkte Nutzung',
+    };
+
+    const warnUeberschrift = (gruppen) => {
+        const typen = [...new Set(gruppen.map((g) => WARN_UEBERSCHRIFTEN[g.typ]).filter(Boolean))];
+        return typen.length > 0 ? `⚠ ${typen.join(' · ')}` : null;
+    };
+
+    const api = { formatDatum, gruppenBeschriftung, sichtbareGruppen, warnUeberschrift };
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = api;
     } else {

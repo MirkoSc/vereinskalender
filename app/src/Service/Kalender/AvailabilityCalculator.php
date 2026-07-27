@@ -314,6 +314,17 @@ final class AvailabilityCalculator
             $zustand = 'frei';
             $grund = null;
             $label = null;
+            // Doppelbelegung (CLAUDE.md Abschnitt 3): eine Überlappung
+            // zweier Belegungen ist seit diesem Feature erlaubt, also kein
+            // Sonderfall mehr - $labels sammelt ALLE deckenden belegt-
+            // Intervalle statt beim ersten Treffer abzubrechen, damit ein
+            // doppelt belegter Abschnitt nicht mit einem einfach belegten
+            // Nachbarn verschmilzt (das war vorher der Fehler bei
+            // Teilüberlappung: der Zeitstrahl zeigte erfundene, nicht
+            // überlappende Grenzen). $label bleibt unverändert das ERSTE
+            // (Training vor Spiel, s. Reihenfolge in compute()) - additiv,
+            // damit bestehende Konsumenten unverändert funktionieren.
+            $labels = null;
             $restrictionId = null;
 
             foreach ($eingeschraenkt as $interval) {
@@ -324,19 +335,24 @@ final class AvailabilityCalculator
                     break;
                 }
             }
+            $belegtTreffer = [];
             foreach ($belegt as $interval) {
                 if ($covers($interval, $from, $to)) {
-                    $zustand = 'belegt';
-                    $label = $interval['label'];
-                    $restrictionId = null;
-                    break;
+                    $belegtTreffer[] = $interval['label'];
                 }
+            }
+            if ($belegtTreffer !== []) {
+                $zustand = 'belegt';
+                $label = $belegtTreffer[0];
+                $labels = count($belegtTreffer) > 1 ? $belegtTreffer : null;
+                $restrictionId = null;
             }
             foreach ($gesperrt as $interval) {
                 if ($covers($interval, $from, $to)) {
                     $zustand = 'gesperrt';
                     $grund = $interval['grund'];
                     $label = null;
+                    $labels = null;
                     $restrictionId = $interval['restriction_id'];
                     break;
                 }
@@ -354,6 +370,9 @@ final class AvailabilityCalculator
             if ($label !== null) {
                 $entry['label'] = $label;
             }
+            if ($labels !== null) {
+                $entry['labels'] = $labels;
+            }
             if ($restrictionId !== null) {
                 $entry['restriction_id'] = $restrictionId;
             }
@@ -363,6 +382,7 @@ final class AvailabilityCalculator
                 && $previous['zustand'] === $entry['zustand']
                 && ($previous['grund'] ?? null) === ($entry['grund'] ?? null)
                 && ($previous['label'] ?? null) === ($entry['label'] ?? null)
+                && ($previous['labels'] ?? null) === ($entry['labels'] ?? null)
                 && ($previous['restriction_id'] ?? null) === ($entry['restriction_id'] ?? null)
                 && $previous['bis'] === $entry['von']) {
                 $segments[count($segments) - 1]['bis'] = $entry['bis'];

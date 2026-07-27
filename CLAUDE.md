@@ -99,7 +99,24 @@ sind KEINE Projektionen.
   überspringt die dreistufige Umfangs-Rückfrage automatisch und zeigt
   direkt die einfache Einzel-Bearbeitung (Datum statt Wochentage/
   Gültigkeitszeitraum); der Schreibvorgang bleibt Umfang „alle" (Update in
-  place, keine Exception, kein Split).
+  place, keine Exception, kein Split). **Doppelbelegung** (mehrere
+  Belegungen oder ein Spiel gleichzeitig auf demselben Platz) ist erlaubt:
+  `BookingService::checkPayload()` legt eine Überlappung mit einer anderen
+  Belegung oder einem Spiel als **Warnung** ab (`ConflictCheckResult::
+  $warnings`, „Trotzdem speichern"-Bestätigung im Buchungsdialog wie bei
+  manuellen Spielen), nicht mehr als harten `$conflicts`-Ablehnungsgrund –
+  symmetrisch zu `checkMatch()` (Abschnitt darunter), das das schon vorher
+  so hielt. Nur eine `gesperrt`-Restriktion blockiert weiterhin die
+  gesamte Prüfung, unabhängig von einer gleichzeitigen Doppelbelegung. Der
+  doppelt belegte Zustand ist dauerhaft sichtbar, nicht nur beim Speichern
+  (Abschnitt 7/8): der Kalender markiert beide betroffenen Termine
+  unübersehbar (⚠-Symbol + Rahmen/Schraffur, aus dem UNGEFILTERTEN
+  geladenen Bestand abgeleitet, damit ein aktiver Filter die Warnung nicht
+  verschwinden lässt), die Verfügbarkeitsansicht liefert je
+  Zeitstrahl-Segment ein additives `labels`-Feld
+  (`AvailabilityCalculator::buildTimeline()`/`offline-verfuegbarkeit.js`),
+  sobald mehr als eine Belegung den Abschnitt deckt, statt die zweite
+  stillschweigend zu verschlucken.
 - **slot_exception**: slot_id FK, datum, grund.
 - **pitch_restriction**: pitch_id FK, von, bis,
   art ('gesperrt'|'eingeschraenkt'), grund (Pflicht). 'gesperrt' →
@@ -477,7 +494,16 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   breitenunabhängig (eine einmal leer gecachte Liste ließ eine später
   aktivierte Ressourcen-View sonst alle Events lautlos verwerfen). Im
   Datensatz darf nur stehen, was allein am Termin hängt – die Art-Farbe der
-  Sperrungen.
+  Sperrungen. Der **Doppelbelegungs-Marker** (⚠, Abschnitt 3) folgt
+  derselben Regel aus demselben Grund – ebenfalls in `eventContent`/
+  `eventDidMount` abgeleitet (`public/js/doppelbelegung.js`,
+  `findeUeberschneidende()`) statt im Datensatz vorberechnet –, unterscheidet
+  sich aber bewusst in EINEM Punkt von Platzfarbe/-Präfix: die Quelle ist der
+  UNGEFILTERTE geladene Bestand (`alleTermineAktuell`), nicht der bereits
+  filterbereinigte wie beim 🏠-Vermietungshinweis
+  (`vermietungenAktuell`/`findeUeberschneidende` in `vermietung-hinweis.js`)
+  – eine Doppelbelegung darf nicht verschwinden, nur weil ein Team-/
+  Bereichs-/Platzfilter gerade den Partner-Termin ausblendet.
 - Filter „manuelle Termine" (`filter-manuell`, dreistufig: Alle / Ohne
   manuelle / Nur manuelle): clientseitig wie der Platzfilter, `/api/events`
   kennt ihn nicht; er wirkt auf das `manuell`-Flag im Event-Payload und
@@ -749,10 +775,11 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   Spielstätten/Plätze/Teams (`stammdaten()` liefert `sportheime`/
   `sportheimRaeume` bereits mit); ein Platz mit `sportheim_id` zeigt sein
   Sportheim zusätzlich als 🏠-Text in der Plätze-Gruppe. Ein
-  Symbole-Abschnitt erklärt den 🏠-Indikator an Terminen (Sportheim gerade
-  vermietet), die Vermietungs-Darstellung (nur Spielstätten-Punkt, kein
-  Team) und den Spielfrei-Punkt (Issue #65: kein Auswärtsspiel, für dieses
-  Team ist an diesem Termin schlicht kein Spiel angesetzt). Die
+  Symbole-Abschnitt erklärt den ⚠-Doppelbelegungs-Marker (Abschnitt 3),
+  den 🏠-Indikator an Terminen (Sportheim gerade vermietet), die
+  Vermietungs-Darstellung (nur Spielstätten-Punkt, kein Team) und den
+  Spielfrei-Punkt (Issue #65: kein Auswärtsspiel, für dieses Team ist an
+  diesem Termin schlicht kein Spiel angesetzt). Die
   Sportheim-Termin-Arten (Issue #63) zählt der Abschnitt aus
   `appData.vermietungArten` auf, statt sie – wie zuvor den festen Text
   „Vermietung: <Anlass> (<Räume>)" – erneut zu hartcodieren.
@@ -826,6 +853,18 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   (Issue #36) erscheinen als eigener, je Spielstätte gruppierter
   Hinweis-Layer (`venue.vermietungen`) – der Platz bleibt dabei
   frei/belegt wie sonst auch, wird NIE als gesperrt gewertet.
+  **Doppelbelegung** (Abschnitt 3): `AvailabilityCalculator::
+  buildTimeline()` sammelt für ein `belegt`-Segment ALLE deckenden
+  Belegungen statt beim ersten abzubrechen – `label` bleibt wie bisher die
+  erste (Training vor Spiel in der Priorisierung), ein zusätzliches,
+  additives `labels`-Feld (Liste aller Namen) erscheint NUR, wenn mehr als
+  eine Belegung den Abschnitt deckt. Ohne diese Erweiterung hätte eine
+  Teilüberlappung zweier Belegungen erfundene, nicht überlappende Grenzen
+  gezeigt (der alte Fehler betraf bislang nur den seltenen Fall
+  Spiel-über-Training); mit ihr trennt der Zeitstrahl den doppelt belegten
+  Abschnitt sauber ab und zeigt ihn schraffiert + mit ⚠. Der Port
+  `offline-verfuegbarkeit.js` hält das Verhalten byte-identisch
+  (Parity-Fixtures, Abschnitt 11).
 - **Kalender-Abos**: stabile Feeds `/export/team/<id>.ics`,
   `/export/spiele.ics`, `/export/platz/<id>.ics`; **stabile UIDs aus
   aggregat_id** (Verlegung verschiebt statt dupliziert);
@@ -1029,8 +1068,17 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   slot_exception/Split, `testUpdateEinzeltagesSlotInPlaceSkipsSplit`);
   ICS-Sync (insert/update/skip/abgesagt, Verlegung per gleicher UID);
   VenueMatcher (Mehrfach-Begriffe, Priorität, case-insensitive, heim vs.
-  auswärts); Konfliktprüfung (gesperrt blockiert, eingeschraenkt warnt);
-  Verfügbarkeitsberechnung (Lücken innerhalb Nutzungszeiten);
+  auswärts); Konfliktprüfung (gesperrt blockiert, eingeschraenkt warnt,
+  **Doppelbelegung** – Belegung-über-Belegung UND Belegung-über-Spiel warnen
+  seit diesem Feature statt abzulehnen, symmetrisch zur bereits bestehenden
+  Spiel-Seite; die Buchung wird trotz Warnung gespeichert, `gesperrt`
+  blockiert unverändert auch bei gleichzeitiger Doppelbelegung; Berührung
+  bleibt konfliktfrei; `BookingServiceTest`/`ManualMatchServiceTest`);
+  Verfügbarkeitsberechnung (Lücken innerhalb Nutzungszeiten, **Doppelbelegung**
+  – ein doppelt belegtes Zeitstrahl-Segment trägt ein additives `labels`-Feld
+  mit allen Belegungsnamen statt nur das erste zu zeigen, geprüft für volle UND
+  Teilüberlappung – `AvailabilityServiceTest`, Parity gegen
+  `offline-verfuegbarkeit.test.js`);
   Zeitumstellungs-Tests (Slot-Expansion + ICS-Export über beide
   DST-Wochenenden); Migrationslauf von 0; Backup + Restore-Roundtrip;
   Bootstrap-Admin-Regel; Heimspielstätten-Regeln (Zuordnungs-Priorität

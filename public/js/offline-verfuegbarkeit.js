@@ -68,6 +68,21 @@
 
         const covers = (interval, from, to) => interval.von <= from && interval.bis >= to;
 
+        // Array-Gleichheit für 'labels' (Doppelbelegung) - die Einträge
+        // kommen aus derselben deterministischen Iterationsreihenfolge wie
+        // beim Nachbarsegment, ein einfacher elementweiser Vergleich reicht
+        // (=== auf Arrays selbst vergleicht in JS nur Referenzen, das wäre
+        // hier falsch).
+        const sameLabels = (a, b) => {
+            if (a === b) {
+                return true;
+            }
+            if (a === null || b === null || a.length !== b.length) {
+                return false;
+            }
+            return a.every((v, i) => v === b[i]);
+        };
+
         const segments = [];
         for (let i = 0; i < boundaries.length - 1; i++) {
             const from = boundaries[i];
@@ -76,6 +91,12 @@
             let zustand = 'frei';
             let grund = null;
             let label = null;
+            // Doppelbelegung (CLAUDE.md Abschnitt 3): ALLE deckenden
+            // belegt-Intervalle sammeln statt beim ersten abzubrechen, damit
+            // ein doppelt belegter Abschnitt nicht mit einem einfach
+            // belegten Nachbarn verschmilzt. `label` bleibt das ERSTE
+            // (Training vor Spiel) - additiv, s. AvailabilityCalculator.php.
+            let labels = null;
             let restrictionId = null;
 
             for (const interval of eingeschraenkt) {
@@ -86,19 +107,24 @@
                     break;
                 }
             }
+            const belegtTreffer = [];
             for (const interval of belegt) {
                 if (covers(interval, from, to)) {
-                    zustand = 'belegt';
-                    label = interval.label;
-                    restrictionId = null;
-                    break;
+                    belegtTreffer.push(interval.label);
                 }
+            }
+            if (belegtTreffer.length > 0) {
+                zustand = 'belegt';
+                [label] = belegtTreffer;
+                labels = belegtTreffer.length > 1 ? belegtTreffer : null;
+                restrictionId = null;
             }
             for (const interval of gesperrt) {
                 if (covers(interval, from, to)) {
                     zustand = 'gesperrt';
                     grund = interval.grund;
                     label = null;
+                    labels = null;
                     restrictionId = interval.restriction_id;
                     break;
                 }
@@ -112,6 +138,9 @@
             if (label !== null) {
                 entry.label = label;
             }
+            if (labels !== null) {
+                entry.labels = labels;
+            }
             if (restrictionId !== null) {
                 entry.restriction_id = restrictionId;
             }
@@ -120,6 +149,7 @@
                 && previous.zustand === entry.zustand
                 && (previous.grund ?? null) === (entry.grund ?? null)
                 && (previous.label ?? null) === (entry.label ?? null)
+                && sameLabels(previous.labels ?? null, entry.labels ?? null)
                 && (previous.restriction_id ?? null) === (entry.restriction_id ?? null)
                 && previous.bis === entry.von) {
                 segments[segments.length - 1].bis = entry.bis;

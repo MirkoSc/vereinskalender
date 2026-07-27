@@ -76,6 +76,32 @@ test('a home match without a matched venue produces no hint (silently dropped)',
     }
 });
 
+test('Doppelbelegung: teilweise überlappende Trainings liefern eigene Segmente mit labels statt einer verschmolzenen Belegung', () => {
+    // Slot 1 (Training E1+E2, 19:00-20:30) und Slot 2 (Training E1,
+    // 19:00-19:45) überlappen sich auf Platz 1 dienstags (CLAUDE.md
+    // Abschnitt 3) - der Abschnitt 19:00-19:45 muss BEIDE Label tragen,
+    // nicht nur das erste gewinnende, und darf nicht mit dem einfach
+    // belegten Rest ab 19:45 verschmelzen.
+    const result = berechne(bundle, '2026-08-04', '2026-08-04');
+    const tag = findDay(result, 1, '2026-08-04');
+    // Der 15:00-17:00-Block ist match-102 (Spiel E1 - SV Rivale, dieselbe
+    // Fixture) - unbeteiligt an der Doppelbelegung, hier nur der
+    // Vollständigkeit halber mitgeführt statt gefiltert.
+    const belegt = tag.intervalle.filter((i) => i.zustand === 'belegt');
+    assert.deepEqual(belegt, [
+        { von: '15:00', bis: '17:00', zustand: 'belegt', label: 'Spiel E1 – SV Rivale' },
+        {
+            von: '19:00',
+            bis: '19:45',
+            zustand: 'belegt',
+            grund: 'Rasenschonung',
+            label: 'Training E1+E2',
+            labels: ['Training E1+E2', 'Training E1'],
+        },
+        { von: '19:45', bis: '20:30', zustand: 'belegt', grund: 'Rasenschonung', label: 'Training E1+E2' },
+    ]);
+});
+
 test('a bye occupies no pitch and produces no hint (Issue #65)', () => {
     // match-107: spielfrei, no venue, no pitch, otherwise isolated day
     const result = berechne(bundle, '2026-09-07', '2026-09-07');

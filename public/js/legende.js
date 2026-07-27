@@ -95,6 +95,23 @@
     };
 
     const symbolAbschnitt = (arten) => {
+        // Doppelbelegung (CLAUDE.md Abschnitt 3): eine Überlappung zweier
+        // Belegungen/Spiele auf demselben Platz ist erlaubt, wird aber am
+        // Termin nie stillschweigend verschluckt - "Farbe ist nie das
+        // einzige Signal" gilt auch hier.
+        const doppelbelegung = document.createElement('p');
+        doppelbelegung.className = 'legende-symbol-erklaerung';
+        const doppelbelegungZeichen = document.createElement('span');
+        doppelbelegungZeichen.textContent = '⚠';
+        doppelbelegungZeichen.setAttribute('aria-hidden', 'true');
+        doppelbelegung.append(
+            doppelbelegungZeichen,
+            document.createTextNode(
+                ' an einem Training oder Spiel: der Platz ist zu diesem Zeitpunkt bereits '
+                + 'von einem anderen Termin belegt (Doppelbelegung). Details im Detail-Dialog.',
+            ),
+        );
+
         const haus = document.createElement('p');
         haus.className = 'legende-symbol-erklaerung';
         const hausPunkt = document.createElement('span');
@@ -131,7 +148,7 @@
             document.createTextNode(' Spielfrei: für dieses Team ist an diesem Termin kein Spiel angesetzt.'),
         );
 
-        return abschnitt('Symbole', [haus, vermietung, spielfrei]);
+        return abschnitt('Symbole', [doppelbelegung, haus, vermietung, spielfrei]);
     };
 
     const render = (root, appData) => {

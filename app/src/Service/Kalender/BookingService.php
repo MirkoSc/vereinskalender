@@ -118,9 +118,8 @@ final readonly class BookingService
             if (!self::overlaps($start, $end, $occurrence->start, $occurrence->end)) {
                 continue;
             }
-            $message = sprintf(
-                'Kollidiert am %s mit der Belegung von %s (%s–%s Uhr).',
-                self::germanDate($datum),
+            $message = self::doppelbelegungMeldungSlot(
+                $datum,
                 $namesOf($occurrence->teamIds),
                 $occurrence->start->format('H:i'),
                 $occurrence->end->format('H:i'),
@@ -150,12 +149,7 @@ final readonly class BookingService
             if (!self::overlaps($start, $end, $matchStart, $matchEnd)) {
                 continue;
             }
-            $message = sprintf(
-                'Kollidiert am %s mit dem Spiel gegen %s (Anstoß %s Uhr).',
-                self::germanDate($datum),
-                (string) $match['gegner'],
-                $matchStart->format('H:i'),
-            );
+            $message = self::doppelbelegungMeldungSpiel($datum, (string) $match['gegner'], $matchStart->format('H:i'));
             $warnings[] = $message;
             $details[] = new Conflict(
                 'match',
@@ -668,16 +662,19 @@ final readonly class BookingService
         };
 
         foreach ($candidateOccurrences as $occurrence) {
+            // Double booking (two occupants on the same pitch at once) is
+            // allowed - it warns instead of blocking, symmetric to the
+            // match-vs-slot/match warning in checkMatch(). Only a 'gesperrt'
+            // restriction below still rejects the write.
             foreach ($occurrencesByDate[$occurrence->datum] ?? [] as $other) {
                 if (self::overlaps($occurrence->start, $occurrence->end, $other->start, $other->end)) {
-                    $message = sprintf(
-                        'Kollidiert am %s mit der Belegung von %s (%s–%s Uhr).',
-                        self::germanDate($occurrence->datum),
+                    $message = self::doppelbelegungMeldungSlot(
+                        $occurrence->datum,
                         $namesOf($other->teamIds),
                         $other->start->format('H:i'),
                         $other->end->format('H:i'),
                     );
-                    $conflicts[] = $message;
+                    $warnings[] = $message;
                     $addDetail(new Conflict(
                         'slot',
                         $other->slotId,
@@ -685,7 +682,7 @@ final readonly class BookingService
                         $occurrence->datum,
                         $other->start->format('H:i'),
                         $other->end->format('H:i'),
-                        false,
+                        true,
                         $message,
                     ));
                 }
@@ -698,13 +695,8 @@ final readonly class BookingService
                 $matchStart = new \DateTimeImmutable((string) $match['anstoss']);
                 $matchEnd = MatchDuration::effectiveEnd((string) $match['anstoss'], $match['ende'] !== null ? (string) $match['ende'] : null);
                 if (self::overlaps($occurrence->start, $occurrence->end, $matchStart, $matchEnd)) {
-                    $message = sprintf(
-                        'Kollidiert am %s mit dem Spiel gegen %s (Anstoß %s Uhr).',
-                        self::germanDate($occurrence->datum),
-                        (string) $match['gegner'],
-                        $matchStart->format('H:i'),
-                    );
-                    $conflicts[] = $message;
+                    $message = self::doppelbelegungMeldungSpiel($occurrence->datum, (string) $match['gegner'], $matchStart->format('H:i'));
+                    $warnings[] = $message;
                     $addDetail(new Conflict(
                         'match',
                         (int) $match['id'],
@@ -712,7 +704,7 @@ final readonly class BookingService
                         $occurrence->datum,
                         $matchStart->format('H:i'),
                         $matchEnd->format('H:i'),
-                        false,
+                        true,
                         $message,
                     ));
                 }
@@ -983,5 +975,35 @@ final readonly class BookingService
     private static function germanDate(string $isoDate): string
     {
         return new \DateTimeImmutable($isoDate)->format('d.m.Y');
+    }
+
+    /**
+     * Shared wording for a pitch double-booking against another slot
+     * occurrence (checkPayload() and checkMatch() both produce this). A
+     * double booking is allowed (CLAUDE.md section 3) but always a
+     * warning, never a hard conflict - istWarnung is set by the caller.
+     */
+    private static function doppelbelegungMeldungSlot(string $datum, string $namen, string $von, string $bis): string
+    {
+        return sprintf(
+            'Doppelbelegung am %s: Platz ist %s–%s Uhr bereits von %s belegt.',
+            self::germanDate($datum),
+            $von,
+            $bis,
+            $namen,
+        );
+    }
+
+    /**
+     * Shared wording for a pitch double-booking against a match.
+     */
+    private static function doppelbelegungMeldungSpiel(string $datum, string $gegner, string $anstossVon): string
+    {
+        return sprintf(
+            'Doppelbelegung am %s: Platz ist bereits durch das Spiel gegen %s belegt (Anstoß %s Uhr).',
+            self::germanDate($datum),
+            $gegner,
+            $anstossVon,
+        );
     }
 }

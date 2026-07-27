@@ -59,6 +59,9 @@ final class SaisonController extends AdminController
         $result = $this->saison->copySlots($slotIds, $gueltigAb, $gueltigBis, $this->context($request));
 
         $meldung = sprintf('%d Trainingsslot(s) für die neue Saison angelegt.', $result['angelegt']);
+        if ($result['warnungen'] !== []) {
+            $meldung .= ' Hinweise: ' . implode(' ', $result['warnungen']);
+        }
         if ($result['fehler'] !== []) {
             $meldung .= ' Probleme: ' . implode(' ', $result['fehler']);
         }

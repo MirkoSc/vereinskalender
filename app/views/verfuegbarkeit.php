@@ -36,6 +36,7 @@
     <p class="legend">
         <span class="chip chip-frei">frei</span>
         <span class="chip chip-belegt">belegt</span>
+        <span class="chip chip-doppelbelegung">⚠ doppelt belegt</span>
         <span class="chip chip-eingeschraenkt">eingeschränkt</span>
         <span class="chip chip-gesperrt">gesperrt</span>
     </p>
