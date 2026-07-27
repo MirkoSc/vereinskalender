@@ -1,4 +1,10 @@
 <section class="calendar-page">
+    <!-- "Jetzt gerade": aktuell laufende Termine ganz oben, damit man auf
+         den ersten Blick sieht, was los ist - nur sichtbar, wenn wirklich
+         etwas läuft (kalender.js füllt/versteckt per hidden-Attribut,
+         public/js/kalender-laufend.js liefert die reine Filterlogik). -->
+    <div id="kalender-laufend" class="kalender-laufend" hidden aria-live="polite"></div>
+
     <div class="kalender-titelzeile">
         <h2><?= e($title) ?></h2>
         <!-- Issue #53: Zeitraum-Anzeige neben der Überschrift statt in

@@ -1934,6 +1934,90 @@
         detailDialog.showModal();
     };
 
+    // ---- "Jetzt gerade" (aktuell laufende Termine ganz oben) ----
+    // Ein eigener /api/events-Abruf für "heute" statt aus dem gerade
+    // geladenen Grid-/Listen-Bestand abgeleitet: "jetzt" läuft unabhängig
+    // vom sichtbaren Bereich weiter, ein Wechsel in einen anderen Monat/eine
+    // andere Woche darf die Anzeige also nicht verschwinden lassen. Bewusst
+    // KEIN Team-/Bereichs-/Platzfilter - der Live-Status soll nicht
+    // verschwinden, nur weil gerade ein Filter aktiv ist (analog
+    // alleTermineAktuell/Doppelbelegung weiter oben). Eigener Fetch statt
+    // fetchEventsRange(): dessen Offline-Fallback liest die aktiven Filter
+    // aus der UI, genau das soll hier nicht passieren.
+    const laufendContainer = document.querySelector('#kalender-laufend');
+
+    const fetchTagesEventsUngefiltert = async (tag) => {
+        try {
+            const response = await fetch(`/api/events?von=${tag}&bis=${tag}`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            return (await response.json()).events;
+        } catch (error) {
+            const bundle = await window.VKOffline?.load();
+            if (!bundle) {
+                throw error;
+            }
+            window.VKOffline.showBanner(bundle);
+            return window.VKOfflineEvents.eventsAusBundle(bundle, tag, tag);
+        }
+    };
+
+    const laufendItem = (props) => {
+        const li = document.createElement('li');
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'kalender-laufend-item';
+        const punkte = eventPunkte(props);
+        if (punkte) {
+            button.append(punkte);
+        }
+        const text = document.createElement('span');
+        text.textContent = `${eventVollerTitel(props)} (bis ${props.ende.slice(11, 16)} Uhr)`;
+        button.append(text);
+        button.addEventListener('click', () => showDetail(props));
+        li.append(button);
+        return li;
+    };
+
+    const aktualisiereLaufendBanner = async () => {
+        if (!laufendContainer) {
+            return;
+        }
+        let events;
+        try {
+            events = await fetchTagesEventsUngefiltert(window.VKNachlade.toIsoDate(new Date()));
+        } catch {
+            // weder Netzwerk noch Offline-Bundle verfügbar - Banner bleibt,
+            // wie es ist, statt einen Fehler zu zeigen.
+            return;
+        }
+        const laufend = window.VKKalenderLaufend.laufendeTermine(
+            events,
+            window.VKKalenderLaufend.jetztAlsIso(new Date()),
+        );
+        laufendContainer.replaceChildren();
+        laufendContainer.hidden = laufend.length === 0;
+        if (laufend.length === 0) {
+            return;
+        }
+        const label = document.createElement('span');
+        label.className = 'kalender-laufend-label';
+        label.textContent = 'Jetzt:';
+        const liste = document.createElement('ul');
+        liste.className = 'kalender-laufend-liste';
+        for (const props of laufend) {
+            liste.append(laufendItem(props));
+        }
+        laufendContainer.append(label, liste);
+    };
+
+    aktualisiereLaufendBanner();
+    // Minütlicher Refresh reicht - der Banner ist ein Status-Überblick, kein
+    // Live-Ticker; ein begonnener/beendeter Termin erscheint/verschwindet
+    // spätestens eine Minute später.
+    setInterval(aktualisiereLaufendBanner, 60000);
+
     // ---- Konflikt-Anzeige (Issue #9, Issue #12: von Booking- UND
     // Match-Formular genutzt) ----
     // Eine Serie (oder ein anderer wiederholter Verursacher) wird als eine
