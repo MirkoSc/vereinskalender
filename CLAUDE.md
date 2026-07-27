@@ -656,6 +656,25 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   führte den Scroll-Ansatz ein, Issue #53 ersetzt ihn: der Titel-Slot war
   dort der größte Platzverbraucher, ohne ihn passen Navigation und die vier
   Umschalter-Buttons ohne Scrollbalken).
+- **„Jetzt gerade"-Banner**: eigenes Element `#kalender-laufend` ganz oben
+  auf der Kalenderseite (vor der Titelzeile), zeigt die gerade laufenden
+  Termine (Start ≤ jetzt < Ende, Berührung zählt als vorbei) an – bewusst
+  `hidden`, solange nichts läuft, damit die Seite sonst unverändert
+  aussieht. Eigener, von der sichtbaren Darstellung UNABHÄNGIGER
+  `/api/events`-Abruf für „heute" (`fetchTagesEventsUngefiltert`,
+  `public/js/kalender.js`) statt aus dem gerade geladenen Grid-/
+  Listen-Bestand abgeleitet – sonst verschwände die Anzeige, sobald man in
+  einen anderen Monat/eine andere Woche navigiert, obwohl „jetzt" davon
+  unberührt weiterläuft; eigener Offline-Fallback aufs Bundle (wie
+  `fetchEventsRange`), aber bewusst OHNE die aktiven Team-/Bereichs-/
+  Platzfilter zu übernehmen – der Live-Status soll nicht verschwinden, nur
+  weil gerade ein Filter aktiv ist (analog `alleTermineAktuell`/
+  Doppelbelegung). Minütlicher Refresh (`setInterval`, kein Live-Ticker
+  nötig für einen Status-Überblick). Reine Filter-/Sortierlogik in
+  `public/js/kalender-laufend.js` (`laufendeTermine()`, testbar mit
+  `node --test tests/js`, abgesagte Spiele zählen nicht als laufend);
+  Klick auf einen Eintrag öffnet denselben Detail-Dialog wie ein
+  Kalender-Termin.
 - **Terminliste mit Nachladen**: `listNachlade` ist eine der vier
   Darstellungen (Issue #37, per Umschalter erreichbar, nicht mehr an eine
   Ansicht/Bildschirmbreite gebunden); ihr sichtbarer Bereich beginnt beim
