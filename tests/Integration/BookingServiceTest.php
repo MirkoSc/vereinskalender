@@ -96,41 +96,81 @@ final class BookingServiceTest extends DatabaseTestCase
         self::assertSame($slot, $this->dumpTable('training_slot')[0]);
     }
 
-    public function testOverlappingSlotOnSamePitchIsRejected(): void
+    public function testOverlappingSlotOnSamePitchWarnsButStillWrites(): void
     {
         $booking = $this->bookingService();
         $booking->createSlot($this->slotInput(), $this->context());
 
         $otherTeam = $this->createTeam('E2');
 
-        try {
-            $booking->createSlot(
-                $this->slotInput(['team_ids' => [$otherTeam], 'beginn' => '20:00', 'ende' => '21:30']),
-                $this->context(),
-            );
-            self::fail('Expected a conflict');
-        } catch (ConflictException $e) {
-            self::assertStringContainsString('Kollidiert', $e->getConflicts()[0]);
-        }
+        $result = $booking->createSlot(
+            $this->slotInput(['team_ids' => [$otherTeam], 'beginn' => '20:00', 'ende' => '21:30']),
+            $this->context(),
+        );
 
-        self::assertCount(1, $this->dumpTable('training_slot'), 'conflicting slot must not be saved');
+        self::assertNotSame([], $result['warnings']);
+        self::assertStringContainsString('Doppelbelegung', $result['warnings'][0]);
+        self::assertCount(2, $this->dumpTable('training_slot'), 'a double booking warns but both bookings are saved');
     }
 
-    public function testMultiWeekdaySlotConflictsOnEveryWeekday(): void
+    public function testMultiWeekdaySlotWarnsOnEveryWeekday(): void
     {
         $booking = $this->bookingService();
         $booking->createSlot($this->slotInput(['wochentage' => [2, 4]]), $this->context());
 
+        // Thursday only, same time: double-books the Thursday leg
+        $result = $booking->createSlot(
+            $this->slotInput(['team_ids' => [$this->createTeam('E2')], 'wochentage' => [4]]),
+            $this->context(),
+        );
+
+        self::assertNotSame([], $result['warnings']);
+        self::assertStringContainsString('Doppelbelegung', $result['warnings'][0]);
+    }
+
+    public function testOverlappingSlotDetailsAreWarningsNotConflicts(): void
+    {
+        $booking = $this->bookingService();
+        $booking->createSlot($this->slotInput(), $this->context());
+
+        $result = $booking->check(
+            $this->slotInput(['team_ids' => [$this->createTeam('E2')], 'beginn' => '19:30', 'ende' => '21:00']),
+        );
+
+        self::assertSame([], $result->conflicts, 'a double booking must never be a hard conflict');
+        self::assertNotSame([], $result->warnings);
+        $slotDetails = array_values(array_filter($result->details, static fn($d) => $d->typ === 'slot'));
+        self::assertNotSame([], $slotDetails);
+        self::assertTrue($slotDetails[0]->istWarnung);
+    }
+
+    public function testGesperrtRestrictionStillBlocksEvenWithDoubleBooking(): void
+    {
+        $booking = $this->bookingService();
+        $booking->createSlot($this->slotInput(), $this->context());
+        $this->restrictionService()->create([
+            'pitch_id' => $this->pitchId,
+            'von' => '2026-08-04 00:00',
+            'bis' => '2026-08-05 00:00',
+            'art' => 'gesperrt',
+            'grund' => 'Platzpflege',
+        ], $this->context());
+
         try {
-            // Thursday only, same time: collides with the Thursday leg
             $booking->createSlot(
-                $this->slotInput(['team_ids' => [$this->createTeam('E2')], 'wochentage' => [4]]),
+                $this->slotInput(['team_ids' => [$this->createTeam('E2')], 'beginn' => '19:30', 'ende' => '21:00']),
                 $this->context(),
             );
             self::fail('Expected a conflict');
         } catch (ConflictException $e) {
-            self::assertStringContainsString('Kollidiert', $e->getConflicts()[0]);
+            self::assertStringContainsString('gesperrt', $e->getConflicts()[0]);
         }
+
+        self::assertCount(
+            1,
+            $this->dumpTable('training_slot'),
+            'a gesperrt restriction still blocks, even though the double booking alone would only warn',
+        );
     }
 
     public function testAdjacentSlotDoesNotConflict(): void
@@ -193,7 +233,7 @@ final class BookingServiceTest extends DatabaseTestCase
         self::assertCount(1, $this->dumpTable('training_slot'), 'booking IS saved despite the warning');
     }
 
-    public function testMatchOnSamePitchConflicts(): void
+    public function testMatchOnSamePitchWarnsButStillWrites(): void
     {
         // Saturday 2026-08-08 15:00 on this pitch, assumed 2h duration
         $this->createMatch($this->teamId, [
@@ -202,15 +242,14 @@ final class BookingServiceTest extends DatabaseTestCase
             'pitch_id' => $this->pitchId,
         ]);
 
-        try {
-            $this->bookingService()->createSlot(
-                $this->slotInput(['wochentage' => [6], 'beginn' => '16:00', 'ende' => '17:30']),
-                $this->context(),
-            );
-            self::fail('Expected a conflict');
-        } catch (ConflictException $e) {
-            self::assertStringContainsString('Spiel gegen FC Gegner', $e->getConflicts()[0]);
-        }
+        $result = $this->bookingService()->createSlot(
+            $this->slotInput(['wochentage' => [6], 'beginn' => '16:00', 'ende' => '17:30']),
+            $this->context(),
+        );
+
+        self::assertNotSame([], $result['warnings']);
+        self::assertStringContainsString('Spiel gegen FC Gegner', $result['warnings'][0]);
+        self::assertCount(1, $this->dumpTable('training_slot'), 'a double booking with a match warns but the slot is saved');
     }
 
     public function testMatchWithExplicitEndeShortensAndExtendsConflictWindow(): void
@@ -226,15 +265,12 @@ final class BookingServiceTest extends DatabaseTestCase
         ]);
 
         // 13:00-14:30 lies past the +2h fallback but inside the explicit end
-        try {
-            $this->bookingService()->createSlot(
-                $this->slotInput(['wochentage' => [6], 'beginn' => '13:00', 'ende' => '14:30']),
-                $this->context(),
-            );
-            self::fail('Expected a conflict');
-        } catch (ConflictException $e) {
-            self::assertStringContainsString('Spiel gegen Turnier', $e->getConflicts()[0]);
-        }
+        $result = $this->bookingService()->createSlot(
+            $this->slotInput(['wochentage' => [6], 'beginn' => '13:00', 'ende' => '14:30']),
+            $this->context(),
+        );
+        self::assertNotSame([], $result['warnings']);
+        self::assertStringContainsString('Spiel gegen Turnier', $result['warnings'][0]);
 
         // 16:00-17:30 starts exactly at the explicit end: free
         $result = $this->bookingService()->createSlot(
@@ -372,29 +408,26 @@ final class BookingServiceTest extends DatabaseTestCase
         self::assertCount(2, $this->dumpTable('training_slot'));
     }
 
-    public function testEditScopeEinzelnDetectsConflictWithOwnSeries(): void
+    public function testEditScopeEinzelnWarnsOnConflictWithOwnSeries(): void
     {
         $booking = $this->bookingService();
         $created = $booking->createSlot($this->slotInput(['wochentage' => [2, 4]]), $this->context());
 
-        try {
-            // moving the Tuesday occurrence onto the (still busy) Thursday
-            $booking->updateSlot($created['id'], [
-                'edit_scope' => 'einzeln',
-                'datum' => '2026-08-04',
-                'datum_neu' => '2026-08-06',
-                'team_ids' => [$this->teamId],
-                'pitch_id' => $this->pitchId,
-                'beginn' => '19:00',
-                'ende' => '20:30',
-            ], $this->context());
-            self::fail('Expected a conflict');
-        } catch (ConflictException $e) {
-            self::assertStringContainsString('Kollidiert', $e->getConflicts()[0]);
-        }
+        // moving the Tuesday occurrence onto the (still busy) Thursday
+        $result = $booking->updateSlot($created['id'], [
+            'edit_scope' => 'einzeln',
+            'datum' => '2026-08-04',
+            'datum_neu' => '2026-08-06',
+            'team_ids' => [$this->teamId],
+            'pitch_id' => $this->pitchId,
+            'beginn' => '19:00',
+            'ende' => '20:30',
+        ], $this->context());
 
-        self::assertCount(1, $this->dumpTable('training_slot'), 'nothing was written');
-        self::assertCount(0, $this->dumpTable('slot_exception'), 'nothing was written');
+        self::assertNotSame([], $result['warnings']);
+        self::assertStringContainsString('Doppelbelegung', $result['warnings'][0]);
+        self::assertCount(2, $this->dumpTable('training_slot'), 'the moved single occurrence is saved alongside the series');
+        self::assertCount(1, $this->dumpTable('slot_exception'), 'the original Tuesday occurrence is excepted');
     }
 
     public function testEditScopeEinzelnRejectsNonOccurrenceDate(): void
@@ -645,23 +678,20 @@ final class BookingServiceTest extends DatabaseTestCase
         self::assertCount(0, $this->dumpTable('training_slot'));
     }
 
-    public function testCreateEinzelterminDetectsConflictWithExistingSeries(): void
+    public function testCreateEinzelterminWarnsOnConflictWithExistingSeries(): void
     {
         $booking = $this->bookingService();
         // Tuesdays 19:00-20:30, running through the Einzeltermin's date
         $booking->createSlot($this->slotInput(), $this->context());
 
-        try {
-            $booking->createSlot(
-                $this->einzelterminInput(['team_ids' => [$this->createTeam('E2')]]),
-                $this->context(),
-            );
-            self::fail('Expected a conflict');
-        } catch (ConflictException $e) {
-            self::assertStringContainsString('Kollidiert', $e->getConflicts()[0]);
-        }
+        $result = $booking->createSlot(
+            $this->einzelterminInput(['team_ids' => [$this->createTeam('E2')]]),
+            $this->context(),
+        );
 
-        self::assertCount(1, $this->dumpTable('training_slot'), 'the Einzeltermin must not be saved');
+        self::assertNotSame([], $result['warnings']);
+        self::assertStringContainsString('Doppelbelegung', $result['warnings'][0]);
+        self::assertCount(2, $this->dumpTable('training_slot'), 'the Einzeltermin is saved alongside the series');
     }
 
     /**

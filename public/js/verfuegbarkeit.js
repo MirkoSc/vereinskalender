@@ -250,11 +250,21 @@
                     for (const segment of tag.intervalle) {
                         const el = document.createElement('button');
                         el.type = 'button';
-                        el.className = `segment segment-${segment.zustand}`;
+                        // Doppelbelegung (CLAUDE.md Abschnitt 3): 'labels'
+                        // ist nur gesetzt, wenn MEHR als eine Belegung diesen
+                        // Abschnitt deckt (AvailabilityCalculator::
+                        // buildTimeline) - eigene Klasse für Schraffur, ⚠ +
+                        // alle Namen statt nur des einen gewinnenden Labels.
+                        const doppelbelegt = segment.labels != null;
+                        el.className = `segment segment-${segment.zustand}${doppelbelegt ? ' segment-doppelbelegung' : ''}`;
                         el.style.left = `${((minuten(segment.von) - windowStart) / total) * 100}%`;
                         el.style.width = `${((minuten(segment.bis) - minuten(segment.von)) / total) * 100}%`;
-                        el.title = `${segment.von}–${segment.bis}: ${zustandLabel[segment.zustand]}`;
-                        if (segment.zustand !== 'frei') {
+                        el.title = doppelbelegt
+                            ? `${segment.von}–${segment.bis}: Doppelbelegung (${segment.labels.join(', ')})`
+                            : `${segment.von}–${segment.bis}: ${zustandLabel[segment.zustand]}`;
+                        if (doppelbelegt) {
+                            el.textContent = `⚠ ${segment.labels.join(' + ')}`;
+                        } else if (segment.zustand !== 'frei') {
                             el.textContent = segment.label ?? segment.grund ?? zustandLabel[segment.zustand];
                         }
                         // Issue #7 "Alle": Platzfarbe statt Zustandsfarbe bei
@@ -296,8 +306,15 @@
         const title = document.createElement('h3');
         title.textContent = `${pitch.name} – ${new Date(`${datum}T00:00:00`).toLocaleDateString('de-DE')}`;
         const info = document.createElement('p');
+        // Doppelbelegung (CLAUDE.md Abschnitt 3): alle Belegungen nennen,
+        // nicht nur das eine gewinnende `label` der Kachel.
+        if (segment.labels != null) {
+            info.className = 'warning-message';
+        }
         info.textContent = `${segment.von}–${segment.bis} Uhr: ${zustandLabel[segment.zustand]}`
-            + (segment.label ? ` (${segment.label})` : '')
+            + (segment.labels != null
+                ? ` – ⚠ Doppelbelegung: ${segment.labels.join(', ')}`
+                : (segment.label ? ` (${segment.label})` : ''))
             + (segment.grund ? ` – Grund: ${segment.grund}` : '');
         intervalContent.append(title, info);
 

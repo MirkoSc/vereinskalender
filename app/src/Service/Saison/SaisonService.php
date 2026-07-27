@@ -69,15 +69,19 @@ final readonly class SaisonService
 
     /**
      * Copies the selected slots into the new validity range (as events,
-     * conflict-checked one by one).
+     * conflict-checked one by one). A double booking no longer rejects the
+     * copy (CLAUDE.md section 3) - it comes back as a warning instead, so
+     * the admin sees it in the result without the slot silently failing to
+     * copy.
      *
      * @param list<int> $slotIds
-     * @return array{angelegt: int, fehler: list<string>}
+     * @return array{angelegt: int, fehler: list<string>, warnungen: list<string>}
      */
     public function copySlots(array $slotIds, string $gueltigAb, string $gueltigBis, EventContext $context): array
     {
         $angelegt = 0;
         $fehler = [];
+        $warnungen = [];
 
         foreach ($slotIds as $slotId) {
             $slot = $this->slots->find($slotId);
@@ -87,7 +91,7 @@ final readonly class SaisonService
             }
 
             try {
-                $this->booking->createSlot([
+                $result = $this->booking->createSlot([
                     'team_ids' => (array) json_decode((string) $slot['team_ids'], true),
                     'pitch_id' => (int) $slot['pitch_id'],
                     'wochentage' => (array) json_decode((string) $slot['wochentage'], true),
@@ -97,6 +101,9 @@ final readonly class SaisonService
                     'gueltig_bis' => $gueltigBis,
                 ], $context);
                 $angelegt++;
+                foreach ($result['warnings'] as $warnung) {
+                    $warnungen[] = sprintf('Slot #%d: %s', $slotId, $warnung);
+                }
             } catch (ConflictException $e) {
                 $fehler[] = sprintf('Slot #%d: %s', $slotId, implode(' ', array_slice($e->getConflicts(), 0, 2)));
             } catch (ValidationException $e) {
@@ -104,7 +111,7 @@ final readonly class SaisonService
             }
         }
 
-        return ['angelegt' => $angelegt, 'fehler' => $fehler];
+        return ['angelegt' => $angelegt, 'fehler' => $fehler, 'warnungen' => $warnungen];
     }
 
     /**

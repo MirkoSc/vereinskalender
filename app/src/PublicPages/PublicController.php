@@ -124,6 +124,7 @@ final readonly class PublicController
                 '/js/kalender-ansicht.js',
                 '/js/kalender-titel.js',
                 '/js/vermietung-hinweis.js',
+                '/js/doppelbelegung.js',
                 '/js/kalender.js',
             ],
         ]));

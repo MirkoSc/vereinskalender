@@ -64,6 +64,17 @@
                                 },
                                 {
                                     "von": "19:00",
+                                    "bis": "19:45",
+                                    "zustand": "belegt",
+                                    "grund": "Rasenschonung",
+                                    "label": "Training E1+E2",
+                                    "labels": [
+                                        "Training E1+E2",
+                                        "Training E1"
+                                    ]
+                                },
+                                {
+                                    "von": "19:45",
                                     "bis": "20:30",
                                     "zustand": "belegt",
                                     "grund": "Rasenschonung",

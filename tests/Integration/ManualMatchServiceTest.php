@@ -248,7 +248,7 @@ final class ManualMatchServiceTest extends DatabaseTestCase
         $result = $this->matchService()->createMatch($this->matchInput(['datum' => $datum, 'anstoss' => '15:00']), $this->context());
 
         self::assertNotSame([], $result['warnings']);
-        self::assertStringContainsString('Kollidiert', $result['warnings'][0]);
+        self::assertStringContainsString('Doppelbelegung', $result['warnings'][0]);
         self::assertCount(1, $this->dumpTable('match'), 'a warning does not block the write');
     }
 

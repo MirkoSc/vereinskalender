@@ -496,6 +496,27 @@
             wrapper.append(zeit);
         }
 
+        // Doppelbelegung (CLAUDE.md Abschnitt 3): seit die Konfliktprüfung
+        // eine Überlappung nur noch warnt statt ablehnt, ist ein doppelt
+        // belegter Platz ein dauerhafter Zustand - unübersehbar VOR den
+        // Farbpunkten (anders als das dezente 🏠 am Ende), aus dem
+        // UNGEFILTERTEN Bestand (alleTermineAktuell, s. Kommentar dort)
+        // abgeleitet, damit die Warnung nicht verschwindet, nur weil ein
+        // aktiver Filter den Partner-Termin gerade ausblendet.
+        const doppeltBelegt = window.VKDoppelbelegung.findeUeberschneidende(alleTermineAktuell, props);
+        if (doppeltBelegt.length > 0) {
+            const namen = doppeltBelegt
+                .map((d) => `${d.titel} (${d.start.slice(11, 16)}–${d.ende.slice(11, 16)} Uhr)`)
+                .join(', ');
+            const warnung = document.createElement('span');
+            warnung.className = 'ev-doppelbelegung-hinweis';
+            warnung.textContent = '⚠';
+            warnung.setAttribute('role', 'img');
+            warnung.setAttribute('aria-label', `Doppelbelegung: ${namen}`);
+            warnung.title = `Doppelbelegung: ${namen}`;
+            wrapper.append(warnung);
+        }
+
         const punkte = eventPunkte(props);
         if (punkte) {
             wrapper.append(punkte);
@@ -575,6 +596,15 @@
     // Filterwechsel. Die Entscheidung fällt damit immer auf dem aktuellen
     // Stand von Darstellung × Breite × Platzfilter.
     const eventDidMount = (info) => {
+        // Doppelbelegung (CLAUDE.md Abschnitt 3): die Klasse muss in JEDER
+        // Darstellung gesetzt werden, nicht nur im Hintergrund-Modus wie die
+        // Platzfarbe unten - deshalb hier, vor dem frühen return, und aus
+        // demselben ungefilterten Bestand wie das ⚠ in eventContent().
+        info.el.classList.toggle(
+            'ev-doppelbelegung',
+            window.VKDoppelbelegung.findeUeberschneidende(alleTermineAktuell, info.event.extendedProps).length > 0,
+        );
+
         if (platzFarbDarstellung() !== 'hintergrund') {
             return;
         }
@@ -666,6 +696,18 @@
     let vermietungenAktuell = [];
     const merkeVermietungen = (events) => {
         vermietungenAktuell = events.filter((e) => e.typ === 'vermietung');
+        return events;
+    };
+
+    // Doppelbelegung (CLAUDE.md Abschnitt 3): bewusst aus dem UNGEFILTERTEN
+    // Bestand gespeist (anders als vermietungenAktuell oben) - eine
+    // Doppelbelegung darf nicht verschwinden, nur weil ein Team-/Bereichs-/
+    // Platzfilter gerade den Partner-Termin ausblendet. Wird deshalb VOR
+    // applyClientFilters() an den beiden Fetch-Stellen unten befüllt, nicht
+    // wie merkeVermietungen() danach.
+    let alleTermineAktuell = [];
+    const merkeAlleTermine = (events) => {
+        alleTermineAktuell = events;
         return events;
     };
 
@@ -1525,6 +1567,7 @@
                 // Schalter aus ist - auch bereits gecachte Vergangenheit
                 // (z. B. nach einem Aus-/Einschalten in derselben Sitzung)
                 // bleibt dann ausgeblendet.
+                merkeAlleTermine(listeEvents);
                 const sichtbar = merkeVermietungen(window.VKNachlade.sichtbareListenEvents(
                     applyClientFilters(listeEvents),
                     window.VKNachlade.toIsoDate(listeStart()),
@@ -1543,6 +1586,7 @@
                 // Grid-Ansichten zeigen ein festes Fenster - `naechster`
                 // (Issue #52) braucht nur die nachladende Terminliste.
                 const { events } = await fetchEventsRange(von, bis, params);
+                merkeAlleTermine(events);
                 const gefiltert = merkeVermietungen(applyClientFilters(events));
                 aktualisiereLeerHinweis(gefiltert);
                 success(gefiltert.map(toFcEvent));
@@ -1638,6 +1682,23 @@
         const ende = new Date(props.ende);
         const datum = start.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
         detailContent.append(zeile('Termin', `${datum}, ${start.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}–${ende.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr`));
+
+        // Doppelbelegung (CLAUDE.md Abschnitt 3): der Platz ist zeitgleich
+        // noch von einem anderen Termin belegt - erlaubt, aber unübersehbar,
+        // deshalb vor dem Vermietungs-Hinweis. Aus dem ungefilterten Bestand
+        // wie das ⚠ am Termin selbst (eventContent/eventDidMount).
+        if (props.typ === 'belegung' || props.typ === 'spiel') {
+            for (const d of window.VKDoppelbelegung.findeUeberschneidende(alleTermineAktuell, props)) {
+                const dStart = new Date(d.start);
+                const dEnde = new Date(d.ende);
+                const hinweis = document.createElement('p');
+                hinweis.className = 'warning-message';
+                hinweis.textContent = `⚠ Doppelbelegung: Der Platz ist zeitgleich von „${d.titel}" belegt `
+                    + `(${dStart.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}–`
+                    + `${dEnde.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr).`;
+                detailContent.append(hinweis);
+            }
+        }
 
         // Issue #36: voller Hinweis für Trainings/Spiele auf einem Platz
         // eines gerade vermieteten Sportheims - blockiert nichts, ist reine
@@ -1918,6 +1979,20 @@
             return;
         }
 
+        // Warnfall (Doppelbelegung erlaubt, CLAUDE.md Abschnitt 3): eine
+        // unübersehbare Überschrift statt eines bloß eingefärbten Textblocks
+        // - benennt, welche Art Warnung vorliegt (Doppelbelegung und/oder
+        // eingeschränkte Nutzung, je nachdem was in `gruppen` steckt).
+        if (warnung) {
+            const ueberschrift = window.VKKonflikte.warnUeberschrift(gruppen);
+            if (ueberschrift !== null) {
+                const titel = document.createElement('strong');
+                titel.className = 'warn-titel';
+                titel.textContent = ueberschrift;
+                feedback.append(titel);
+            }
+        }
+
         const { sichtbar, rest } = window.VKKonflikte.sichtbareGruppen(gruppen, INITIAL_KONFLIKT_GRUPPEN);
         const liste = document.createElement('ul');
         liste.className = 'konflikt-liste';
@@ -1942,7 +2017,7 @@
 
         if (warnung) {
             const hinweis = document.createElement('p');
-            hinweis.textContent = 'Trotzdem speichern?';
+            hinweis.textContent = 'Speichern ist trotzdem möglich – trotzdem speichern?';
             feedback.append(hinweis);
         }
     };

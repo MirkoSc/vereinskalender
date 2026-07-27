@@ -84,6 +84,102 @@ final class AvailabilityServiceTest extends DatabaseTestCase
         ], $intervals);
     }
 
+    /**
+     * Doppelbelegung (CLAUDE.md Abschnitt 3): a fully overlapping second
+     * booking on the same pitch is allowed (BookingServiceTest covers the
+     * write path) and shows up as a single 'belegt' segment carrying BOTH
+     * labels, not just the winning one.
+     */
+    public function testOverlappingBookingsProduceDoppelbelegungLabels(): void
+    {
+        $this->bookingService()->createSlot([
+            'team_ids' => [$this->teamId],
+            'pitch_id' => $this->pitchId,
+            'wochentage' => [2],
+            'beginn' => '19:00',
+            'ende' => '20:30',
+            'gueltig_ab' => '2026-08-01',
+            'gueltig_bis' => '2026-08-31',
+        ], $this->context());
+        $team2 = $this->createTeam('E2');
+        $this->bookingService()->createSlot([
+            'team_ids' => [$team2],
+            'pitch_id' => $this->pitchId,
+            'wochentage' => [2],
+            'beginn' => '19:00',
+            'ende' => '20:30',
+            'gueltig_ab' => '2026-08-01',
+            'gueltig_bis' => '2026-08-31',
+        ], $this->context());
+
+        $intervals = $this->dayIntervals(
+            $this->availabilityService()->compute('2026-08-04', '2026-08-04'),
+            '2026-08-04',
+        );
+
+        self::assertSame([
+            ['von' => '08:00', 'bis' => '19:00', 'zustand' => 'frei'],
+            [
+                'von' => '19:00',
+                'bis' => '20:30',
+                'zustand' => 'belegt',
+                'label' => 'Training E1',
+                'labels' => ['Training E1', 'Training E2'],
+            ],
+            ['von' => '20:30', 'bis' => '22:00', 'zustand' => 'frei'],
+        ], $intervals);
+    }
+
+    /**
+     * Regression for the timeline bug a Doppelbelegung would otherwise turn
+     * into the normal case (previously only "Spiel über Training" hit this):
+     * buildTimeline() used to take the FIRST covering interval per segment
+     * and merge equal neighbours, which for a PARTIAL overlap invented
+     * non-overlapping boundaries ("E1 19:00-20:30, E2 20:30-21:00") instead
+     * of the true 19:00-20:00 / 20:00-20:30 (both) / 20:30-21:00 split.
+     */
+    public function testPartiallyOverlappingBookingsSplitIntoAccurateSegments(): void
+    {
+        $this->bookingService()->createSlot([
+            'team_ids' => [$this->teamId],
+            'pitch_id' => $this->pitchId,
+            'wochentage' => [2],
+            'beginn' => '19:00',
+            'ende' => '20:30',
+            'gueltig_ab' => '2026-08-01',
+            'gueltig_bis' => '2026-08-31',
+        ], $this->context());
+        $team2 = $this->createTeam('E2');
+        $this->bookingService()->createSlot([
+            'team_ids' => [$team2],
+            'pitch_id' => $this->pitchId,
+            'wochentage' => [2],
+            'beginn' => '20:00',
+            'ende' => '21:00',
+            'gueltig_ab' => '2026-08-01',
+            'gueltig_bis' => '2026-08-31',
+        ], $this->context());
+
+        $intervals = $this->dayIntervals(
+            $this->availabilityService()->compute('2026-08-04', '2026-08-04'),
+            '2026-08-04',
+        );
+
+        self::assertSame([
+            ['von' => '08:00', 'bis' => '19:00', 'zustand' => 'frei'],
+            ['von' => '19:00', 'bis' => '20:00', 'zustand' => 'belegt', 'label' => 'Training E1'],
+            [
+                'von' => '20:00',
+                'bis' => '20:30',
+                'zustand' => 'belegt',
+                'label' => 'Training E1',
+                'labels' => ['Training E1', 'Training E2'],
+            ],
+            ['von' => '20:30', 'bis' => '21:00', 'zustand' => 'belegt', 'label' => 'Training E2'],
+            ['von' => '21:00', 'bis' => '22:00', 'zustand' => 'frei'],
+        ], $intervals);
+    }
+
     public function testOccupancyOutsideUsageHoursIsClipped(): void
     {
         // free gaps only within usage hours: a 06:00 booking must not

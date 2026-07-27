@@ -345,8 +345,22 @@ dialog.sheet::backdrop {
     flex: 1;
 }
 
+/* Echter Callout statt bloß eingefärbtem Text (Doppelbelegung/Restriktions-
+   Warnungen sollen unübersehbar sein) - dieselbe Technik wie der bisherige
+   .hint-Block (Heimspiel-ohne-Platz/Vermietungs-Hinweise in der
+   Verfügbarkeit), hier zusammengeführt statt eines zweiten, identischen
+   Regelsatzes. */
 .warning-message {
+    padding: 0.5rem 0.75rem;
+    border-left: 4px solid var(--color-warning);
+    background: color-mix(in srgb, var(--color-warning) 12%, var(--color-bg));
     color: var(--color-warning);
+}
+
+.warn-titel {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-size: 1.05rem;
 }
 
 /* Gruppierte Konfliktanzeige (Issue #9): eine Zeile je Verursacher. */
@@ -616,6 +630,52 @@ dialog.sheet::backdrop {
 .ev-vermietung-hinweis {
     margin-left: 0.25rem;
     flex: 0 0 auto;
+}
+
+/* Doppelbelegung (CLAUDE.md Abschnitt 3): anders als das dezente
+   🏠-Vermietungs-Symbol muss dieses Signal unübersehbar sein - der Auftrag
+   lautet ausdrücklich so. ⚠ steht deshalb VOR den Farbpunkten (s.
+   eventContent) und behält immer Platz (flex-shrink: 0 wie .ev-punkte). */
+.ev-doppelbelegung-hinweis {
+    margin-right: 0.25rem;
+    flex: 0 0 auto;
+    color: var(--color-warning);
+}
+
+/* Zusätzlich zum ⚠ ein Rahmen + Schraffur auf dem Terminblock selbst -
+   dieselbe repeating-linear-gradient-Technik wie .eingeschraenkt-layer im
+   Verfügbarkeits-Zeitstrahl, hier als ::after statt eines eigenen
+   Layer-Elements (eventDidMount setzt nur eine Klasse, kein Zusatz-DOM).
+   outline statt border, damit die von eventDidMount inline gesetzte
+   Platzfarbe (Issue #57, background-color/border-color) unangetastet
+   bleibt. :not(.fc-list-event) grenzt die Terminliste aus - deren Zeile ist
+   ein <tr>, wo Rahmen/absolut positioniertes Overlay nicht zuverlässig
+   greifen; dort übernimmt die eigene Regel unten. */
+.ev-doppelbelegung:not(.fc-list-event) {
+    position: relative;
+    outline: 2px solid var(--color-warning);
+    outline-offset: -2px;
+}
+
+.ev-doppelbelegung:not(.fc-list-event)::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+        45deg,
+        color-mix(in srgb, var(--color-warning) 35%, transparent),
+        color-mix(in srgb, var(--color-warning) 35%, transparent) 6px,
+        transparent 6px,
+        transparent 12px
+    );
+    pointer-events: none;
+}
+
+/* Terminliste (Issue #67: table-layout, die Zeile ist ein <tr>): statt
+   Rahmen+Schraffur ein linker Farbbalken auf der Titel-Zelle - das ⚠ im
+   Titel trägt dort ohnehin die Hauptlast des Signals. */
+.fc .fc-list-table tr.ev-doppelbelegung td.fc-list-event-title {
+    box-shadow: inset 4px 0 0 var(--color-warning);
 }
 
 /* Maps-Link im Termindetail (Issue #5): Icon + Text, nie Farbe allein */
@@ -915,12 +975,6 @@ dialog.filter-sheet .filter {
     opacity: 0.8;
 }
 
-.hint {
-    padding: 0.5rem 0.75rem;
-    border-left: 4px solid var(--color-warning);
-    background: color-mix(in srgb, var(--color-warning) 12%, var(--color-bg));
-}
-
 .pitch-block {
     margin-bottom: 1rem;
 }
@@ -984,6 +1038,28 @@ dialog.filter-sheet .filter {
 
 .segment-gesperrt {
     background: color-mix(in srgb, var(--color-danger) 40%, var(--color-bg));
+}
+
+/* Doppelbelegung (CLAUDE.md Abschnitt 3): zusätzlich zur belegt-Farbe ein
+   Schraffur-Overlay + Rahmen, dieselbe Technik wie .eingeschraenkt-layer -
+   hier als background-image (Longhand) statt background-Shorthand, damit
+   die von .segment-belegt gesetzte Hintergrundfarbe erhalten bleibt. */
+.segment-doppelbelegung {
+    background-image: repeating-linear-gradient(
+        45deg,
+        color-mix(in srgb, var(--color-warning) 45%, transparent),
+        color-mix(in srgb, var(--color-warning) 45%, transparent) 6px,
+        transparent 6px,
+        transparent 12px
+    );
+    outline: 2px solid var(--color-warning);
+    outline-offset: -2px;
+    font-weight: 600;
+}
+
+.chip-doppelbelegung {
+    background: color-mix(in srgb, var(--color-warning) 45%, var(--color-bg));
+    font-weight: 600;
 }
 
 .eingeschraenkt-layer {
