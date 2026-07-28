@@ -32,6 +32,13 @@ use App\Service\ValidationException;
  * 'einzeln' replaces one occurrence (exception + one-day slot). Multi-event
  * scopes run in one DB transaction; the EventStore joins it.
  *
+ * Deleting supports the same three scopes: 'alle' removes the series,
+ * 'nachfolgende' truncates gueltig_bis to the day before the given date (or
+ * removes the whole series when no occurrence would remain before the cut -
+ * the same degrade-instead-of-empty-stub rule as the edit scope), 'einzeln'
+ * cancels one occurrence via a slot_exception. Every delete scope is exactly
+ * one event, so unlike editing it never needs a transaction.
+ *
  * Issue #36: a Vermietung (Sportheim rental) of the pitch's clubhouse never
  * conflicts and never warns - it is surfaced purely as a hint
  * (ConflictCheckResult::$hinweise), kept out of $conflicts/$warnings so it
@@ -339,20 +346,32 @@ final readonly class BookingService
         return ['id' => $resultId, 'warnings' => $result->warnings];
     }
 
-    public function deleteSlot(int $id, EventContext $context): void
+    /**
+     * @param array<string, mixed> $input carries edit_scope (+ datum), same
+     *        three scopes and same default ('alle') as updateSlot()
+     */
+    public function deleteSlot(int $id, array $input, EventContext $context): void
     {
         $slot = $this->slots->find($id);
         if ($slot === null) {
             throw new ValidationException(['id' => 'Belegung nicht gefunden.']);
         }
 
-        $this->eventStore->append(
-            AggregateType::TrainingSlot,
-            $id,
-            EventType::Deleted,
-            self::rowPayload($slot),
-            $context,
-        );
+        match ((string) ($input['edit_scope'] ?? 'alle')) {
+            'alle' => $this->applyDeleteAll($id, $slot, $context),
+            'nachfolgende' => $this->applyTruncate(
+                $id,
+                $slot,
+                $this->rangeDate($slot, (string) ($input['datum'] ?? '')),
+                $context,
+            ),
+            'einzeln' => $this->applyCancelOccurrence(
+                $id,
+                $this->occurrenceDate($slot, (string) ($input['datum'] ?? '')),
+                $context,
+            ),
+            default => throw new ValidationException(['edit_scope' => 'Unbekannter Bearbeitungsumfang.']),
+        };
     }
 
     /**
@@ -411,15 +430,9 @@ final readonly class BookingService
      */
     private function applySplit(int $id, array $slot, array $payload, EventContext $context): int
     {
-        $vortag = new \DateTimeImmutable((string) $payload['gueltig_ab'])->modify('-1 day')->format('Y-m-d');
+        $vortag = self::dayBefore((string) $payload['gueltig_ab']);
 
-        $remaining = SlotExpander::expand(
-            [$slot],
-            $this->exceptions->findForSlots([$id]),
-            (string) $slot['gueltig_ab'],
-            $vortag,
-        );
-        if ($remaining === []) {
+        if (!$this->hasOccurrencesUntil($slot, $vortag)) {
             return $this->applyUpdateAll($id, $payload, $context);
         }
 
@@ -453,6 +466,63 @@ final readonly class BookingService
                 ->append(AggregateType::TrainingSlot, null, EventType::Created, $payload, $context)
                 ->aggregateId;
         });
+    }
+
+    // ---- delete scopes ----
+
+    /**
+     * 'alle': remove the whole series.
+     *
+     * @param array<string, mixed> $slot
+     */
+    private function applyDeleteAll(int $id, array $slot, EventContext $context): void
+    {
+        $this->eventStore->append(AggregateType::TrainingSlot, $id, EventType::Deleted, self::rowPayload($slot), $context);
+    }
+
+    /**
+     * 'nachfolgende': truncate the series before the given date, same
+     * degrade-instead-of-empty-stub rule as applySplit() - if no occurrence
+     * would remain before the cut (deleting from the first occurrence), the
+     * whole series is removed instead of leaving a date-range with no
+     * occurrences behind (which would be invisible, and therefore
+     * undeletable, in the calendar).
+     *
+     * @param array<string, mixed> $slot
+     */
+    private function applyTruncate(int $id, array $slot, string $datum, EventContext $context): void
+    {
+        $vortag = self::dayBefore($datum);
+
+        if (!$this->hasOccurrencesUntil($slot, $vortag)) {
+            $this->applyDeleteAll($id, $slot, $context);
+
+            return;
+        }
+
+        $this->eventStore->append(
+            AggregateType::TrainingSlot,
+            $id,
+            EventType::Updated,
+            self::rowPayload($slot, ['gueltig_bis' => $vortag]),
+            $context,
+        );
+    }
+
+    /**
+     * 'einzeln': cancel one occurrence via an exception, same shape as
+     * addException() with a fixed reason. slot_exception rows past a later
+     * applyTruncate() cut are deliberately never cleaned up (CLAUDE.md
+     * section 3) - they stay inert history, exactly like an exception
+     * applySplit() leaves behind on the truncated part of a series.
+     */
+    private function applyCancelOccurrence(int $id, string $datum, EventContext $context): void
+    {
+        $this->eventStore->append(AggregateType::SlotException, null, EventType::Created, [
+            'slot_id' => $id,
+            'datum' => $datum,
+            'grund' => 'Termin gelöscht',
+        ], $context);
     }
 
     /**
@@ -490,10 +560,7 @@ final readonly class BookingService
         }
 
         if ($scope === 'nachfolgende') {
-            $datum = self::parseDate((string) ($input['datum'] ?? ''));
-            if ($datum === null || $datum < (string) $slot['gueltig_ab'] || $datum > (string) $slot['gueltig_bis']) {
-                throw new ValidationException(['datum' => 'Das Datum liegt außerhalb des Gültigkeitszeitraums.']);
-            }
+            $datum = $this->rangeDate($slot, (string) ($input['datum'] ?? ''));
 
             return [
                 'scope' => $scope,
@@ -571,12 +638,14 @@ final readonly class BookingService
     }
 
     /**
-     * Validates that $datum is an actual occurrence of the slot (in range,
-     * on one of its weekdays, not already cancelled).
+     * Validates that $input is a well-formed date inside the slot's validity
+     * range (shared by plan()'s 'nachfolgende' scope and occurrenceDate();
+     * deliberately NOT on a weekday of the slot - 'nachfolgende' truncates
+     * from any date in range, only 'einzeln' needs a real occurrence).
      *
      * @param array<string, mixed> $slot
      */
-    private function occurrenceDate(array $slot, string $input): string
+    private function rangeDate(array $slot, string $input): string
     {
         $datum = self::parseDate($input);
         if ($datum === null) {
@@ -585,6 +654,20 @@ final readonly class BookingService
         if ($datum < (string) $slot['gueltig_ab'] || $datum > (string) $slot['gueltig_bis']) {
             throw new ValidationException(['datum' => 'Das Datum liegt außerhalb des Gültigkeitszeitraums.']);
         }
+
+        return $datum;
+    }
+
+    /**
+     * Validates that $input is an actual occurrence of the slot (in range,
+     * on one of its weekdays, not already cancelled).
+     *
+     * @param array<string, mixed> $slot
+     */
+    private function occurrenceDate(array $slot, string $input): string
+    {
+        $datum = $this->rangeDate($slot, $input);
+
         $weekdays = array_map(intval(...), (array) json_decode((string) $slot['wochentage'], true));
         if (!in_array((int) new \DateTimeImmutable($datum)->format('N'), $weekdays, true)) {
             throw new ValidationException(['datum' => 'An diesem Datum findet die Belegung nicht statt.']);
@@ -594,6 +677,31 @@ final readonly class BookingService
         }
 
         return $datum;
+    }
+
+    /**
+     * Whether the slot has any occurrence in [gueltig_ab, $bis] (shared
+     * degrade-instead-of-empty-stub check for applySplit()/applyTruncate():
+     * when nothing survives the cut, the edit updates the whole series and
+     * the delete removes it, rather than leaving a validity range with no
+     * occurrences behind). Safe for $bis before gueltig_ab - SlotExpander
+     * simply yields no occurrences.
+     *
+     * @param array<string, mixed> $slot
+     */
+    private function hasOccurrencesUntil(array $slot, string $bis): bool
+    {
+        return SlotExpander::expand(
+            [$slot],
+            $this->exceptions->findForSlots([(int) $slot['id']]),
+            (string) $slot['gueltig_ab'],
+            $bis,
+        ) !== [];
+    }
+
+    private static function dayBefore(string $datum): string
+    {
+        return new \DateTimeImmutable($datum)->modify('-1 day')->format('Y-m-d');
     }
 
     /**

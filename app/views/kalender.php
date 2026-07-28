@@ -190,8 +190,11 @@
         </form>
     </dialog>
 
+    <!-- Shared by "Bearbeiten" and "Löschen" (kalender.js setzt Titel und
+         .danger-Klasse je nach Modus - Umfang und Optionen sind identisch,
+         nur die Wirkung unterscheidet sich). -->
     <dialog id="scope-dialog" class="sheet">
-        <h3>Was möchtest du bearbeiten?</h3>
+        <h3 id="scope-title">Was möchtest du bearbeiten?</h3>
         <p>Die Belegung ist eine wiederkehrende Serie.</p>
         <div class="dialog-actions vertical">
             <button type="button" class="button" data-scope="einzeln">Nur diesen Termin</button>

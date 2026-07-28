@@ -1817,18 +1817,10 @@
             const deleteButton = document.createElement('button');
             deleteButton.type = 'button';
             deleteButton.className = 'button danger';
-            deleteButton.textContent = 'Belegung löschen (alle Termine)';
-            deleteButton.addEventListener('click', async () => {
-                if (!confirm('Diese wiederkehrende Belegung komplett löschen?')) {
-                    return;
-                }
-                const result = await VK.post(`/api/slots/${props.slot_id}/loeschen`).catch(() => null);
-                if (result?.ok) {
-                    detailDialog.close();
-                    calendar.refetchEvents();
-                } else if (result) {
-                    alert(VK.fehlerText(result.data));
-                }
+            deleteButton.textContent = 'Belegung löschen';
+            deleteButton.addEventListener('click', () => {
+                detailDialog.close();
+                openDelete(props);
             });
 
             detailActions.append(editButton, ausfallButton, deleteButton);
@@ -2583,15 +2575,39 @@
 
     document.querySelector('#booking-cancel').addEventListener('click', () => bookingDialog.close());
 
-    // ---- edit scope choice (alle / nachfolgende / einzeln) ----
+    // ---- scope choice (alle / nachfolgende / einzeln), shared by
+    // Bearbeiten und Löschen - gleiche Rückfrage, andere Wirkung ----
 
     const scopeDialog = document.querySelector('#scope-dialog');
+    const scopeTitleEl = document.querySelector('#scope-title');
+    const scopeButtons = [...scopeDialog.querySelectorAll('button[data-scope]')];
+    const scopeTitles = {
+        bearbeiten: 'Was möchtest du bearbeiten?',
+        loeschen: 'Was möchtest du löschen?',
+    };
     let scopeProps = null;
+    let scopeMode = 'bearbeiten';
+
+    const openScopeDialog = (mode, props) => {
+        scopeMode = mode;
+        scopeProps = props;
+        scopeTitleEl.textContent = scopeTitles[mode];
+        for (const button of scopeButtons) {
+            button.classList.toggle('danger', mode === 'loeschen');
+        }
+        scopeDialog.showModal();
+    };
+
     document.querySelector('#scope-cancel').addEventListener('click', () => scopeDialog.close());
-    for (const button of scopeDialog.querySelectorAll('button[data-scope]')) {
+    for (const button of scopeButtons) {
         button.addEventListener('click', () => {
             scopeDialog.close();
-            if (scopeProps) {
+            if (!scopeProps) {
+                return;
+            }
+            if (scopeMode === 'loeschen') {
+                startDelete(scopeProps, button.dataset.scope);
+            } else {
                 startEdit(scopeProps, button.dataset.scope);
             }
         });
@@ -2616,12 +2632,38 @@
         // is already a one-day booking (freshly created as an Einzeltermin,
         // or the result of an earlier "nur dieser"-split) - there is no
         // series to ask about, skip straight to the simple single-date edit.
-        if (props.gueltig_ab === props.gueltig_bis && (props.wochentage ?? []).length === 1) {
+        if (window.VKSlotUmfang.istEintagesSlot(props)) {
             startEdit(props, 'alle', true);
             return;
         }
-        scopeProps = props;
-        scopeDialog.showModal();
+        openScopeDialog('bearbeiten', props);
+    };
+
+    // ---- delete (dieselbe dreistufige Umfangs-Rückfrage wie Bearbeiten) ----
+
+    const startDelete = async (props, scope) => {
+        const result = await VK.post(`/api/slots/${props.slot_id}/loeschen`, {
+            edit_scope: scope,
+            datum: props.start.slice(0, 10),
+        }).catch(() => null);
+        if (result?.ok) {
+            detailDialog.close();
+            calendar.refetchEvents();
+        } else if (result) {
+            alert(VK.fehlerText(result.data));
+        }
+    };
+
+    const openDelete = (props) => {
+        // Ein Eintages-Termin ist keine Serie - die Umfangs-Rückfrage entfällt,
+        // das bisherige einfache confirm() genügt (analog openEdit() oben).
+        if (window.VKSlotUmfang.istEintagesSlot(props)) {
+            if (confirm('Diesen Termin endgültig löschen?')) {
+                startDelete(props, 'alle');
+            }
+            return;
+        }
+        openScopeDialog('loeschen', props);
     };
 
     // checkbox groups need arrays; Object.fromEntries would drop them
