@@ -1331,6 +1331,23 @@
         }
     };
 
+    // Nach einem erfolgreichen Schreibvorgang (Termin anlegen/bearbeiten/
+    // löschen) braucht die Terminliste denselben Cache-Invalidierungsweg wie
+    // ein Filterwechsel (s. onFilterChange): ein reines calendar.refetchEvents()
+    // liefert dort nur die bereits geladene, jetzt veraltete listeEvents-Cache
+    // erneut zurück (s. Kommentar bei listeAktiv im events-Callback) - ohne
+    // diesen Umweg blieb ein gerade erstellter/geänderter/gelöschter Termin in
+    // der Liste bis zum nächsten Seitenaufruf unsichtbar. Grid-Ansichten
+    // (Tag/Woche/Monat) fetchen bei jedem refetchEvents() ohnehin frisch vom
+    // Server, für sie bleibt calendar.refetchEvents() ausreichend.
+    const aktualisiereEventsNachSchreiben = () => {
+        if (modus === 'liste') {
+            listeFilterGeaendert();
+            return;
+        }
+        calendar.refetchEvents();
+    };
+
     // IntersectionObserver statt Scroll-Event-Heuristik (Issue #24): ein
     // Sentinel-Element am Listenende statt window.scrollY/scrollHeight - das
     // funktioniert unabhängig davon, ob überhaupt eine Scrollbar existiert.
@@ -1877,7 +1894,7 @@
                     const result = await VK.post(`/api/spiele/${props.match_id}/loeschen`).catch(() => null);
                     if (result?.ok) {
                         detailDialog.close();
-                        calendar.refetchEvents();
+                        aktualisiereEventsNachSchreiben();
                     } else if (result) {
                         alert(VK.fehlerText(result.data));
                     }
@@ -1906,7 +1923,7 @@
                     const result = await VK.post(`/api/spiele/${props.match_id}/platz`, { pitch_id: select.value }).catch(() => null);
                     if (result?.ok) {
                         detailDialog.close();
-                        calendar.refetchEvents();
+                        aktualisiereEventsNachSchreiben();
                     } else if (result) {
                         alert(VK.fehlerText(result.data));
                     }
@@ -1961,7 +1978,7 @@
                 const result = await VK.post(`/api/sperrungen/${props.restriction_id}/loeschen`).catch(() => null);
                 if (result?.ok) {
                     detailDialog.close();
-                    calendar.refetchEvents();
+                    aktualisiereEventsNachSchreiben();
                 } else if (result) {
                     alert(VK.fehlerText(result.data));
                 }
@@ -2004,7 +2021,7 @@
                 const result = await VK.post(`/api/vermietungen/${props.vermietung_id}/loeschen`).catch(() => null);
                 if (result?.ok) {
                     detailDialog.close();
-                    calendar.refetchEvents();
+                    aktualisiereEventsNachSchreiben();
                 } else if (result) {
                     alert(VK.fehlerText(result.data));
                 }
@@ -2276,7 +2293,7 @@
             const result = await VK.post(url, data);
             if (result.ok) {
                 matchDialog.close();
-                calendar.refetchEvents();
+                aktualisiereEventsNachSchreiben();
             } else {
                 matchFeedback.className = 'error-message';
                 matchFeedback.textContent = VK.fehlerText(result.data);
@@ -2370,7 +2387,7 @@
             const result = await VK.post(url, data);
             if (result.ok) {
                 vermietungDialog.close();
-                calendar.refetchEvents();
+                aktualisiereEventsNachSchreiben();
             } else {
                 vermietungFeedback.className = 'error-message';
                 vermietungFeedback.textContent = VK.fehlerText(result.data);
@@ -2428,7 +2445,7 @@
         try {
             const result = await VK.post(`/api/sperrungen/${data.restriction_id}`, data);
             if (result.ok) {
-                calendar.refetchEvents();
+                aktualisiereEventsNachSchreiben();
                 const betroffene = result.data.betroffene ?? [];
                 if (betroffene.length > 0) {
                     restrictionFeedback.className = 'warning-message';
@@ -2648,7 +2665,7 @@
         }).catch(() => null);
         if (result?.ok) {
             detailDialog.close();
-            calendar.refetchEvents();
+            aktualisiereEventsNachSchreiben();
         } else if (result) {
             alert(VK.fehlerText(result.data));
         }
@@ -2709,7 +2726,7 @@
             const result = await VK.post(url, data);
             if (result.ok) {
                 bookingDialog.close();
-                calendar.refetchEvents();
+                aktualisiereEventsNachSchreiben();
             } else {
                 bookingFeedback.className = 'error-message';
                 bookingFeedback.textContent = VK.fehlerText(result.data);
@@ -2743,7 +2760,7 @@
             const result = await VK.post(`/api/slots/${slotId}/ausfall`, data);
             if (result.ok) {
                 ausfallDialog.close();
-                calendar.refetchEvents();
+                aktualisiereEventsNachSchreiben();
             } else {
                 ausfallFeedback.className = 'error-message';
                 ausfallFeedback.textContent = VK.fehlerText(result.data);
