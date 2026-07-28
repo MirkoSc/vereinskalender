@@ -473,6 +473,16 @@ dialog.sheet::backdrop {
     /* beschneiden statt überlaufen - die letzte Sicherung, falls ein Kind
        trotz eigener Regeln (s. u.) einmal breiter ausfällt. */
     overflow: hidden;
+    /* Der Kontrast-Ring der Farbpunkte (.ev-punkt box-shadow, bis zu 2px
+       außerhalb der eigenen Box) UND der Spielstätten-Ring
+       (.ev-punkt-venue::before/::after, inset:-25%) ragen über die
+       Punkt-Box hinaus. Ohne dieses Polster liegt der erste Punkt (Team)
+       flush an der linken Kante von .ev-inhalt - sein Ring wird dann vom
+       overflow:hidden oben mit abgeschnitten (in Tag/Woche/Liste sichtbar,
+       da dort keine ausreichende Polsterung von außen kommt). Reines
+       Innenpolster statt weniger overflow:hidden zu verwenden - die
+       #58/#67/#75-Kürzungsregeln bleiben unberührt. */
+    padding-left: 0.2rem;
 }
 
 /* Issue #75: Tag/Woche (`.fc-v-event`, timeGrid-Views) stapeln Uhrzeit /
