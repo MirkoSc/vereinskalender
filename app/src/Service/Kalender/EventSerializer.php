@@ -42,7 +42,8 @@ final readonly class EventSerializer
 
     /**
      * @param array<string, mixed> $slotRow the training_slot row the occurrence stems from
-     *        (wochentage/gueltig_ab/gueltig_bis: series data for the edit dialog)
+     *        (wochentage/intervall_wochen/gueltig_ab/gueltig_bis: series data
+     *        for the edit dialog)
      * @return array<string, mixed>|null null when none of the slot's teams exist (anymore)
      */
     public function belegung(Occurrence $occurrence, array $slotRow): ?array
@@ -88,6 +89,10 @@ final readonly class EventSerializer
             // Vermietung of the same Sportheim without a second lookup
             'pitch_sportheim_id' => $pitch !== null && $pitch['sportheim_id'] !== null ? (int) $pitch['sportheim_id'] : null,
             'wochentage' => SlotExpander::intList($slotRow['wochentage']),
+            // needed by the edit dialog, not just for display: startEdit()
+            // builds its prefill from these props, so without the interval
+            // every edit would silently reset the series to weekly
+            'intervall_wochen' => max(1, (int) ($slotRow['intervall_wochen'] ?? 1)),
             'gueltig_ab' => (string) $slotRow['gueltig_ab'],
             'gueltig_bis' => (string) $slotRow['gueltig_bis'],
         ];

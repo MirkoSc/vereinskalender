@@ -37,7 +37,8 @@
 
     // Port of SlotExpander::expand: recurring slots -> concrete occurrences
     // within [von, bis], honouring gueltig_ab/gueltig_bis (both inclusive),
-    // multiple weekdays per slot, and exceptions.
+    // multiple weekdays per slot, the recurrence interval in weeks, and
+    // exceptions.
     const expandiereSlotOccurrences = (slots, ausnahmen, von, bis) => {
         const ausgeschlossen = new Set(ausnahmen.map((a) => `${a.slot_id}|${a.datum}`));
         const rangeStart = parseDate(von);
@@ -45,12 +46,38 @@
 
         const occurrences = [];
         for (const slot of slots) {
-            const first = parseDate(slot.gueltig_ab) > rangeStart ? parseDate(slot.gueltig_ab) : rangeStart;
+            const intervall = Math.max(1, Number(slot.intervall_wochen ?? 1));
+            const gueltigAb = parseDate(slot.gueltig_ab);
+            const first = gueltigAb > rangeStart ? gueltigAb : rangeStart;
             const last = parseDate(slot.gueltig_bis) < rangeEnd ? parseDate(slot.gueltig_bis) : rangeEnd;
+            if (last < first) {
+                continue;
+            }
+
+            // Rhythm anchor: the Monday of the week holding the series' first
+            // occurrence, see the comment on SlotExpander::expand - taken from
+            // the slot, never from the requested range, so the same slot
+            // yields the same dates in every window.
+            let erste = null;
+            for (const weekday of slot.wochentage) {
+                const offset = (weekday - isoWeekday(gueltigAb) + 7) % 7;
+                const kandidat = addDays(gueltigAb, offset);
+                if (erste === null || kandidat < erste) {
+                    erste = kandidat;
+                }
+            }
+            if (erste === null) {
+                continue;
+            }
+            const anker = addDays(erste, -(isoWeekday(erste) - 1));
+            const schritt = 7 * intervall;
 
             for (const weekday of slot.wochentage) {
-                const offset = (weekday - isoWeekday(first) + 7) % 7;
-                let date = addDays(first, offset);
+                let date = addDays(anker, weekday - 1);
+                while (date < first) {
+                    date = addDays(date, schritt);
+                }
+
                 while (date <= last) {
                     const datum = formatDate(date);
                     if (!ausgeschlossen.has(`${slot.id}|${datum}`)) {
@@ -63,7 +90,7 @@
                             end: `${datum}T${slot.ende}`,
                         });
                     }
-                    date = addDays(date, 7);
+                    date = addDays(date, schritt);
                 }
             }
         }
@@ -117,6 +144,7 @@
             venue_adresse: venueId !== null && venue !== undefined ? venue.adresse : null,
             pitch_sportheim_id: pitch !== null ? pitch.sportheim_id : null,
             wochentage: slot.wochentage,
+            intervall_wochen: Math.max(1, Number(slot.intervall_wochen ?? 1)),
             gueltig_ab: slot.gueltig_ab,
             gueltig_bis: slot.gueltig_bis,
         };

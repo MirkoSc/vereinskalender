@@ -58,7 +58,7 @@
                         <td><input type="checkbox" name="slot_ids[]" value="<?= e($slot['id']) ?>" <?= (int) $slot['abgelaufen'] === 1 ? 'checked' : '' ?>></td>
                         <td><?= e($slot['team_names']) ?></td>
                         <td><?= e($slot['pitch_name'] ?? ('Platz #' . $slot['pitch_id'])) ?></td>
-                        <td><?= e(implode('+', array_map(static fn(int $w): string => $wochentage[$w] ?? (string) $w, $slot['wochentage_list']))) ?> <?= e(substr((string) $slot['beginn'], 0, 5)) ?>–<?= e(substr((string) $slot['ende'], 0, 5)) ?></td>
+                        <td><?= e(implode('+', array_map(static fn(int $w): string => $wochentage[$w] ?? (string) $w, $slot['wochentage_list']))) ?> <?= e(substr((string) $slot['beginn'], 0, 5)) ?>–<?= e(substr((string) $slot['ende'], 0, 5)) ?><?= (int) $slot['intervall_wochen'] > 1 ? ' · alle ' . e((string) (int) $slot['intervall_wochen']) . ' Wochen' : '' ?></td>
                         <td><?= e($slot['gueltig_ab']) ?> bis <?= e($slot['gueltig_bis']) ?><?= (int) $slot['abgelaufen'] === 1 ? ' (abgelaufen)' : '' ?></td>
                     </tr>
                 <?php endforeach; ?>

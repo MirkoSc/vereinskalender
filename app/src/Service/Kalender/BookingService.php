@@ -52,11 +52,23 @@ use App\Service\ValidationException;
  * already produces (CLAUDE.md section 3). No new aggregate, no special
  * write path - applyEinzeltermin() only reshapes the input before the usual
  * validate()/checkPayload() runs.
+ *
+ * A slot also carries a recurrence interval in weeks (intervall_wochen,
+ * 1 = weekly). Its rhythm is anchored on the Monday of the gueltig_ab week
+ * (SlotExpander::expand()), which makes the edit/delete scopes fall into
+ * place without extra bookkeeping: 'nachfolgende' gives the continuation
+ * gueltig_ab = the split date - itself an occurrence - so the rhythm resumes
+ * there unchanged, and truncating keeps gueltig_ab and therefore the anchor
+ * of the remaining part. A one-day slot ('einzeln', Einzeltermin) always
+ * stores interval 1.
  */
 final readonly class BookingService
 {
     /** Upper bound for a slot's validity span (keeps expansion bounded). */
     private const int MAX_VALIDITY_DAYS = 400;
+
+    /** Largest selectable rhythm: every 4th week (the dialog offers 1..4). */
+    private const int MAX_INTERVALL_WOCHEN = 4;
 
     private const array EDIT_SCOPES = ['alle', 'nachfolgende', 'einzeln'];
 
@@ -578,6 +590,8 @@ final readonly class BookingService
             $payload = $this->validate([
                 ...$input,
                 'wochentage' => [self::weekdayOf($datumNeu)],
+                // one-day replacement slot - no rhythm, see applyEinzeltermin()
+                'intervall_wochen' => 1,
                 'gueltig_ab' => $datumNeu,
                 'gueltig_bis' => $datumNeu,
             ]);
@@ -627,6 +641,9 @@ final readonly class BookingService
         return [
             ...$input,
             'wochentage' => [self::weekdayOf($datum)],
+            // a one-day booking has no rhythm; the (hidden) Rhythmus select
+            // is still submitted by FormData, so pin it instead of trusting it
+            'intervall_wochen' => 1,
             'gueltig_ab' => $datum,
             'gueltig_bis' => $datum,
         ];
@@ -911,6 +928,14 @@ final readonly class BookingService
             $errors['beginn'] = 'Beginn muss vor dem Ende liegen.';
         }
 
+        // Recurrence interval in weeks; absent means weekly (old clients and
+        // events written before migration 018 simply had no rhythm).
+        $intervallRoh = trim((string) ($input['intervall_wochen'] ?? ''));
+        $intervall = $intervallRoh === '' ? 1 : (int) $intervallRoh;
+        if ($intervallRoh !== '' && (!ctype_digit($intervallRoh) || $intervall < 1 || $intervall > self::MAX_INTERVALL_WOCHEN)) {
+            $errors['intervall_wochen'] = 'Bitte einen gültigen Rhythmus wählen.';
+        }
+
         $gueltigAb = self::parseDate((string) ($input['gueltig_ab'] ?? ''));
         $gueltigBis = self::parseDate((string) ($input['gueltig_bis'] ?? ''));
         if ($gueltigAb === null || $gueltigBis === null) {
@@ -928,6 +953,7 @@ final readonly class BookingService
         return [
             'team_ids' => $teamIds,
             'wochentage' => $wochentage,
+            'intervall_wochen' => $intervall,
             'pitch_id' => $pitchId,
             'beginn' => $beginn,
             'ende' => $ende,
@@ -948,6 +974,7 @@ final readonly class BookingService
         return [
             'team_ids' => array_map(intval(...), (array) json_decode((string) $slot['team_ids'], true)),
             'wochentage' => array_map(intval(...), (array) json_decode((string) $slot['wochentage'], true)),
+            'intervall_wochen' => max(1, (int) ($slot['intervall_wochen'] ?? 1)),
             'pitch_id' => (int) $slot['pitch_id'],
             'beginn' => (string) $slot['beginn'],
             'ende' => (string) $slot['ende'],

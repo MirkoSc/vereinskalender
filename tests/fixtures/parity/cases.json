@@ -6,5 +6,7 @@
   { "name": "mehrtaegige-sperrung", "von": "2026-08-20", "bis": "2026-08-23" },
   { "name": "vermietung", "von": "2026-08-27", "bis": "2026-08-27" },
   { "name": "spielfrei", "von": "2026-09-07", "bis": "2026-09-07" },
-  { "name": "sportheim-termine", "von": "2026-09-14", "bis": "2026-09-14" }
+  { "name": "sportheim-termine", "von": "2026-09-14", "bis": "2026-09-14" },
+  { "name": "zweiwochen-takt-an", "von": "2026-11-16", "bis": "2026-11-22" },
+  { "name": "zweiwochen-takt-aus", "von": "2026-11-23", "bis": "2026-11-29" }
 ]

@@ -66,6 +66,52 @@ final class EventFeedTest extends DatabaseTestCase
         self::assertSame('Sportweg 1', $events[0]['venue_adresse'], 'Maps-Link-Fallback: Vereinsadresse');
     }
 
+    /**
+     * The edit dialog rebuilds its prefill from the event props, so the feed
+     * has to ship the series' rhythm - otherwise every edit would silently
+     * reset an every-other-week slot to weekly.
+     */
+    public function testBelegungEventsCarryTheSeriesRhythm(): void
+    {
+        $this->bookingService()->createSlot([
+            'team_ids' => [$this->teamId],
+            'pitch_id' => $this->pitchId,
+            'wochentage' => [4], // Donnerstag, kollidiert nicht mit dem Dienstags-Slot
+            'intervall_wochen' => 2,
+            'beginn' => '17:00',
+            'ende' => '18:30',
+            'gueltig_ab' => '2026-08-01',
+            'gueltig_bis' => '2026-08-31',
+        ], $this->context());
+
+        $events = $this->eventFeedService()->events([
+            'von' => '2026-08-03',
+            'bis' => '2026-08-09',
+            'typ' => 'belegung',
+        ]);
+
+        $nachStart = [];
+        foreach ($events as $event) {
+            $nachStart[$event['start']] = $event;
+        }
+
+        self::assertArrayHasKey('2026-08-04T19:00:00', $nachStart);
+        self::assertSame(1, $nachStart['2026-08-04T19:00:00']['intervall_wochen'], 'weekly series');
+        self::assertArrayHasKey('2026-08-06T17:00:00', $nachStart);
+        self::assertSame(2, $nachStart['2026-08-06T17:00:00']['intervall_wochen'], 'fortnightly series');
+
+        // the fortnightly slot skips the following week, the weekly one does not
+        $folgewoche = $this->eventFeedService()->events([
+            'von' => '2026-08-10',
+            'bis' => '2026-08-16',
+            'typ' => 'belegung',
+        ]);
+        self::assertSame(
+            ['2026-08-11T19:00:00'],
+            array_map(static fn(array $e): string => $e['start'], $folgewoche),
+        );
+    }
+
     public function testMapsAddressPrefersPitchOverrideOverVenueAddress(): void
     {
         $pitchWithOwnAddress = $this->eventStore()->append(

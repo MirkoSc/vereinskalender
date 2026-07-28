@@ -948,4 +948,176 @@ final class BookingServiceTest extends DatabaseTestCase
         self::assertSame('2026-08-13', $slots[0]['gueltig_bis']);
         self::assertSame('18:00:00', $slots[0]['beginn']);
     }
+
+    // ---- Rhythmus: recurrence interval in weeks (intervall_wochen) ----
+
+    /**
+     * @return list<string>
+     */
+    private function slotDaten(string $von = '2026-08-01', string $bis = '2026-10-31'): array
+    {
+        return array_map(
+            static fn($o): string => $o->datum,
+            SlotExpander::expand($this->dumpTable('training_slot'), $this->dumpTable('slot_exception'), $von, $bis),
+        );
+    }
+
+    public function testCreateSlotStoresInterval(): void
+    {
+        $this->bookingService()->createSlot($this->slotInput(['intervall_wochen' => 2]), $this->context());
+
+        $slots = $this->dumpTable('training_slot');
+        self::assertSame(2, (int) $slots[0]['intervall_wochen']);
+        self::assertSame(
+            ['2026-08-04', '2026-08-18', '2026-09-01', '2026-09-15', '2026-09-29', '2026-10-13', '2026-10-27'],
+            $this->slotDaten(),
+        );
+    }
+
+    public function testCreateSlotWithoutIntervalDefaultsToWeekly(): void
+    {
+        $this->bookingService()->createSlot($this->slotInput(), $this->context());
+
+        self::assertSame(1, (int) $this->dumpTable('training_slot')[0]['intervall_wochen']);
+    }
+
+    /**
+     * @return array<string, array{mixed}>
+     */
+    public static function ungueltigeIntervalle(): array
+    {
+        return [
+            'zero' => [0],
+            'negative' => [-1],
+            'above the maximum' => [5],
+            'not a number' => ['abc'],
+            'fractional' => ['2.5'],
+        ];
+    }
+
+    #[DataProvider('ungueltigeIntervalle')]
+    public function testCreateSlotRejectsInvalidInterval(mixed $intervall): void
+    {
+        try {
+            $this->bookingService()->createSlot(
+                $this->slotInput(['intervall_wochen' => $intervall]),
+                $this->context(),
+            );
+            self::fail('Expected validation to fail');
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey('intervall_wochen', $e->getErrors());
+        }
+        self::assertCount(0, $this->dumpTable('training_slot'));
+    }
+
+    /**
+     * The whole point of anchoring the rhythm on the series' first occurrence:
+     * splitting must not move a single date. The continuation starts at the
+     * split occurrence, so together both parts reproduce exactly the dates the
+     * undivided series had.
+     */
+    public function testEditScopeNachfolgendeKeepsTheRhythmOfABiweeklySeries(): void
+    {
+        $booking = $this->bookingService();
+        $created = $booking->createSlot($this->slotInput(['intervall_wochen' => 2]), $this->context());
+        $ungeteilt = $this->slotDaten();
+
+        $booking->updateSlot($created['id'], $this->slotInput([
+            'intervall_wochen' => 2,
+            'edit_scope' => 'nachfolgende',
+            'datum' => '2026-09-15', // an occurrence of the series
+            'beginn' => '18:00',
+            'ende' => '19:30',
+        ]), $this->context());
+
+        $slots = $this->dumpTable('training_slot');
+        self::assertCount(2, $slots);
+        self::assertSame('2026-09-14', $slots[0]['gueltig_bis']);
+        self::assertSame('2026-09-15', $slots[1]['gueltig_ab']);
+        self::assertSame(2, (int) $slots[1]['intervall_wochen'], 'the continuation keeps the rhythm');
+        self::assertSame($ungeteilt, $this->slotDaten(), 'no occurrence moved');
+    }
+
+    public function testDeleteScopeNachfolgendeKeepsTheRhythmOfTheRemainder(): void
+    {
+        $booking = $this->bookingService();
+        $created = $booking->createSlot($this->slotInput(['intervall_wochen' => 2]), $this->context());
+
+        $booking->deleteSlot($created['id'], [
+            'edit_scope' => 'nachfolgende',
+            'datum' => '2026-09-15',
+        ], $this->context());
+
+        $slots = $this->dumpTable('training_slot');
+        self::assertCount(1, $slots);
+        self::assertSame('2026-09-14', $slots[0]['gueltig_bis']);
+        self::assertSame(2, (int) $slots[0]['intervall_wochen']);
+        self::assertSame(['2026-08-04', '2026-08-18', '2026-09-01'], $this->slotDaten());
+    }
+
+    public function testEditScopeEinzelnProducesAWeeklyOneDaySlot(): void
+    {
+        $booking = $this->bookingService();
+        $created = $booking->createSlot($this->slotInput(['intervall_wochen' => 2]), $this->context());
+
+        $booking->updateSlot($created['id'], [
+            'edit_scope' => 'einzeln',
+            'datum' => '2026-08-18',
+            'datum_neu' => '2026-08-19',
+            'intervall_wochen' => 2, // the (hidden) select still submits it
+            'team_ids' => [$this->teamId],
+            'pitch_id' => $this->pitchId,
+            'beginn' => '18:00',
+            'ende' => '19:00',
+        ], $this->context());
+
+        $slots = $this->dumpTable('training_slot');
+        self::assertCount(2, $slots);
+        self::assertSame(2, (int) $slots[0]['intervall_wochen'], 'the series keeps its rhythm');
+        self::assertSame(1, (int) $slots[1]['intervall_wochen'], 'a one-day slot has no rhythm');
+    }
+
+    public function testEinzelterminIgnoresASubmittedInterval(): void
+    {
+        $this->bookingService()->createSlot(
+            $this->einzelterminInput(['intervall_wochen' => 3]),
+            $this->context(),
+        );
+
+        self::assertSame(1, (int) $this->dumpTable('training_slot')[0]['intervall_wochen']);
+    }
+
+    /**
+     * Two fortnightly series on the same pitch and weekday, offset by one
+     * week, never meet. Expanding them weekly (the pre-Rhythmus behaviour)
+     * would report a Doppelbelegung for every single Tuesday.
+     */
+    public function testBiweeklySeriesInOppositeWeeksDoNotConflict(): void
+    {
+        $booking = $this->bookingService();
+        $booking->createSlot($this->slotInput(['intervall_wochen' => 2]), $this->context());
+
+        $result = $booking->createSlot($this->slotInput([
+            'intervall_wochen' => 2,
+            'team_ids' => [$this->createTeam('E2')],
+            'gueltig_ab' => '2026-08-11', // the off week
+        ]), $this->context());
+
+        self::assertSame([], $result['warnings']);
+        self::assertCount(2, $this->dumpTable('training_slot'));
+    }
+
+    public function testBiweeklySeriesInTheSameWeekStillWarns(): void
+    {
+        $booking = $this->bookingService();
+        $booking->createSlot($this->slotInput(['intervall_wochen' => 2]), $this->context());
+
+        $result = $booking->createSlot($this->slotInput([
+            'intervall_wochen' => 2,
+            'team_ids' => [$this->createTeam('E2')],
+        ]), $this->context());
+
+        self::assertNotSame([], $result['warnings']);
+        self::assertStringContainsString('Doppelbelegung', $result['warnings'][0]);
+    }
 }

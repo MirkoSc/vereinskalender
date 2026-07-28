@@ -20,6 +20,12 @@ namespace App\Service\Kalender;
  * the bound; see EventFeedService::naechsterTermin()/vorherigerTermin() and
  * CLAUDE.md section 7/8.
  *
+ * For the same reason the weekday stepping here stays WEEKLY and ignores a
+ * slot's intervall_wochen: the weekly candidate is never later than the real
+ * every-N-weeks occurrence (and, facing backwards, never earlier), so both
+ * bounds keep holding. Reproducing the rhythm here would buy nothing but a
+ * second place to keep in sync with SlotExpander.
+ *
  * Pure logic, no database access - mirrored in public/js/offline-events.js
  * so online and offline share the behaviour.
  */

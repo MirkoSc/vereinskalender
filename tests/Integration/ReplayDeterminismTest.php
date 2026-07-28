@@ -295,6 +295,71 @@ final class ReplayDeterminismTest extends DatabaseTestCase
     }
 
     /**
+     * Slot events written before migration 018 carry no intervall_wochen key
+     * at all - they meant "weekly". The column is NOT NULL, so the upcast to
+     * 1 must happen on the initial write AND on replay.
+     */
+    public function testLegacySlotEventWithoutIntervalUpcastsToWeeklyOnReplay(): void
+    {
+        $venueId = $this->createVenue();
+        $pitchId = $this->createPitch($venueId);
+        $teamId = $this->createTeam();
+
+        $this->eventStore()->append(AggregateType::TrainingSlot, null, EventType::Created, [
+            'team_ids' => [$teamId],
+            'wochentage' => [2],
+            'pitch_id' => $pitchId,
+            'beginn' => '19:00:00',
+            'ende' => '20:30:00',
+            'gueltig_ab' => '2026-08-01',
+            'gueltig_bis' => '2026-10-31',
+        ], $this->context());
+
+        $slot = $this->dumpTable('training_slot')[0];
+        self::assertSame(1, (int) $slot['intervall_wochen']);
+
+        $state = $this->runRebuildToCompletion($this->rebuildService());
+        self::assertSame([], $state->skipped);
+        self::assertSame($slot, $this->dumpTable('training_slot')[0]);
+    }
+
+    /**
+     * An explicitly chosen rhythm survives a rebuild unchanged - the upcast
+     * must not overwrite a stored value, and a later change of the rhythm
+     * must replay deterministically too.
+     */
+    public function testExplicitSlotIntervalSurvivesReplay(): void
+    {
+        $venueId = $this->createVenue();
+        $pitchId = $this->createPitch($venueId);
+        $teamId = $this->createTeam();
+        $store = $this->eventStore();
+
+        $payload = [
+            'team_ids' => [$teamId],
+            'wochentage' => [2],
+            'intervall_wochen' => 2,
+            'pitch_id' => $pitchId,
+            'beginn' => '19:00:00',
+            'ende' => '20:30:00',
+            'gueltig_ab' => '2026-08-01',
+            'gueltig_bis' => '2026-10-31',
+        ];
+        $slotId = $store->append(AggregateType::TrainingSlot, null, EventType::Created, $payload, $this->context())->aggregateId;
+        $store->append(AggregateType::TrainingSlot, $slotId, EventType::Updated, [
+            ...$payload,
+            'intervall_wochen' => 3,
+        ], $this->context());
+
+        $slot = $this->dumpTable('training_slot')[0];
+        self::assertSame(3, (int) $slot['intervall_wochen']);
+
+        $state = $this->runRebuildToCompletion($this->rebuildService());
+        self::assertSame([], $state->skipped);
+        self::assertSame($slot, $this->dumpTable('training_slot')[0]);
+    }
+
+    /**
      * Issue #63: a non-default art survives a rebuild unchanged - the upcast
      * must not overwrite an explicitly stored value.
      */
