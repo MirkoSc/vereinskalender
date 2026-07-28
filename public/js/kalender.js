@@ -425,14 +425,25 @@
     };
 
     // Ein Farbpunkt - Form macht die Bedeutung (app.css, Legende Issue #38),
-    // das Label wiederholt sie für Screenreader und Tooltip.
+    // das Label wiederholt sie für Screenreader und Tooltip. Der
+    // Spielstätten-Punkt (Dreieck) ist per clip-path geformt - box-shadow
+    // (der Kontrast-Ring der übrigen Formen) folgt der Box, nicht der
+    // geclippten Form, daher trägt dort ein echtes Kind-Element die Farbe
+    // statt background-color direkt am Punkt (s. .ev-punkt-venue/app.css).
     const punkt = (klasse, farbe, label) => {
         const el = document.createElement('span');
         el.className = `ev-punkt ${klasse}`;
-        el.style.backgroundColor = farbe;
         el.setAttribute('role', 'img');
         el.setAttribute('aria-label', label);
         el.title = label;
+        if (klasse === 'ev-punkt-venue') {
+            const fill = document.createElement('span');
+            fill.className = 'ev-punkt-venue-fill';
+            fill.style.backgroundColor = farbe;
+            el.append(fill);
+        } else {
+            el.style.backgroundColor = farbe;
+        }
         return el;
     };
 

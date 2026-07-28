@@ -550,22 +550,67 @@ dialog.sheet::backdrop {
     border-radius: 50%;
 }
 
+/* Spielstätte = Dreieck, unterscheidbar von Team (Kreis), Platz (Quadrat)
+   und Sportheim (Raute). box-shadow folgt der BOX, nicht einer geclippten
+   Form - die zwei Kontrast-Ringe der übrigen Punkte lassen sich hier also
+   nicht per box-shadow nachbilden. Stattdessen zwei zusätzliche,
+   größer werdende Dreieck-Ebenen (::before/::after) UNTER einem echten
+   Kind-Element (.ev-punkt-venue-fill, von punkt() in kalender.js erzeugt)
+   - dieselben zwei Farbtöne (var(--color-bg), color-mix mit currentColor)
+   wie der box-shadow-Ring, nur als Flächen statt als Schatten. Das äußere
+   Element selbst bleibt ohne eigenen Hintergrund/Schatten (nur Träger für
+   role/aria-label/title, s. punkt()).
+   Test: alle vier Formen + beide Größen (ev-punkt/legende-punkt) sowohl mit
+   einer dunklen (#0969da) als auch einer hellen Farbe (#f1e05a) auf hellem
+   UND dunklem Hintergrund gerendert - der Ring bleibt in jeder Kombination
+   sichtbar (dieselbe Prüfung wie im ursprünglichen Kommentar zu
+   .legende-punkt oben). */
 .ev-punkt-venue {
-    border-radius: 2px;
+    position: relative;
+    box-shadow: none;
+}
+
+.ev-punkt-venue::before,
+.ev-punkt-venue::after {
+    content: '';
+    position: absolute;
+    clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+}
+
+.ev-punkt-venue::before {
+    inset: -25%;
+    background: color-mix(in srgb, currentColor 55%, transparent);
+    z-index: 1;
+}
+
+.ev-punkt-venue::after {
+    inset: -10%;
+    background: var(--color-bg);
+    z-index: 2;
+}
+
+.ev-punkt-venue-fill {
+    position: relative;
+    z-index: 3;
+    display: block;
+    width: 100%;
+    height: 100%;
+    clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
 }
 
 /* Issue #57: Platz-Punkt in der Monatsansicht (dort kommt ein Hintergrund in
    Platzfarbe nicht an - dayGridMonth rendert Dot-Events ohne Block-Fläche).
-   Quadrat wie der Spielstätten-Punkt, passend zur Legende (Issue #38:
-   Spielstätte/Platz = Quadrat). */
+   Quadrat, passend zur Legende (Platz = Quadrat, unterscheidbar vom
+   dreieckigen Spielstätten-Punkt oben). */
 .ev-punkt-pitch {
     border-radius: 2px;
 }
 
 /* Sportheim-Punkt im Detail-Dialog (kalender.js showDetail): Raute wie
-   .legende-punkt-heim - weder Kreis (Team) noch Quadrat (Spielstätte/Platz),
-   in der Farbe von dessen Spielstätte (Sportheime haben noch keine eigene,
-   Issue #36/#47). Nur im Detail-Dialog verwendet, nicht am Termin selbst. */
+   .legende-punkt-heim - unterscheidbar von Kreis (Team), Quadrat (Platz) und
+   Dreieck (Spielstätte), in der Farbe von dessen Spielstätte (Sportheime
+   haben noch keine eigene, Issue #36/#47). Nur im Detail-Dialog verwendet,
+   nicht am Termin selbst. */
 .ev-punkt-heim {
     border-radius: 2px;
     transform: rotate(45deg);
@@ -1413,8 +1458,10 @@ progress {
 }
 
 /* Zwei Ringe wie .ev-punkt (Issue #39): funktioniert unabhängig davon, wie
-   hell oder dunkel die jeweilige Team-/Spielstättenfarbe ausfällt - Kontrast
-   in hell UND dunkel geprüft, ohne die Palette selbst je Modus anzupassen. */
+   hell oder dunkel die jeweilige Team-/Platzfarbe ausfällt - Kontrast in
+   hell UND dunkel geprüft, ohne die Palette selbst je Modus anzupassen.
+   Spielstätte (Dreieck, s. .legende-punkt-venue unten) braucht dafür eine
+   eigene, clip-path-basierte Umsetzung statt dieses box-shadow-Rings. */
 .legende-punkt {
     display: inline-block;
     width: 1rem;
@@ -1429,12 +1476,49 @@ progress {
     border-radius: 50%;
 }
 
-.legende-punkt-venue {
+.legende-punkt-pitch {
     border-radius: 3px;
 }
 
-/* Issue #47: Sportheim/Raum bekommen eine dritte, von Kreis (Team) und
-   Quadrat (Spielstätte/Platz) klar unterscheidbare Form - eine Raute
+/* Spielstätte = Dreieck (dieselbe Form wie .ev-punkt-venue am Termin, s.
+   dort für die ausführliche Begründung): box-shadow folgt der Box, nicht
+   der geclippten Form, daher zwei zusätzliche Dreieck-Ebenen statt eines
+   Rings; legende.js::punkt() erzeugt für form='venue' zusätzlich das
+   Kind-Element .legende-punkt-venue-fill mit der eigentlichen Farbe. */
+.legende-punkt-venue {
+    position: relative;
+}
+
+.legende-punkt-venue::before,
+.legende-punkt-venue::after {
+    content: '';
+    position: absolute;
+    clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+}
+
+.legende-punkt-venue::before {
+    inset: -25%;
+    background: color-mix(in srgb, var(--color-text) 55%, transparent);
+    z-index: 1;
+}
+
+.legende-punkt-venue::after {
+    inset: -10%;
+    background: var(--color-bg);
+    z-index: 2;
+}
+
+.legende-punkt-venue-fill {
+    position: relative;
+    z-index: 3;
+    display: block;
+    width: 100%;
+    height: 100%;
+    clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+}
+
+/* Issue #47: Sportheim/Raum bekommen eine vierte, von Kreis (Team), Quadrat
+   (Platz) und Dreieck (Spielstätte) klar unterscheidbare Form - eine Raute
    (gedrehtes Quadrat), in der Farbe der zugehörigen Spielstätte, da
    Sportheime noch keine eigene Farbe haben (Issue #36, bewusst nicht Teil
    dieses Issues). */
