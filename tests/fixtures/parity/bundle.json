@@ -1,5 +1,5 @@
 {
-  "format": 7,
+  "format": 8,
   "stand": "2026-08-01 12:00:00",
   "spiele": [
     {
@@ -241,6 +241,7 @@
       "team_ids": [1, 2],
       "pitch_id": 1,
       "wochentage": [2, 7],
+      "intervall_wochen": 1,
       "beginn": "19:00:00",
       "ende": "20:30:00",
       "gueltig_ab": "2026-08-01",
@@ -251,6 +252,7 @@
       "team_ids": [1],
       "pitch_id": 1,
       "wochentage": [2],
+      "intervall_wochen": 1,
       "beginn": "19:00:00",
       "ende": "19:45:00",
       "gueltig_ab": "2026-08-01",
@@ -261,10 +263,22 @@
       "team_ids": [2],
       "pitch_id": 3,
       "wochentage": [3],
+      "intervall_wochen": 1,
       "beginn": "17:00:00",
       "ende": "18:00:00",
       "gueltig_ab": "2026-08-01",
       "gueltig_bis": "2026-08-31"
+    },
+    {
+      "id": 4,
+      "team_ids": [2],
+      "pitch_id": 2,
+      "wochentage": [3],
+      "intervall_wochen": 2,
+      "beginn": "17:30:00",
+      "ende": "19:00:00",
+      "gueltig_ab": "2026-11-02",
+      "gueltig_bis": "2026-12-31"
     }
   ],
   "ausnahmen": [

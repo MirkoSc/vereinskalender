@@ -95,6 +95,9 @@ final readonly class SaisonService
                     'team_ids' => (array) json_decode((string) $slot['team_ids'], true),
                     'pitch_id' => (int) $slot['pitch_id'],
                     'wochentage' => (array) json_decode((string) $slot['wochentage'], true),
+                    // the rhythm carries over; it re-anchors on the new
+                    // gueltig_ab, which is what a new season wants
+                    'intervall_wochen' => max(1, (int) ($slot['intervall_wochen'] ?? 1)),
                     'beginn' => substr((string) $slot['beginn'], 0, 5),
                     'ende' => substr((string) $slot['ende'], 0, 5),
                     'gueltig_ab' => $gueltigAb,

@@ -1,10 +1,10 @@
 [
     {
-        "id": "slot-1-2026-10-20",
+        "id": "slot-1-2026-11-17",
         "typ": "belegung",
         "slot_id": 1,
-        "start": "2026-10-20T19:00:00",
-        "ende": "2026-10-20T20:30:00",
+        "start": "2026-11-17T19:00:00",
+        "ende": "2026-11-17T20:30:00",
         "titel": "E1+E2 Training",
         "team_id": 1,
         "team_ids": [
@@ -33,11 +33,11 @@
         "gueltig_bis": "2027-06-30"
     },
     {
-        "id": "slot-2-2026-10-20",
+        "id": "slot-2-2026-11-17",
         "typ": "belegung",
         "slot_id": 2,
-        "start": "2026-10-20T19:00:00",
-        "ende": "2026-10-20T19:45:00",
+        "start": "2026-11-17T19:00:00",
+        "ende": "2026-11-17T19:45:00",
         "titel": "E1 Training",
         "team_id": 1,
         "team_ids": [
@@ -64,11 +64,42 @@
         "gueltig_bis": "2027-06-30"
     },
     {
-        "id": "slot-1-2026-10-25",
+        "id": "slot-4-2026-11-18",
+        "typ": "belegung",
+        "slot_id": 4,
+        "start": "2026-11-18T17:30:00",
+        "ende": "2026-11-18T19:00:00",
+        "titel": "E2 Training",
+        "team_id": 2,
+        "team_ids": [
+            2
+        ],
+        "team_name": "E2",
+        "team_kuerzel": "E2",
+        "team_farbe": "#8250df",
+        "venue_id": 1,
+        "venue_name": "SV Musterstadt",
+        "venue_farbe": "#1a7f37",
+        "pitch_id": 2,
+        "pitch_name": "Kunstrasen",
+        "pitch_kuerzel": "P2",
+        "pitch_farbe": "#bc4c00",
+        "pitch_adresse": "Nebenweg 2",
+        "venue_adresse": "Sportweg 1",
+        "pitch_sportheim_id": null,
+        "wochentage": [
+            3
+        ],
+        "intervall_wochen": 2,
+        "gueltig_ab": "2026-11-02",
+        "gueltig_bis": "2026-12-31"
+    },
+    {
+        "id": "slot-1-2026-11-22",
         "typ": "belegung",
         "slot_id": 1,
-        "start": "2026-10-25T19:00:00",
-        "ende": "2026-10-25T20:30:00",
+        "start": "2026-11-22T19:00:00",
+        "ende": "2026-11-22T20:30:00",
         "titel": "E1+E2 Training",
         "team_id": 1,
         "team_ids": [

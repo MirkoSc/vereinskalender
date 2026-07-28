@@ -8,8 +8,8 @@ use App\Domain\Occurrence;
 
 /**
  * Expands recurring training slots into concrete occurrences for a date
- * range, honouring validity ranges, multiple weekdays per slot, and slot
- * exceptions.
+ * range, honouring validity ranges, multiple weekdays per slot, the
+ * recurrence interval in weeks, and slot exceptions.
  *
  * Times are Europe/Berlin wall time: a 19:00 slot is 19:00 local on every
  * occurrence, across both DST transitions (mandatory tests, section 12).
@@ -39,13 +39,48 @@ final class SlotExpander
             $teamIds = self::intList($slot['team_ids']);
             $weekdays = self::intList($slot['wochentage']);
 
-            $first = max($rangeStart, new \DateTimeImmutable((string) $slot['gueltig_ab']));
+            $intervall = max(1, (int) ($slot['intervall_wochen'] ?? 1));
+            $gueltigAb = new \DateTimeImmutable((string) $slot['gueltig_ab']);
+            $first = max($rangeStart, $gueltigAb);
             $last = min($rangeEnd, new \DateTimeImmutable((string) $slot['gueltig_bis']));
+            if ($last < $first) {
+                // nothing in range - and it keeps the fast-forward loop below
+                // bounded by the validity range instead of by $rangeStart
+                continue;
+            }
+
+            // Rhythm anchor: the Monday of the week holding the series' FIRST
+            // occurrence - the series starts on its earliest possible date and
+            // repeats every $intervall weeks from there. Anchoring on the
+            // gueltig_ab week instead would silently drop the first week
+            // whenever gueltig_ab falls after the chosen weekday within it
+            // ("ab Sa 01.08., dienstags, alle 2 Wochen" would start on the
+            // 11th, not the 4th). Anchoring the WEEK rather than each weekday
+            // keeps all weekdays of a slot in the same weeks; per-weekday
+            // anchoring would interleave them (with gueltig_ab on a Tuesday,
+            // Mo and Mi of a Mo+Mi slot would land in alternating weeks).
+            // Derived from the SLOT only, never from the requested range -
+            // otherwise the same slot would render different dates in an
+            // August query than in a September one.
+            $erste = null;
+            foreach ($weekdays as $weekday) {
+                $offset = ($weekday - (int) $gueltigAb->format('N') + 7) % 7;
+                $kandidat = $gueltigAb->modify(sprintf('+%d days', $offset));
+                if ($erste === null || $kandidat < $erste) {
+                    $erste = $kandidat;
+                }
+            }
+            if ($erste === null) {
+                continue;
+            }
+            $anker = $erste->modify(sprintf('-%d days', (int) $erste->format('N') - 1));
+            $schritt = sprintf('+%d days', 7 * $intervall);
 
             foreach ($weekdays as $weekday) {
-                // advance to the first matching ISO weekday
-                $offset = ($weekday - (int) $first->format('N') + 7) % 7;
-                $date = $first->modify(sprintf('+%d days', $offset));
+                $date = $anker->modify(sprintf('+%d days', $weekday - 1));
+                while ($date < $first) {
+                    $date = $date->modify($schritt);
+                }
 
                 while ($date <= $last) {
                     $datum = $date->format('Y-m-d');
@@ -59,7 +94,7 @@ final class SlotExpander
                             end: new \DateTimeImmutable($datum . ' ' . (string) $slot['ende']),
                         );
                     }
-                    $date = $date->modify('+7 days');
+                    $date = $date->modify($schritt);
                 }
             }
         }

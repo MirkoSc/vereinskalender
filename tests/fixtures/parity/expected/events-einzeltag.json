@@ -102,6 +102,7 @@
             2,
             7
         ],
+        "intervall_wochen": 1,
         "gueltig_ab": "2026-08-01",
         "gueltig_bis": "2027-06-30"
     },
@@ -132,6 +133,7 @@
         "wochentage": [
             2
         ],
+        "intervall_wochen": 1,
         "gueltig_ab": "2026-08-01",
         "gueltig_bis": "2027-06-30"
     },

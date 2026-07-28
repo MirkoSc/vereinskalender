@@ -28,6 +28,10 @@ final class TrainingSlotProjector extends TableProjector
      * written before that have singular team_id/wochentag. The legacy
      * single-value columns keep the first list element so a rollback to the
      * previous release still reads sensible data.
+     *
+     * Events written before migration 018 have no intervall_wochen at all -
+     * they are upcast to 1 (weekly), which is exactly what they meant. The
+     * column is NOT NULL, so without this a replay would write NULL.
      */
     public function normalizePayload(array $payload): array
     {
@@ -38,6 +42,7 @@ final class TrainingSlotProjector extends TableProjector
             ...$payload,
             'team_ids' => $teamIds,
             'wochentage' => $wochentage,
+            'intervall_wochen' => max(1, (int) ($payload['intervall_wochen'] ?? 1)),
             'team_id' => $teamIds[0] ?? 0,
             'wochentag' => $wochentage[0] ?? 0,
         ];
@@ -45,6 +50,6 @@ final class TrainingSlotProjector extends TableProjector
 
     protected function columns(): array
     {
-        return ['team_ids', 'wochentage', 'team_id', 'pitch_id', 'wochentag', 'beginn', 'ende', 'gueltig_ab', 'gueltig_bis'];
+        return ['team_ids', 'wochentage', 'intervall_wochen', 'team_id', 'pitch_id', 'wochentag', 'beginn', 'ende', 'gueltig_ab', 'gueltig_bis'];
     }
 }

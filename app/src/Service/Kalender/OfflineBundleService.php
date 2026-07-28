@@ -47,7 +47,10 @@ final readonly class OfflineBundleService
     // carry allDay=true and a day-midnight start/ende (date of the effective
     // end) instead of a ~23:59 kickoff; an older cached bundle would still
     // render a bye as a timed block on the wrong day.
-    public const int FORMAT = 7;
+    // Slot-Rhythmus: bumped to 8 - slots now carry intervall_wochen (1 =
+    // weekly); an older cached bundle would expand an every-other-week
+    // series as a weekly one and show twice the training sessions.
+    public const int FORMAT = 8;
 
     public function __construct(
         private TrainingSlotRepository $slots,
@@ -117,6 +120,7 @@ final readonly class OfflineBundleService
                 'team_ids' => SlotExpander::intList($s['team_ids']),
                 'pitch_id' => (int) $s['pitch_id'],
                 'wochentage' => SlotExpander::intList($s['wochentage']),
+                'intervall_wochen' => max(1, (int) ($s['intervall_wochen'] ?? 1)),
                 'beginn' => (string) $s['beginn'],
                 'ende' => (string) $s['ende'],
                 'gueltig_ab' => (string) $s['gueltig_ab'],

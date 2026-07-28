@@ -174,7 +174,7 @@ final class FeinschliffTest extends DatabaseTestCase
             new \App\Repository\VermietungRepository($pdo),
         )->build();
 
-        self::assertSame(7, $bundle['format']);
+        self::assertSame(8, $bundle['format']);
         self::assertCount(2, $bundle['spiele'], 'the complete dataset: past AND future matches, no date window');
         self::assertArrayHasKey('team_farbe', $bundle['spiele'][0], 'both color modes work offline');
         self::assertArrayHasKey('venue_farbe', $bundle['spiele'][0]);

@@ -78,6 +78,117 @@ test('DST: wall time stays 19:00 across the fall transition (2026-10-25)', () =>
     }
 });
 
+// ---- Rhythmus (intervall_wochen), Spiegel von tests/Kalender/SlotExpanderTest.php ----
+
+const rhythmusSlot = (overrides = {}) => ({
+    id: 1,
+    team_ids: [1],
+    pitch_id: 1,
+    wochentage: [2],
+    beginn: '19:00:00',
+    ende: '20:30:00',
+    gueltig_ab: '2026-08-01',
+    gueltig_bis: '2027-06-30',
+    ...overrides,
+});
+
+const daten = (occurrences) => occurrences.map((o) => o.datum);
+
+test('Rhythmus: alle 2 Wochen lässt jede zweite Woche aus', () => {
+    const occurrences = expandiereSlotOccurrences(
+        [rhythmusSlot({ intervall_wochen: 2 })], [], '2026-08-01', '2026-09-30',
+    );
+
+    assert.deepEqual(
+        daten(occurrences),
+        ['2026-08-04', '2026-08-18', '2026-09-01', '2026-09-15', '2026-09-29'],
+    );
+});
+
+for (const [intervall, erwartet] of [
+    [1, ['2026-08-04', '2026-08-11', '2026-08-18', '2026-08-25',
+        '2026-09-01', '2026-09-08', '2026-09-15', '2026-09-22', '2026-09-29']],
+    [2, ['2026-08-04', '2026-08-18', '2026-09-01', '2026-09-15', '2026-09-29']],
+    [3, ['2026-08-04', '2026-08-25', '2026-09-15']],
+    [4, ['2026-08-04', '2026-09-01', '2026-09-29']],
+]) {
+    test(`Rhythmus: alle ${intervall} Wochen`, () => {
+        const occurrences = expandiereSlotOccurrences(
+            [rhythmusSlot({ intervall_wochen: intervall })], [], '2026-08-01', '2026-09-30',
+        );
+        assert.deepEqual(daten(occurrences), erwartet);
+    });
+}
+
+test('Rhythmus: der Takt hängt am Slot, nicht am abgefragten Bereich', () => {
+    const slot = rhythmusSlot({ intervall_wochen: 2 });
+
+    const ausschnitt = expandiereSlotOccurrences([slot], [], '2026-09-08', '2026-09-30');
+    const voll = expandiereSlotOccurrences([slot], [], '2026-08-01', '2026-09-30');
+
+    // ein am Bereichsanfang verankerter Takt lieferte hier 08.09./22.09.
+    assert.deepEqual(daten(ausschnitt), ['2026-09-15', '2026-09-29']);
+    assert.deepEqual(daten(voll).filter((d) => d >= '2026-09-08'), daten(ausschnitt));
+});
+
+test('Rhythmus: alle Wochentage eines Slots liegen in denselben Wochen', () => {
+    const slot = rhythmusSlot({
+        wochentage: [1, 3],
+        intervall_wochen: 2,
+        gueltig_ab: '2026-08-04',
+    });
+
+    const occurrences = expandiereSlotOccurrences([slot], [], '2026-08-01', '2026-09-06');
+
+    assert.deepEqual(
+        daten(occurrences),
+        ['2026-08-05', '2026-08-17', '2026-08-19', '2026-08-31', '2026-09-02'],
+    );
+});
+
+test('Rhythmus: DST-Herbst, 14-tägig genau auf dem Umstellungswochenende', () => {
+    const slot = rhythmusSlot({ wochentage: [7], intervall_wochen: 2, gueltig_ab: '2026-10-11' });
+
+    const occurrences = expandiereSlotOccurrences([slot], [], '2026-10-04', '2026-11-15');
+
+    assert.deepEqual(daten(occurrences), ['2026-10-11', '2026-10-25', '2026-11-08']);
+    for (const o of occurrences) {
+        assert.equal(o.start.slice(11, 16), '19:00');
+    }
+});
+
+test('Rhythmus: DST-Frühjahr, 14-tägig genau auf dem Umstellungswochenende', () => {
+    const slot = rhythmusSlot({ wochentage: [7], intervall_wochen: 2, gueltig_ab: '2027-03-14' });
+
+    const occurrences = expandiereSlotOccurrences([slot], [], '2027-03-07', '2027-04-18');
+
+    assert.deepEqual(daten(occurrences), ['2027-03-14', '2027-03-28', '2027-04-11']);
+    for (const o of occurrences) {
+        assert.equal(o.start.slice(11, 16), '19:00');
+    }
+});
+
+test('Rhythmus: fehlendes Feld bedeutet wöchentlich (Bundles vor format 8)', () => {
+    const ohneFeld = expandiereSlotOccurrences([rhythmusSlot()], [], '2026-08-01', '2026-08-31');
+    const mitEins = expandiereSlotOccurrences(
+        [rhythmusSlot({ intervall_wochen: 1 })], [], '2026-08-01', '2026-08-31',
+    );
+
+    assert.deepEqual(daten(ohneFeld), daten(mitEins));
+    assert.deepEqual(daten(ohneFeld), ['2026-08-04', '2026-08-11', '2026-08-18', '2026-08-25']);
+});
+
+test('Rhythmus: Ausnahmen greifen wie bei einer wöchentlichen Serie', () => {
+    const occurrences = expandiereSlotOccurrences(
+        [rhythmusSlot({ intervall_wochen: 2 })],
+        [{ slot_id: 1, datum: '2026-08-18' }],
+        '2026-08-01',
+        '2026-09-01',
+    );
+
+    assert.deepEqual(daten(occurrences), ['2026-08-04', '2026-09-01']);
+});
+
 test('a multi-day sperrung starting before "von" still shows (overlap, not start-date filtering)', () => {
     // Issue #25 fix: the old offline fallback filtered sperrungen by
     // e.start.slice(0,10) which dropped restrictions that started earlier

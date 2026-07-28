@@ -173,6 +173,15 @@
                     <label><input type="checkbox" name="wochentage[]" value="7"> So</label>
                 </div>
             </fieldset>
+            <label id="booking-rhythmus-feld">Rhythmus
+                <select name="intervall_wochen">
+                    <option value="1" selected>jede Woche</option>
+                    <option value="2">alle 2 Wochen</option>
+                    <option value="3">alle 3 Wochen</option>
+                    <option value="4">alle 4 Wochen</option>
+                </select>
+                <small>Der Takt zählt ab der Woche von „Gültig ab“.</small>
+            </label>
             <div class="field-row">
                 <label>Beginn <input type="time" name="beginn" required></label>
                 <label>Ende <input type="time" name="ende" required></label>

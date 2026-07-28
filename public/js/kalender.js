@@ -1809,7 +1809,10 @@
             }
             const tage = ['', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
             const serie = (props.wochentage ?? []).map((w) => tage[w]).join('+');
-            detailContent.append(zeile('Serie', `${serie}, ${formatDatum(props.gueltig_ab)} bis ${formatDatum(props.gueltig_bis)}`));
+            const takt = Number(props.intervall_wochen ?? 1) > 1
+                ? `, alle ${Number(props.intervall_wochen)} Wochen`
+                : '';
+            detailContent.append(zeile('Serie', `${serie}${takt}, ${formatDatum(props.gueltig_ab)} bis ${formatDatum(props.gueltig_bis)}`));
 
             // public edit path (CLAUDE.md section 6): every visitor with a
             // name may edit; the scope dialog asks what to change
@@ -2484,6 +2487,7 @@
     const bookingTitle = document.querySelector('#booking-title');
     const bookingModusFeld = document.querySelector('#booking-modus-feld');
     const wochentageFeld = document.querySelector('#booking-wochentage-feld');
+    const rhythmusFeld = document.querySelector('#booking-rhythmus-feld');
     const gueltigFeld = document.querySelector('#booking-gueltig-feld');
     const datumFeld = document.querySelector('#booking-datum-feld');
     let warnungenBestaetigt = false;
@@ -2530,6 +2534,9 @@
 
     const setBookingFieldMode = (einzelUI) => {
         wochentageFeld.hidden = einzelUI;
+        // an Einzeltermin has no rhythm; the select stays in the form and is
+        // still submitted, but the server pins it to 1 (applyEinzeltermin)
+        rhythmusFeld.hidden = einzelUI;
         gueltigFeld.hidden = einzelUI;
         datumFeld.hidden = !einzelUI;
         bookingForm.elements.gueltig_ab.required = !einzelUI;
@@ -2576,6 +2583,9 @@
                 bookingForm.elements[feld].value = prefill[feld];
             }
         }
+        // reset() puts the select back to "jede Woche" - restore the series'
+        // own rhythm so editing never silently halves an every-other-week slot
+        bookingForm.elements.intervall_wochen.value = String(prefill.intervall_wochen ?? 1);
 
         // Modus toggle only for a brand-new booking; editing decides the UI
         // automatically from the slot itself (openEdit/startEdit below).
@@ -2636,6 +2646,7 @@
             team_ids: props.team_ids,
             pitch_id: props.pitch_id,
             wochentage: props.wochentage,
+            intervall_wochen: props.intervall_wochen,
             beginn: props.start.slice(11, 16),
             ende: props.ende.slice(11, 16),
             gueltig_ab: scope === 'nachfolgende' ? datum : props.gueltig_ab,

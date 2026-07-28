@@ -74,11 +74,39 @@ sind KEINE Projektionen.
   werden analog auf NULL gehoben (Migration 014). Das Frontend fällt bei
   leerem Kürzel auf den Platznamen zurück.
 - **training_slot**: team_ids (Liste 1..n – gemeinsames Training ist EIN
-  Slot), pitch_id FK, wochentage (Liste 1..n aus 1–7), beginn, ende,
-  gueltig_ab, gueltig_bis. Wiederholungsregel, zur Laufzeit expandiert.
-  Übergangsweise (eine Version, für Rollback) behält die Projektion die
+  Slot), pitch_id FK, wochentage (Liste 1..n aus 1–7), intervall_wochen,
+  beginn, ende, gueltig_ab, gueltig_bis. Wiederholungsregel, zur Laufzeit
+  expandiert. Übergangsweise (eine Version, für Rollback) behält die
+  Projektion die
   Alt-Spalten team_id/wochentag = erstes Listenelement; Alt-Events werden
   beim Replay per Payload-Normalisierung aufs Listenformat gehoben.
+  **Rhythmus** (intervall_wochen, 1 = jede Woche, UI bietet 1–4;
+  Migration 018, DEFAULT 1, Alt-Events ohne Feld werden beim Replay
+  deterministisch auf 1 gehoben – Upcasting analog `pitch.farbe`): der Takt
+  ist auf der **Woche des ERSTEN Termins der Serie** verankert, nicht auf
+  jedem Wochentag einzeln und nicht auf dem abgefragten Zeitraum. Beides
+  bewusst: Ein Anker je Wochentag würde die Wochentage eines Slots
+  verschränken (bei gueltig_ab an einem Dienstag lägen Mo und Mi eines
+  Mo+Mi-Slots in abwechselnden Wochen statt gemeinsam alle 14 Tage); ein
+  Anker am Bereichsanfang (`max(rangeStart, gueltig_ab)`, das Verhalten vor
+  dem Rhythmus) ließe denselben Slot in einer August-Abfrage andere Termine
+  liefern als in einer September-Abfrage – Grid, Terminliste und
+  Offline-Bundle widersprächen sich. Anker ist der erste Termin und nicht
+  die gueltig_ab-Woche selbst, weil deren Wochentag sonst stillschweigend
+  ausfiele („ab Sa 01.08., dienstags, alle 2 Wochen" begänne am 11.08. statt
+  am 04.08.). Aus dem Wochen-Anker folgen die Bearbeitungs-/Lösch-Umfänge
+  ohne Zusatzlogik: „dieser und alle folgenden" gibt der Fortsetzung
+  gueltig_ab = Split-Datum – selbst eine Occurrence –, der Takt setzt dort
+  also unverschoben neu an; das Kürzen behält gueltig_ab und damit den Anker
+  des verbleibenden Teils. Ein Eintages-Slot (Einzeltermin bzw. „nur
+  dieser") speichert immer intervall_wochen = 1; das im Einzeltermin-Modus
+  ausgeblendete Select wird von FormData trotzdem gesendet, der Server
+  überschreibt es deshalb, statt ihm zu vertrauen.
+  `NextEventDate::ausSlots()/ausSlotsVor()` bleiben bewusst **wöchentlich**
+  (Abschnitt 7): der wöchentliche Kandidat ist nie später als die echte
+  N-wöchige Occurrence (rückwärts nie früher), beide Schranken gelten also
+  weiter; ein exakter Nachbau wäre nur eine zweite Stelle, die mit
+  `SlotExpander` synchron zu halten wäre.
   **Bearbeiten ist öffentlich** (Ebene 2) mit Umfangs-Rückfrage:
   „alle Termine" (Updated-Event), „dieser und alle folgenden" (Split:
   Updated kürzt gueltig_bis + Created für die Fortsetzung, atomar in einer
@@ -595,6 +623,13 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   matchen zusätzlich, wenn EIN Team des Slots EINEN der Filter-Werte erfüllt;
   API liefert `team_ids` zusätzlich zu `team_id` (= erstes Team, bestimmt
   Farbe).
+- Belegungen tragen zusätzlich `intervall_wochen` (Rhythmus der Serie,
+  Abschnitt 3). Kein reines Anzeigefeld: `startEdit()` baut den Prefill des
+  Bearbeiten-Dialogs aus den Event-Props, ohne das Feld setzte jedes
+  Bearbeiten einer 14-tägigen Serie sie stillschweigend auf wöchentlich
+  zurück. Der Detail-Dialog zeigt es in der „Serie"-Zeile („Di, alle 2
+  Wochen, 01.08.2026 bis 30.06.2027"), bei Intervall 1 unverändert ohne
+  Zusatz.
 - Vereinssicht „Bei uns" = voreingestellte Filterkombination (Heimspiele +
   Belegungen + Restriktionen je Verein), keine eigene Datenlogik.
 - Teamfarben als CSS-Variablen aus der DB (`:root { --team-<id>: … }`).
@@ -863,13 +898,15 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   `appData.vermietungArten` auf, statt sie – wie zuvor den festen Text
   „Vermietung: <Anlass> (<Räume>)" – erneut zu hartcodieren.
 - **PWA/Offline**: Service Worker cached App-Shell; `GET /api/offline-bundle`
-  (format-versioniert, aktuell 7 – Issue #36 hat `sportheime`/
+  (format-versioniert, aktuell 8 – Issue #36 hat `sportheime`/
   `sportheim_raeume`/`vermietungen`-Listen ergänzt und `pitch.sportheim_id`
   aufgenommen, Issue #65 hat `spiele[].spielfrei` und
   `settings.spielfrei_farbe` ergänzt, Issue #63 `vermietungen[].art` plus den
   art-präfigierten `titel`, Issue #78 hat Byes ganztägig gemacht –
   `spiele[].allDay` plus Tages-Mitternacht in `start`/`ende` statt der rohen
-  Uhrzeit) liefert den **kompletten Datenbestand**
+  Uhrzeit –, der Slot-Rhythmus hat `slots[].intervall_wochen` ergänzt: ein
+  älteres Bundle expandierte eine 14-tägige Serie wöchentlich und zeigte
+  doppelt so viele Trainings) liefert den **kompletten Datenbestand**
   (Issue #25): alle Spiele, Sperrungen und Vermietungen bereits serialisiert
   (Feed-Shape, inkl. Platz-/Vereinszuordnung über
   `VenueMatcher`/`MatchDuration`), Trainings-Slots dagegen als **Regeln**
@@ -1152,6 +1189,32 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   identisch zum Serienformular; Bearbeiten eines bereits bestehenden
   Eintages-Slots bleibt beim Umfang „alle" – Update in place ohne
   slot_exception/Split, `testUpdateEinzeltagesSlotInPlaceSkipsSplit`);
+  **Slot-Rhythmus** (`intervall_wochen`, Abschnitt 3 – `SlotExpanderTest` +
+  spiegelbildlich `tests/js/offline-events.test.js`: Intervalle 1–4 als
+  Matrix; **`testIntervalAnchorIsIndependentOfRequestedRange`** als
+  wichtigster Test – derselbe Ausschnitt direkt abgefragt muss dieselben
+  Daten liefern wie aus einer großen Abfrage gefiltert, genau das bricht,
+  wenn wieder auf `max($rangeStart, gueltig_ab)` verankert wird;
+  `testIntervalKeepsAllWeekdaysInTheSameWeek` gegen ein Verschränken der
+  Wochentage; DST-Pflichttests auch für den Intervall-Pfad, mit einer
+  14-tägigen Serie, die genau auf dem Umstellungswochenende liegt; fehlendes
+  Feld = wöchentlich, byte-gleich zum Verhalten vor dem Rhythmus; Ausnahmen
+  greifen unverändert. `BookingServiceTest`: Validierung 0/-1/5/'abc'/'2.5'
+  → `ValidationException`, fehlend → 1; **Split „dieser und alle folgenden"
+  verschiebt keinen einzigen Termin** – die Daten beider Teile zusammen sind
+  identisch mit denen der ungeteilten Serie –, Kürzen erhält den Takt des
+  Rests, ein Eintages-Slot speichert immer 1 (auch wenn das Formular etwas
+  anderes sendet), und zwei um eine Woche versetzte 14-tägige Serien auf
+  demselben Platz kollidieren NICHT – der Fall, den eine wöchentliche
+  Expansion fälschlich als Doppelbelegung meldete. `ReplayDeterminismTest`:
+  Alt-Event ohne Feld → 1, explizit gesetzter Wert und ein späterer
+  Takt-Wechsel überleben den Rebuild. `EventFeedTest`: der Belegungs-Payload
+  trägt `intervall_wochen`, und die 14-tägige Serie fehlt in der Folgewoche,
+  die wöchentliche nicht. Parity-Fixtures: ein eigener Slot mit Intervall 2
+  plus die Fälle `zweiwochen-takt-an`/`-aus` (zwei aufeinanderfolgende
+  Wochen); der Diff der älteren `events-*.json` ist rein additiv – nur das
+  neue Feld, kein einziges geändertes Datum, was den Intervall-1-Pfad als
+  regressionsfrei belegt);
   ICS-Sync (insert/update/skip/abgesagt, Verlegung per gleicher UID);
   VenueMatcher (Mehrfach-Begriffe, Priorität, case-insensitive, heim vs.
   auswärts); Konfliktprüfung (gesperrt blockiert, eingeschraenkt warnt,
