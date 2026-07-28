@@ -537,6 +537,7 @@ dialog.sheet::backdrop {
 }
 
 .ev-punkt {
+    display: inline-block;
     width: 0.6rem;
     height: 0.6rem;
     flex-shrink: 0;
