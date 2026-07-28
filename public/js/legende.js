@@ -8,25 +8,37 @@
 // Seite inkl. der beim letzten Online-Besuch eingebetteten appData
 // (CLAUDE.md Abschnitt 8), genau wie Team-/Spielstättenfilter etc.
 //
-// Team = Kreis, Spielstätte/Platz = Quadrat - dieselbe Konvention wie die
-// zwei Farbpunkte an jedem Termin (kalender.js, Issue #39); Farbe ist nie
+// Team = Kreis, Platz = Quadrat, Spielstätte = Dreieck - dieselbe Konvention
+// wie die Farbpunkte an jedem Termin (kalender.js, Issue #39); Farbe ist nie
 // das einzige Signal (CLAUDE.md Abschnitt 8), jeder Punkt steht neben
 // sichtbarem Text und ist selbst dekorativ (aria-hidden).
 //
-// Issue #47: Sportheime/Räume bekommen eine dritte, eigene Form (Raute) -
-// weder Kreis (Team) noch Quadrat (Spielstätte/Platz), aber klar an die
-// Farbe ihrer Spielstätte angelehnt (Sportheime haben noch keine eigene
-// Farbe, das bleibt der Administration vorbehalten, Issue #36). Ein
-// zugeordnetes Sportheim macht sich bei seinen Plätzen zusätzlich als
-// sichtbarer 🏠-Text bemerkbar (nicht nur Tooltip), passend zum
-// 🏠-Indikator am Termin (kalender.js/vermietung-hinweis.js), dessen
-// Bedeutung der Symbole-Abschnitt am Ende erklärt.
+// Issue #47: Sportheime/Räume bekommen eine vierte, eigene Form (Raute) -
+// unterscheidbar von Kreis (Team), Quadrat (Platz) und Dreieck
+// (Spielstätte), aber klar an die Farbe ihrer Spielstätte angelehnt
+// (Sportheime haben noch keine eigene Farbe, das bleibt der Administration
+// vorbehalten, Issue #36). Ein zugeordnetes Sportheim macht sich bei seinen
+// Plätzen zusätzlich als sichtbarer 🏠-Text bemerkbar (nicht nur Tooltip),
+// passend zum 🏠-Indikator am Termin (kalender.js/vermietung-hinweis.js),
+// dessen Bedeutung der Symbole-Abschnitt am Ende erklärt.
 (() => {
+    // Der Spielstätten-Punkt (Dreieck) ist per clip-path geformt - box-shadow
+    // (der Kontrast-Ring der übrigen Formen, app.css) folgt der Box, nicht
+    // der geclippten Form, daher trägt dort ein echtes Kind-Element die
+    // Farbe statt background-color direkt am Punkt (analog kalender.js::
+    // punkt(), s. .legende-punkt-venue/app.css).
     const punkt = (farbe, form) => {
         const span = document.createElement('span');
         span.className = `legende-punkt legende-punkt-${form}`;
-        span.style.backgroundColor = farbe;
         span.setAttribute('aria-hidden', 'true');
+        if (form === 'venue') {
+            const fill = document.createElement('span');
+            fill.className = 'legende-punkt-venue-fill';
+            fill.style.backgroundColor = farbe;
+            span.append(fill);
+        } else {
+            span.style.backgroundColor = farbe;
+        }
         return span;
     };
 
@@ -168,7 +180,7 @@
             gruppe.pitches.map((pitch) => {
                 const heim = pitch.sportheim_id !== null ? sportheimName(pitch.sportheim_id) : null;
                 const name = heim ? `${pitch.name} (🏠 ${heim})` : pitch.name;
-                return eintrag(pitch.farbe, 'venue', pitch.kuerzel, name);
+                return eintrag(pitch.farbe, 'pitch', pitch.kuerzel, name);
             }),
         ));
         root.append(abschnitt('Plätze', plaetzeGruppen));

@@ -475,8 +475,8 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   (Issue #57, eine Entscheidungsstelle:
   `VKKalenderPitch.platzFarbDarstellung(modus, hatResourceSpalten, pitchFilter)`):
   Tag/Woche ohne Ressourcen-Spalten färben den Termin-HINTERGRUND; der Monat
-  bekommt stattdessen einen dritten Farbpunkt (Quadrat wie der
-  Spielstätten-Punkt, Legende Issue #38), weil `dayGridMonth` zeitgebundene
+  bekommt stattdessen einen dritten Farbpunkt (Quadrat, eigene Form je
+  Bedeutung wie in der Legende, Issue #38), weil `dayGridMonth` zeitgebundene
   Termine als Dot-Events ohne Block-Fläche rendert – ein Hintergrund kommt
   dort nicht an, und der eigene `eventContent` ersetzt zudem FullCalendars
   eigenen Punkt. Die Terminliste (`listNachlade`, per Umschalter jederzeit
@@ -633,16 +633,19 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   Zeitraum, die Art bestimmt nur den Wortlaut beim Rendern).
 - **Detail-Dialog mit Farbpunkten**: Team-/Spielstätten-/Platz-Zeilen
   (`showDetail()`, `kalender.js`) tragen denselben Farbpunkt wie der Termin
-  selbst und die Legende (Kreis=Team, Quadrat=Spielstätte/Platz, dieselbe
-  `punkt()`-Hilfsfunktion wie `eventPunkte()`) statt reinen Texts – Farbe
-  ist nie das einzige Signal, das Label bleibt daneben stehen. Jeder Termin
-  mit einem Platz zeigt zusätzlich dessen Spielstätte als eigene Zeile
-  (auch Training/Sperrung, nicht nur Spiel/Vermietung); ist dem Platz ein
-  Sportheim zugeordnet (`pitch_sportheim_id`), erscheint eine zusätzliche
-  Sportheim-Zeile mit eigenem Punkt (Raute wie `.legende-punkt-heim`, neue
-  Klasse `.ev-punkt-heim` – nur im Detail-Dialog verwendet, nicht am Termin
-  selbst) in der Farbe von dessen Spielstätte (Sportheime haben noch keine
-  eigene Farbe, Issue #36/#47). Name und Farbe des Sportheims löst der
+  selbst und die Legende (Kreis=Team, Quadrat=Platz, Dreieck=Spielstätte,
+  dieselbe `punkt()`-Hilfsfunktion wie `eventPunkte()`) statt reinen Texts –
+  Farbe ist nie das einzige Signal, das Label bleibt daneben stehen. Alle
+  vier Formen (inkl. Sportheim-Raute, s. u.) sind damit auf einen Blick
+  unterscheidbar, auch wenn Team-, Spielstätten-, Platz- und Sportheimfarbe
+  zufällig gleich oder ähnlich ausfallen. Jeder Termin mit einem Platz zeigt
+  zusätzlich dessen Spielstätte als eigene Zeile (auch Training/Sperrung,
+  nicht nur Spiel/Vermietung); ist dem Platz ein Sportheim zugeordnet
+  (`pitch_sportheim_id`), erscheint eine zusätzliche Sportheim-Zeile mit
+  eigenem Punkt (Raute wie `.legende-punkt-heim`, neue Klasse
+  `.ev-punkt-heim` – nur im Detail-Dialog verwendet, nicht am Termin selbst)
+  in der Farbe von dessen Spielstätte (Sportheime haben noch keine eigene
+  Farbe, Issue #36/#47). Name und Farbe des Sportheims löst der
   Client über `appData.sportheime`/`appData.venues` auf (keine
   Sportheim-Zuordnung im Belegungs-/Spiel-/Sperrungs-Payload selbst, nur die
   ID) – analog `legende-gruppierung.js::raeumeNachSportheim()`.
@@ -806,9 +809,20 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   in der Kalender-Toolbar) mit Escape- und Klick-außerhalb-Schließen
   (Escape nativ, Klick außerhalb eigens verdrahtet – andere Dialoge der App
   bieten das bewusst nicht). Farbpunkte teilen sich die Kontrast-Technik
-  der Termin-Punkte (Issue #39): Team = Kreis, Spielstätte/Platz = Quadrat,
-  Sportheim/Raum = Raute (Issue #47, eigene Form – Sportheime haben noch
-  keine eigene Farbe, daher die Farbe ihrer Spielstätte), Text immer
+  der Termin-Punkte (Issue #39): Team = Kreis, Platz = Quadrat, Spielstätte =
+  Dreieck, Sportheim/Raum = Raute (Issue #47, eigene Form – Sportheime haben
+  noch keine eigene Farbe, daher die Farbe ihrer Spielstätte) – vier klar
+  unterscheidbare Formen, unabhängig davon, ob zwei Farben zufällig ähnlich
+  ausfallen (vorher teilten sich Spielstätte und Platz dieselbe
+  Quadrat-Form/-Klasse; seit der Detail-Dialog beide gleichzeitig zeigt,
+  Abschnitt 8 oben, braucht jede Bedeutung ihre eigene Form). Das Dreieck
+  entsteht per `clip-path` statt per `border-radius`: der zweischichtige
+  Kontrast-Ring der übrigen Formen ist ein `box-shadow`, das der BOX folgt,
+  nicht der geclippten Form – `.ev-punkt-venue`/`.legende-punkt-venue`
+  bauen den Ring deshalb aus zwei zusätzlichen, größeren Dreieck-Flächen
+  (`::before`/`::after`) unter einem echten Kind-Element für die Füllfarbe
+  (`.ev-punkt-venue-fill`/`.legende-punkt-venue-fill`, von `punkt()` in
+  kalender.js/legende.js erzeugt), Text immer
   daneben. Gruppe „Sportheime" (je Sportheim eingerückt seine Räume, nur
   aktive, in gepflegter `sortierung`) nutzt dieselbe `appData` wie
   Spielstätten/Plätze/Teams (`stammdaten()` liefert `sportheime`/
