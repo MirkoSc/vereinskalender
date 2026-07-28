@@ -1671,6 +1671,31 @@
         return p;
     };
 
+    // Team-Zeile für Belegungen (Issue: gemeinsames Training ist EIN Slot mit
+    // 1..n Teams, CLAUDE.md Abschnitt 3) - jedes Team bekommt seinen EIGENEN
+    // Farbpunkt statt eines einzelnen Punkts in props.team_farbe (= nur die
+    // Farbe des ersten Teams) vor dem bereits zusammengesetzten team_name
+    // ("E1 + E2"). Auflösung über appData.teams (Payload trägt nur team_ids),
+    // Fallback auf die vorhandenen team_id/team_farbe/team_name-Felder, falls
+    // ein Team zwischenzeitlich gelöscht wurde.
+    const zeileTeams = (props) => {
+        const ids = props.team_ids ?? [props.team_id];
+        const p = document.createElement('p');
+        const strong = document.createElement('strong');
+        strong.textContent = ids.length > 1 ? 'Teams: ' : 'Team: ';
+        p.append(strong);
+        ids.forEach((id, index) => {
+            const team = appData.teams.find((t) => t.id === id);
+            const name = team?.name ?? props.team_name;
+            const farbe = team?.farbe ?? props.team_farbe;
+            if (index > 0) {
+                p.append(document.createTextNode(' + '));
+            }
+            p.append(punkt('ev-punkt-team', farbe, `Team: ${name}`), document.createTextNode(` ${name}`));
+        });
+        return p;
+    };
+
     // Sportheim-Zeile für Trainings/Spiele/Sperrungen (nicht für
     // Vermietungen, die ihr Sportheim bereits als eigene Zeile zeigen): der
     // Payload trägt nur pitch_sportheim_id (Issue #36), Name und Farbe (=
@@ -1753,12 +1778,7 @@
         }
 
         if (props.typ === 'belegung') {
-            detailContent.append(zeileFarbe(
-                (props.team_ids ?? []).length > 1 ? 'Teams' : 'Team',
-                'ev-punkt-team',
-                props.team_farbe,
-                props.team_name,
-            ));
+            detailContent.append(zeileTeams(props));
             detailContent.append(zeileFarbe('Spielstätte', 'ev-punkt-venue', props.venue_farbe, venueName(props)));
             if (props.pitch_name !== null) {
                 detailContent.append(zeileFarbe('Platz', 'ev-punkt-pitch', props.pitch_farbe, props.pitch_name));

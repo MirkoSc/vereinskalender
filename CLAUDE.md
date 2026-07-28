@@ -638,7 +638,12 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   Farbe ist nie das einzige Signal, das Label bleibt daneben stehen. Alle
   vier Formen (inkl. Sportheim-Raute, s. u.) sind damit auf einen Blick
   unterscheidbar, auch wenn Team-, Spielstätten-, Platz- und Sportheimfarbe
-  zufällig gleich oder ähnlich ausfallen. Jeder Termin mit einem Platz zeigt
+  zufällig gleich oder ähnlich ausfallen. Ein Mehr-Team-Slot (gemeinsames
+  Training, Abschnitt 3) zeigt dabei vor JEDEM Teamnamen dessen EIGENEN
+  Farbpunkt (`zeileTeams()`, über `team_ids` und `appData.teams` aufgelöst –
+  der Payload selbst trägt nur `team_farbe` des ersten Teams), nicht nur
+  einen Punkt vor dem gesamten zusammengesetzten `team_name` ("E1 + E2").
+  Jeder Termin mit einem Platz zeigt
   zusätzlich dessen Spielstätte als eigene Zeile (auch Training/Sperrung,
   nicht nur Spiel/Vermietung); ist dem Platz ein Sportheim zugeordnet
   (`pitch_sportheim_id`), erscheint eine zusätzliche Sportheim-Zeile mit
