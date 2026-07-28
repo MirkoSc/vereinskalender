@@ -733,7 +733,12 @@ dialog.sheet::backdrop {
    ("28. Juli 2026 - Dienstag"), nicht rechtsbündig am anderen Zeilenende:
    FullCalendar positioniert .fc-list-day-side-text per float:right dorthin.
    float:none lässt beide <a>-Elemente stattdessen inline hintereinander
-   fließen; das :before liefert den Trenner. */
+   fließen; das :before liefert den Trenner. Ohne Floats greift wieder der
+   Browser-Default für <th> (zentriert) auf .fc-list-day-cushion - explizit
+   linksbündig, wie der Rest der Liste. */
+.fc.fc-direction-ltr .fc-list-day-cushion {
+    text-align: left;
+}
 .fc.fc-direction-ltr .fc-list-day-text,
 .fc.fc-direction-ltr .fc-list-day-side-text {
     float: none;
