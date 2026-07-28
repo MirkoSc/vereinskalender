@@ -1648,6 +1648,35 @@
         return p;
     };
 
+    // Wie zeile(), aber mit vorangestelltem Farbpunkt (Kreis=Team,
+    // Quadrat=Spielstätte/Platz, Raute=Sportheim - dieselbe Konvention wie
+    // die Termin-Punkte/die Legende, Issue #39/#38/#47): Farbe ist nie das
+    // einzige Signal, das Label bleibt sichtbarer Text neben dem Punkt.
+    const zeileFarbe = (label, klasse, farbe, wert) => {
+        const p = document.createElement('p');
+        const strong = document.createElement('strong');
+        strong.textContent = `${label}: `;
+        p.append(strong, punkt(klasse, farbe, label), document.createTextNode(` ${wert}`));
+        return p;
+    };
+
+    // Sportheim-Zeile für Trainings/Spiele/Sperrungen (nicht für
+    // Vermietungen, die ihr Sportheim bereits als eigene Zeile zeigen): der
+    // Payload trägt nur pitch_sportheim_id (Issue #36), Name und Farbe (=
+    // Farbe von dessen Spielstätte, Sportheime haben noch keine eigene,
+    // analog legende.js) löst der Client über appData auf.
+    const sportheimZeile = (props) => {
+        if (props.pitch_sportheim_id == null) {
+            return null;
+        }
+        const sportheim = appData.sportheime.find((s) => s.id === props.pitch_sportheim_id);
+        if (!sportheim) {
+            return null;
+        }
+        const venue = appData.venues.find((v) => v.id === sportheim.venue_id);
+        return zeileFarbe('Sportheim', 'ev-punkt-heim', venue?.farbe ?? appData.auswaertsFarbe, sportheim.name);
+    };
+
     const formatDatum = (iso) => new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
     // Maps-Link (Issue #5): Platz-Adresse falls zugeordnet, sonst ort_text;
@@ -1713,8 +1742,22 @@
         }
 
         if (props.typ === 'belegung') {
-            detailContent.append(zeile((props.team_ids ?? []).length > 1 ? 'Teams' : 'Team', props.team_name));
-            detailContent.append(zeile('Platz', props.pitch_name ?? '–'));
+            detailContent.append(zeileFarbe(
+                (props.team_ids ?? []).length > 1 ? 'Teams' : 'Team',
+                'ev-punkt-team',
+                props.team_farbe,
+                props.team_name,
+            ));
+            detailContent.append(zeileFarbe('Spielstätte', 'ev-punkt-venue', props.venue_farbe, venueName(props)));
+            if (props.pitch_name !== null) {
+                detailContent.append(zeileFarbe('Platz', 'ev-punkt-pitch', props.pitch_farbe, props.pitch_name));
+            } else {
+                detailContent.append(zeile('Platz', '–'));
+            }
+            const belegungSportheimZeile = sportheimZeile(props);
+            if (belegungSportheimZeile !== null) {
+                detailContent.append(belegungSportheimZeile);
+            }
             const belegungMapsLink = mapsLink(props);
             if (belegungMapsLink !== null) {
                 detailContent.append(belegungMapsLink);
@@ -1762,12 +1805,25 @@
 
             detailActions.append(editButton, ausfallButton, deleteButton);
         } else if (props.typ === 'spiel') {
+            detailContent.append(zeileFarbe('Team', 'ev-punkt-team', props.team_farbe, props.team_name));
             detailContent.append(zeile('Gegner', props.gegner));
             detailContent.append(zeile(
                 'Heim/Auswärts',
                 props.spielfrei ? 'Spielfrei' : (props.heimspiel ? 'Heimspiel' : 'Auswärtsspiel'),
             ));
-            detailContent.append(zeile('Ort', props.venue_name ?? props.ort_text ?? '–'));
+            detailContent.append(zeileFarbe(
+                'Spielstätte',
+                'ev-punkt-venue',
+                props.venue_farbe,
+                props.venue_name ?? props.ort_text ?? '–',
+            ));
+            if (props.pitch_name !== null) {
+                detailContent.append(zeileFarbe('Platz', 'ev-punkt-pitch', props.pitch_farbe, props.pitch_name));
+            }
+            const spielSportheimZeile = sportheimZeile(props);
+            if (spielSportheimZeile !== null) {
+                detailContent.append(spielSportheimZeile);
+            }
             const spielMapsLink = mapsLink(props);
             if (spielMapsLink !== null) {
                 detailContent.append(spielMapsLink);
@@ -1838,7 +1894,16 @@
                 detailActions.append(saveButton);
             }
         } else if (props.typ === 'sperrung') {
-            detailContent.append(zeile('Platz', props.pitch_name ?? '–'));
+            detailContent.append(zeileFarbe('Spielstätte', 'ev-punkt-venue', props.venue_farbe, venueName(props)));
+            if (props.pitch_name !== null) {
+                detailContent.append(zeileFarbe('Platz', 'ev-punkt-pitch', props.pitch_farbe, props.pitch_name));
+            } else {
+                detailContent.append(zeile('Platz', '–'));
+            }
+            const sperrungSportheimZeile = sportheimZeile(props);
+            if (sperrungSportheimZeile !== null) {
+                detailContent.append(sperrungSportheimZeile);
+            }
             const sperrungMapsLink = mapsLink(props);
             if (sperrungMapsLink !== null) {
                 detailContent.append(sperrungMapsLink);
@@ -1884,7 +1949,10 @@
             detailActions.append(editButton, deleteButton);
         } else if (props.typ === 'vermietung') {
             detailContent.append(zeile('Art', artName(props.art ?? 'vermietung')));
-            detailContent.append(zeile('Sportheim', props.sportheim_name));
+            if (props.venue_name !== null) {
+                detailContent.append(zeileFarbe('Spielstätte', 'ev-punkt-venue', props.venue_farbe, props.venue_name));
+            }
+            detailContent.append(zeileFarbe('Sportheim', 'ev-punkt-heim', props.venue_farbe, props.sportheim_name));
             detailContent.append(zeile('Räume', props.raum_text));
             if (props.kontakt) {
                 detailContent.append(zeile('Kontakt', props.kontakt));

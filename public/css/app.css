@@ -561,6 +561,15 @@ dialog.sheet::backdrop {
     border-radius: 2px;
 }
 
+/* Sportheim-Punkt im Detail-Dialog (kalender.js showDetail): Raute wie
+   .legende-punkt-heim - weder Kreis (Team) noch Quadrat (Spielstätte/Platz),
+   in der Farbe von dessen Spielstätte (Sportheime haben noch keine eigene,
+   Issue #36/#47). Nur im Detail-Dialog verwendet, nicht am Termin selbst. */
+.ev-punkt-heim {
+    border-radius: 2px;
+    transform: rotate(45deg);
+}
+
 /* Issue #58: Termininhalte dürfen nie über den Block hinausragen - beschnitten
    statt übergelaufen. Kürzungsreihenfolge (bewusst, s. Issue): Farbpunkte
    bleiben immer sichtbar (.ev-punkte, flex-shrink:0 oben) - das kompakteste

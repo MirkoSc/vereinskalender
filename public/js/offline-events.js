@@ -107,6 +107,7 @@
             team_kuerzel: kuerzel,
             team_farbe: slotTeams[0].farbe,
             venue_id: venueId,
+            venue_name: venueId !== null ? (venue?.name ?? '') : null,
             venue_farbe: venueId !== null ? (venue?.farbe ?? auswaertsFarbe) : auswaertsFarbe,
             pitch_id: occurrence.pitchId,
             pitch_name: pitch !== null ? pitch.name : null,
