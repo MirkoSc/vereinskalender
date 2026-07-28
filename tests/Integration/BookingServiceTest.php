@@ -451,6 +451,229 @@ final class BookingServiceTest extends DatabaseTestCase
         }
     }
 
+    // ---- delete scopes (same three as editing: alle / nachfolgende / einzeln) ----
+
+    /**
+     * @return list<string>
+     */
+    private function eventTypesFor(string $aggregateType, int $aggregateId): array
+    {
+        $stmt = $this->pdo()->prepare(
+            'SELECT event_typ FROM event WHERE aggregat_typ = ? AND aggregat_id = ? ORDER BY id',
+        );
+        $stmt->execute([$aggregateType, $aggregateId]);
+
+        return array_column($stmt->fetchAll(), 'event_typ');
+    }
+
+    public function testDeleteSlotWithoutScopeRemovesWholeSeries(): void
+    {
+        $booking = $this->bookingService();
+        $created = $booking->createSlot($this->slotInput(), $this->context());
+
+        // no edit_scope at all, as a stale cached client would send
+        $booking->deleteSlot($created['id'], [], $this->context());
+
+        self::assertCount(0, $this->dumpTable('training_slot'));
+        self::assertCount(0, $this->dumpTable('slot_exception'));
+        self::assertSame(['created', 'deleted'], $this->eventTypesFor('training_slot', $created['id']));
+    }
+
+    public function testDeleteScopeAlleRemovesWholeSeries(): void
+    {
+        $booking = $this->bookingService();
+        $created = $booking->createSlot($this->slotInput(), $this->context());
+
+        // a stray 'datum' must be ignored for scope 'alle'
+        $booking->deleteSlot($created['id'], ['edit_scope' => 'alle', 'datum' => '2026-09-01'], $this->context());
+
+        self::assertCount(0, $this->dumpTable('training_slot'));
+        self::assertCount(0, $this->dumpTable('slot_exception'));
+        self::assertSame(['created', 'deleted'], $this->eventTypesFor('training_slot', $created['id']));
+    }
+
+    public function testDeleteScopeNachfolgendeTruncatesSeries(): void
+    {
+        $booking = $this->bookingService();
+        $created = $booking->createSlot($this->slotInput(), $this->context());
+
+        $booking->deleteSlot($created['id'], ['edit_scope' => 'nachfolgende', 'datum' => '2026-09-01'], $this->context());
+
+        $slots = $this->dumpTable('training_slot');
+        self::assertCount(1, $slots, 'one event, no continuation slot');
+        self::assertSame('2026-08-01', $slots[0]['gueltig_ab']);
+        self::assertSame('2026-08-31', $slots[0]['gueltig_bis'], 'truncated to the day before the given date');
+        self::assertSame('19:00:00', $slots[0]['beginn'], 'the remaining part keeps its own time');
+        self::assertSame([2], json_decode((string) $slots[0]['wochentage'], true));
+        self::assertCount(0, $this->dumpTable('slot_exception'));
+        self::assertSame(['created', 'updated'], $this->eventTypesFor('training_slot', $created['id']));
+    }
+
+    /**
+     * The guard must stay occurrence-based, not date-based: gueltig_ab
+     * (2026-08-01) is a Saturday, the slot's first real occurrence is Tuesday
+     * 2026-08-04. Deleting "diesen und alle folgenden" from that first
+     * occurrence yields a day-before of 2026-08-03, which is still INSIDE
+     * [gueltig_ab, gueltig_bis] - a naive date comparison would leave a
+     * 2026-08-01..2026-08-03 stub with zero occurrences behind: invisible in
+     * the calendar, and therefore never deletable again through the UI.
+     */
+    public function testDeleteScopeNachfolgendeAtFirstOccurrenceDeletesWholeSeries(): void
+    {
+        $booking = $this->bookingService();
+        $created = $booking->createSlot($this->slotInput(), $this->context());
+
+        $booking->deleteSlot($created['id'], ['edit_scope' => 'nachfolgende', 'datum' => '2026-08-04'], $this->context());
+
+        self::assertCount(0, $this->dumpTable('training_slot'), 'no occurrence-free stub left behind');
+        self::assertSame(['created', 'deleted'], $this->eventTypesFor('training_slot', $created['id']));
+    }
+
+    public function testDeleteScopeNachfolgendeOnEintagesSlotDeletesIt(): void
+    {
+        $booking = $this->bookingService();
+        $created = $booking->createSlot($this->einzelterminInput(['datum_neu' => '2026-08-04']), $this->context());
+
+        $booking->deleteSlot($created['id'], ['edit_scope' => 'nachfolgende', 'datum' => '2026-08-04'], $this->context());
+
+        self::assertCount(0, $this->dumpTable('training_slot'));
+    }
+
+    public function testDeleteScopeNachfolgendeWithOnlyCancelledOccurrencesLeftDeletesSeries(): void
+    {
+        $booking = $this->bookingService();
+        $created = $booking->createSlot($this->slotInput(['gueltig_bis' => '2026-08-31']), $this->context());
+        $booking->addException($created['id'], ['datum' => '2026-08-04'], $this->context());
+
+        // before the 08-11 cut, only the already-cancelled 08-04 occurrence
+        // remains - the series is deleted, not truncated to an empty stub
+        $booking->deleteSlot($created['id'], ['edit_scope' => 'nachfolgende', 'datum' => '2026-08-11'], $this->context());
+
+        self::assertCount(0, $this->dumpTable('training_slot'));
+        self::assertCount(1, $this->dumpTable('slot_exception'), 'the orphaned exception is deliberately not cleaned up');
+    }
+
+    public function testDeleteScopeEinzelnCancelsOneOccurrence(): void
+    {
+        $booking = $this->bookingService();
+        $created = $booking->createSlot($this->slotInput(), $this->context());
+
+        $booking->deleteSlot($created['id'], ['edit_scope' => 'einzeln', 'datum' => '2026-08-11'], $this->context());
+
+        $slots = $this->dumpTable('training_slot');
+        self::assertCount(1, $slots, 'the series itself is untouched');
+        self::assertSame('2026-08-01', $slots[0]['gueltig_ab']);
+        self::assertSame('2026-10-31', $slots[0]['gueltig_bis']);
+
+        $exceptions = $this->dumpTable('slot_exception');
+        self::assertCount(1, $exceptions);
+        self::assertSame($created['id'], (int) $exceptions[0]['slot_id']);
+        self::assertSame('2026-08-11', $exceptions[0]['datum']);
+        self::assertSame('Termin gelöscht', $exceptions[0]['grund']);
+
+        $occurrences = SlotExpander::expand([$slots[0]], $exceptions, '2026-08-01', '2026-08-31');
+        $dates = array_map(static fn(object $o): string => $o->datum, $occurrences);
+        self::assertNotContains('2026-08-11', $dates);
+        self::assertContains('2026-08-04', $dates);
+        self::assertContains('2026-08-18', $dates);
+    }
+
+    public function testDeleteScopeEinzelnRejectsNonOccurrenceDate(): void
+    {
+        $booking = $this->bookingService();
+        $created = $booking->createSlot($this->slotInput(), $this->context());
+
+        try {
+            // 2026-08-05 is a Wednesday, the slot runs on Tuesdays
+            $booking->deleteSlot($created['id'], ['edit_scope' => 'einzeln', 'datum' => '2026-08-05'], $this->context());
+            self::fail('Expected validation to fail');
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey('datum', $e->getErrors());
+        }
+
+        self::assertCount(1, $this->dumpTable('training_slot'));
+        self::assertCount(0, $this->dumpTable('slot_exception'));
+    }
+
+    public function testDeleteScopeEinzelnRejectsAlreadyCancelledDate(): void
+    {
+        $booking = $this->bookingService();
+        $created = $booking->createSlot($this->slotInput(), $this->context());
+        $booking->addException($created['id'], ['datum' => '2026-08-11'], $this->context());
+
+        try {
+            $booking->deleteSlot($created['id'], ['edit_scope' => 'einzeln', 'datum' => '2026-08-11'], $this->context());
+            self::fail('Expected validation to fail');
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey('datum', $e->getErrors());
+        }
+
+        self::assertCount(1, $this->dumpTable('slot_exception'), 'no duplicate exception');
+    }
+
+    public function testDeleteScopeNachfolgendeRejectsDateOutsideValidity(): void
+    {
+        $booking = $this->bookingService();
+        $created = $booking->createSlot($this->slotInput(), $this->context());
+
+        try {
+            $booking->deleteSlot($created['id'], ['edit_scope' => 'nachfolgende', 'datum' => '2026-11-10'], $this->context());
+            self::fail('Expected validation to fail');
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey('datum', $e->getErrors());
+        }
+
+        self::assertCount(1, $this->dumpTable('training_slot'));
+    }
+
+    public function testDeleteSlotRejectsUnknownScope(): void
+    {
+        $booking = $this->bookingService();
+        $created = $booking->createSlot($this->slotInput(), $this->context());
+
+        try {
+            $booking->deleteSlot($created['id'], ['edit_scope' => 'quatsch', 'datum' => '2026-09-01'], $this->context());
+            self::fail('Expected validation to fail');
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey('edit_scope', $e->getErrors());
+        }
+
+        self::assertCount(1, $this->dumpTable('training_slot'));
+    }
+
+    /**
+     * Determinism across all three delete scopes in one scenario: slot A is
+     * cancelled once ('einzeln'), then truncated ('nachfolgende', orphaning
+     * that exception), then fully removed ('alle'); slot B is truncated and
+     * left alive so a surviving 'updated' row is compared too. A rebuild must
+     * reproduce both tables exactly and must not report the orphaned
+     * exception as skipped - its Created event precedes the slot's Deleted
+     * event, so its slot_id reference still resolves at replay time.
+     */
+    public function testDeleteScopesReplayIdenticalToLiveProjection(): void
+    {
+        $booking = $this->bookingService();
+
+        $slotA = $booking->createSlot($this->slotInput(), $this->context());
+        $booking->deleteSlot($slotA['id'], ['edit_scope' => 'einzeln', 'datum' => '2026-08-11'], $this->context());
+        $booking->deleteSlot($slotA['id'], ['edit_scope' => 'nachfolgende', 'datum' => '2026-09-01'], $this->context());
+        $booking->deleteSlot($slotA['id'], ['edit_scope' => 'alle'], $this->context());
+
+        $slotB = $booking->createSlot($this->slotInput(['wochentage' => [4]]), $this->context());
+        $booking->deleteSlot($slotB['id'], ['edit_scope' => 'nachfolgende', 'datum' => '2026-09-01'], $this->context());
+
+        $before = [
+            'training_slot' => $this->dumpTable('training_slot'),
+            'slot_exception' => $this->dumpTable('slot_exception'),
+        ];
+
+        $state = $this->runRebuildToCompletion($this->rebuildService());
+
+        self::assertSame([], $state->skipped, 'the orphaned exception must not be reported as skipped');
+        self::assertSame($before['training_slot'], $this->dumpTable('training_slot'));
+        self::assertSame($before['slot_exception'], $this->dumpTable('slot_exception'));
+    }
+
     public function testExceptionValidatesWeekdayAndRange(): void
     {
         $booking = $this->bookingService();

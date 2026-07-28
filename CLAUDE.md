@@ -99,7 +99,22 @@ sind KEINE Projektionen.
   überspringt die dreistufige Umfangs-Rückfrage automatisch und zeigt
   direkt die einfache Einzel-Bearbeitung (Datum statt Wochentage/
   Gültigkeitszeitraum); der Schreibvorgang bleibt Umfang „alle" (Update in
-  place, keine Exception, kein Split). **Doppelbelegung** (mehrere
+  place, keine Exception, kein Split). **Löschen ist ebenfalls öffentlich**
+  (Ebene 2) mit derselben dreistufigen Umfangs-Rückfrage wie das Bearbeiten:
+  „alle Termine" (ein Deleted-Event für die ganze Serie), „dieser und alle
+  folgenden" (ein Updated-Event, das gueltig_bis auf den Vortag kürzt – bleibt
+  dabei vor dem Schnitt KEINE Occurrence übrig, wird stattdessen die ganze
+  Serie gelöscht statt ein terminloser, im Kalender unsichtbarer und damit
+  unlöschbarer Rumpf-Zeitraum hinterlassen – dieselbe Degradierungs-Regel wie
+  beim „nur dieser"-Split), „nur dieser" (ein slot_exception-Event, kein
+  Löschen der Serie – exakt das Gegenstück zu „Ausfall eintragen", das
+  daneben unverändert bestehen bleibt). Jeder Lösch-Umfang ist genau EIN
+  Event, anders als beim Bearbeiten also nie eine Transaktion nötig.
+  slot_exception-Zeilen, die nach einer „dieser und alle folgenden"-Kürzung
+  hinter dem neuen gueltig_bis liegen, werden bewusst nicht bereinigt (bleiben
+  inerte Historie, analog den Ausnahmen, die ein „nur dieser"-Split auf dem
+  abgetrennten Teil zurücklässt); ein bereits bestehender Eintages-Slot
+  überspringt die Rückfrage genau wie beim Bearbeiten. **Doppelbelegung** (mehrere
   Belegungen oder ein Spiel gleichzeitig auf demselben Platz) ist erlaubt:
   `BookingService::checkPayload()` legt eine Überlappung mit einer anderen
   Belegung oder einem Spiel als **Warnung** ab (`ConflictCheckResult::
@@ -1121,6 +1136,13 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   Slot-Expansion inkl. mehrerer Teams und Wochentage, Ausnahmen,
   Restriktionen; **alle drei Bearbeitungs-Umfänge** (alle / ab hier mit
   atomarem Split / nur dieser) inkl. Verhalten bei Transaktionsabbruch;
+  **alle drei Lösch-Umfänge** analog (alle / ab hier mit Truncate-oder-
+  Ganz-Löschen-Degradierung / nur dieser als slot_exception statt Löschen),
+  inkl. Rückwärtskompatibilität ohne `edit_scope`, unbekanntem Umfang,
+  Grenzfall „ab hier" auf der ERSTEN Occurrence der Serie (Guard muss
+  Occurrence-basiert bleiben, nicht datumsbasiert), verwaister
+  slot_exception nach „ab hier" + spätem „alle"-Löschen und deren
+  Replay-Determinismus (kein Verwaister im Report);
   **Einzeltermin** (Issue #83: `BookingService::applyEinzeltermin()` leitet
   aus `modus=einzeltermin` + `datum_neu` einen Wochentag und
   gueltig_ab == gueltig_bis == diesem Datum ab, inkl. 1–7-Grenzfall

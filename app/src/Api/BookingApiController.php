@@ -111,7 +111,7 @@ final readonly class BookingApiController
     public function deleteSlot(Request $request, array $params): Response
     {
         try {
-            $this->booking->deleteSlot((int) $params['id'], $this->context($request));
+            $this->booking->deleteSlot((int) $params['id'], $request->post, $this->context($request));
 
             return Response::json(['ok' => true]);
         } catch (ValidationException $e) {
