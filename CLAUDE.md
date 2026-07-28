@@ -393,12 +393,17 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   `pitch_farbe` und `pitch_kuerzel` (beide NULL ohne zugeordneten Platz,
   z. B. Auswärtsspiel). Auch `/api/verfuegbarkeit` und das Offline-Bundle
   liefern Platzfarbe und -kürzel mit. **Jeder Termin (außer Sperrungen)
-  zeigt Team- UND Spielstättenfarbe gleichzeitig als zwei Farbpunkte** vor
-  dem Titel, in jeder Ansicht und Breite inkl. Terminliste (Issue #39,
-  ersetzt den früheren Team/Spielstätte-Umschalter; kein neuer Request, da
-  beide Farbfelder bereits im Event-Payload liegen) – bei Auswärtsspielen
-  liefert `venue_farbe` bereits die Auswärtsfarbe, kein Sonderfall im
-  Frontend nötig. Sperrungen haben kein Team und bleiben bei ihrer
+  zeigt Team-, Platz- UND Spielstättenfarbe gleichzeitig als drei Farbpunkte,
+  fest in dieser Reihenfolge** vor dem Titel, in jeder Ansicht und Breite
+  inkl. Terminliste (Issue #39 führte die ersten zwei ein, ersetzte den
+  früheren Team/Spielstätte-Umschalter; der Platz-Punkt kam später als
+  dritter dazu und gilt seither unabhängig von `platzFarbDarstellung()`
+  – Hintergrundfarbe in Tag/Woche bzw. die Ressourcen-Spalte bleiben davon
+  unberührt, der Punkt ist zusätzlich, kein Ersatz; kein neuer Request, da
+  alle drei Farbfelder bereits im Event-Payload liegen) – bei Auswärts-
+  spielen liefert `venue_farbe` bereits die Auswärtsfarbe, kein Sonderfall
+  im Frontend nötig; Auswärtsspiele/Spielfrei haben keine `pitch_id` und
+  damit keinen Platz-Punkt. Sperrungen haben kein Team und bleiben bei ihrer
   bestehenden Art-Farbe (gesperrt/eingeschränkt). `venue_name` liegt seit dem
   Detail-Dialog-Ausbau (Abschnitt 8) für ALLE Termintypen im Payload
   (`EventSerializer::belegung()`/`sperrung()` lieferten es zuvor nicht, nur
@@ -471,20 +476,21 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   „Auswärts" mit der globalen Auswärtsfarbe, Spielfrei-Termine (ebenfalls nie
   eine `pitch_id`, Issue #65) analog die eigene Gruppe „Spielfrei" mit der
   Spielfrei-Farbe – beide dürfen nicht ineinander aufgehen, obwohl beide
-  `pitch_id IS NULL` haben. **Wie** die Farbe erscheint, hängt an der Darstellung
-  (Issue #57, eine Entscheidungsstelle:
-  `VKKalenderPitch.platzFarbDarstellung(modus, hatResourceSpalten, pitchFilter)`):
-  Tag/Woche ohne Ressourcen-Spalten färben den Termin-HINTERGRUND; der Monat
-  bekommt stattdessen einen dritten Farbpunkt (Quadrat, eigene Form je
-  Bedeutung wie in der Legende, Issue #38), weil `dayGridMonth` zeitgebundene
-  Termine als Dot-Events ohne Block-Fläche rendert – ein Hintergrund kommt
-  dort nicht an, und der eigene `eventContent` ersetzt zudem FullCalendars
-  eigenen Punkt. Die Terminliste (`listNachlade`, per Umschalter jederzeit
-  erreichbar, Issue #37) ist kein Ressourcen-Ersatz, sondern ein
-  chronologischer Feed: dort bleibt der Hintergrund neutral (Issue #40) – die
-  Team-/Spielstättenfarbe zeigen dort wie überall die zwei Farbpunkte,
-  unabhängig von „Alle Plätze"; der Platz-Kürzel-Präfix im Titel bleibt in
-  allen Darstellungen unberührt.
+  `pitch_id IS NULL` haben. **Zusätzlich zur Darstellung** (Issue #57, eine
+  Entscheidungsstelle:
+  `VKKalenderPitch.platzFarbDarstellung(modus, hatResourceSpalten, pitchFilter)`)
+  färben Tag/Woche ohne Ressourcen-Spalten den Termin-HINTERGRUND in
+  Platzfarbe; das ist additiv zum Platz-Farbpunkt (s. o.), der in JEDER
+  Ansicht unabhängig von `platzFarbDarstellung()` erscheint – Quadrat, eigene
+  Form je Bedeutung wie in der Legende (Issue #38). `dayGridMonth` rendert
+  zeitgebundene Termine als Dot-Events ohne Block-Fläche – ein Hintergrund
+  kommt dort nicht an, dort bleibt es folglich beim Farbpunkt, der eigene
+  `eventContent` ersetzt zudem FullCalendars eigenen Punkt. Die Terminliste
+  (`listNachlade`, per Umschalter jederzeit erreichbar, Issue #37) ist kein
+  Ressourcen-Ersatz, sondern ein chronologischer Feed: dort bleibt der
+  Hintergrund neutral (Issue #40) – Team-/Platz-/Spielstättenfarbe zeigen
+  dort wie überall die drei Farbpunkte, unabhängig von „Alle Plätze"; der
+  Platz-Kürzel-Präfix im Titel bleibt in allen Darstellungen unberührt.
 - **Alles Darstellungsabhängige wird beim RENDERN abgeleitet, nie im
   Event-Datensatz gespeichert** (Issue #57, Invariante): Platzfarbe und
   Platz-Präfix entstehen in `eventContent`/`eventDidMount` aus dem aktuellen

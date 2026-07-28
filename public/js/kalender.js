@@ -447,14 +447,18 @@
         return el;
     };
 
-    // Zwei Farbpunkte (Team + Spielstätte) statt des früheren Umschalters
-    // (Issue #39): fest in dieser Reihenfolge, an jedem Termin gleichzeitig
-    // sichtbar, unabhängig von Ansicht/Breite - auch in der Terminliste
-    // (Issue #40 galt nur für den alten Ein-Farbe-Modus). Sperrungen haben
-    // kein Team (indikatorFarben liefert dafür null) und bleiben unverändert
-    // bei ihrer Art-Farbe. Reihenfolge ist an die künftige Legende (Issue
-    // #34) gebunden - hier nicht ändern, ohne dort mitzuziehen. Im Monat
-    // kommt ein dritter Punkt für den Platz dazu (Issue #57, s. u.).
+    // Drei Farbpunkte - Team, Platz, Spielstätte, IN DIESER REIHENFOLGE -
+    // statt des früheren Umschalters (Issue #39, erweitert um den
+    // Platz-Punkt auf alle Ansichten): fest in dieser Reihenfolge, an jedem
+    // Termin gleichzeitig sichtbar, unabhängig von Ansicht/Breite - auch in
+    // der Terminliste (Issue #40 galt nur für den alten Ein-Farbe-Modus).
+    // Sperrungen haben kein Team (indikatorFarben liefert dafür null) und
+    // bleiben unverändert bei ihrer Art-Farbe. Reihenfolge ist an die
+    // Legende (Issue #34/#38) gebunden - hier nicht ändern, ohne dort
+    // mitzuziehen. Der Platz-Punkt erscheint unabhängig von
+    // platzFarbDarstellung() (Hintergrundfarbe/Ressourcen-Spalte bleiben
+    // zusätzlich bestehen, wo sie greifen) - Farbe ist nie das einzige
+    // Signal, das Platz-Kürzel im Präfix bleibt ohnehin unverändert.
     const eventPunkte = (props) => {
         const farben = window.VKKalenderFarbe.indikatorFarben(props);
         if (!farben) {
@@ -463,25 +467,18 @@
         const punkte = document.createElement('span');
         punkte.className = 'ev-punkte';
 
-        // Issue #36: Vermietungen haben kein Team - nur der Spielstätten-Punkt
+        // Issue #36: Vermietungen haben kein Team - nur Platz-/Spielstätten-Punkt
         if (farben.team !== null) {
             punkte.append(punkt('ev-punkt-team', farben.team, `Team: ${props.team_name ?? ''}`));
         }
 
-        punkte.append(punkt('ev-punkt-venue', farben.venue, `Spielstätte: ${venueName(props)}`));
-
-        // Issue #57: dritter Punkt NUR im Monat - dort rendert FullCalendar
-        // zeitgebundene Termine als Dot-Events ohne Block-Fläche, ein
-        // Hintergrund in Platzfarbe käme also nie an (verifiziert:
-        // computedBg rgba(0,0,0,0)). Das Text-Präfix mit dem Platz-Kürzel
-        // bleibt davon unberührt - Farbe ist nie das einzige Signal
-        // (CLAUDE.md Abschnitt 8). Form wie der Spielstätten-Punkt
-        // (Quadrat), passend zur Legende (Issue #38).
         const platz = platzFarbe(props);
-        if (platz !== null && platzFarbDarstellung() === 'punkt') {
+        if (platz !== null) {
             const label = window.VKKalenderPitch.pitchEventPraefix(props);
             punkte.append(punkt('ev-punkt-pitch', platz, `Platz: ${label ?? 'offen'}`));
         }
+
+        punkte.append(punkt('ev-punkt-venue', farben.venue, `Spielstätte: ${venueName(props)}`));
 
         return punkte;
     };
