@@ -72,6 +72,7 @@ final readonly class EventSerializer
             'team_kuerzel' => $kuerzel,
             'team_farbe' => (string) $slotTeams[0]['farbe'],
             'venue_id' => $venueId,
+            'venue_name' => $venueId !== null ? (string) ($this->venuesById[$venueId]['name'] ?? '') : null,
             'venue_farbe' => $venueId !== null
                 ? (string) ($this->venuesById[$venueId]['farbe'] ?? $this->auswaertsFarbe)
                 : $this->auswaertsFarbe,
@@ -114,6 +115,7 @@ final readonly class EventSerializer
             'team_id' => null,
             'team_farbe' => '#000000',
             'venue_id' => $venueId,
+            'venue_name' => $venueId !== null ? (string) ($this->venuesById[$venueId]['name'] ?? '') : null,
             'venue_farbe' => $venueId !== null
                 ? (string) ($this->venuesById[$venueId]['farbe'] ?? $this->auswaertsFarbe)
                 : $this->auswaertsFarbe,

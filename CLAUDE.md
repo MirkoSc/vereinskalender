@@ -399,7 +399,12 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   beide Farbfelder bereits im Event-Payload liegen) – bei Auswärtsspielen
   liefert `venue_farbe` bereits die Auswärtsfarbe, kein Sonderfall im
   Frontend nötig. Sperrungen haben kein Team und bleiben bei ihrer
-  bestehenden Art-Farbe (gesperrt/eingeschränkt). `typ=belegung` liefert
+  bestehenden Art-Farbe (gesperrt/eingeschränkt). `venue_name` liegt seit dem
+  Detail-Dialog-Ausbau (Abschnitt 8) für ALLE Termintypen im Payload
+  (`EventSerializer::belegung()`/`sperrung()` lieferten es zuvor nicht, nur
+  `spiel()`/`vermietung()`) – reine Ergänzung, kein neues Feld für Spiel/
+  Vermietung, keine Bundle-`format`-Erhöhung (additiv, Offline-Port
+  `offline-events.js` zieht nach). `typ=belegung` liefert
   zusätzlich Heimspiele mit zugeordnetem Platz (Status ≠ abgesagt); sie
   erscheinen dort auf ihrem Platz. Spiele tragen `manuell`
   (true = `import_source_id IS NULL`) und ein effektives `ende` (explizite
@@ -626,6 +631,21 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   Overlap-Abgleich auf den bereits geladenen Events, kein Zusatz-Request;
   der Abgleich selbst kennt die Art nicht – er hängt an Sportheim und
   Zeitraum, die Art bestimmt nur den Wortlaut beim Rendern).
+- **Detail-Dialog mit Farbpunkten**: Team-/Spielstätten-/Platz-Zeilen
+  (`showDetail()`, `kalender.js`) tragen denselben Farbpunkt wie der Termin
+  selbst und die Legende (Kreis=Team, Quadrat=Spielstätte/Platz, dieselbe
+  `punkt()`-Hilfsfunktion wie `eventPunkte()`) statt reinen Texts – Farbe
+  ist nie das einzige Signal, das Label bleibt daneben stehen. Jeder Termin
+  mit einem Platz zeigt zusätzlich dessen Spielstätte als eigene Zeile
+  (auch Training/Sperrung, nicht nur Spiel/Vermietung); ist dem Platz ein
+  Sportheim zugeordnet (`pitch_sportheim_id`), erscheint eine zusätzliche
+  Sportheim-Zeile mit eigenem Punkt (Raute wie `.legende-punkt-heim`, neue
+  Klasse `.ev-punkt-heim` – nur im Detail-Dialog verwendet, nicht am Termin
+  selbst) in der Farbe von dessen Spielstätte (Sportheime haben noch keine
+  eigene Farbe, Issue #36/#47). Name und Farbe des Sportheims löst der
+  Client über `appData.sportheime`/`appData.venues` auf (keine
+  Sportheim-Zuordnung im Belegungs-/Spiel-/Sperrungs-Payload selbst, nur die
+  ID) – analog `legende-gruppierung.js::raeumeNachSportheim()`.
 - **Zeitraum-Anzeige** (Issue #53): steht neben der Überschrift „Kalender"
   (`#kalender-zeitraum`), NICHT mehr in FullCalendars eigener Toolbar –
   `headerToolbar` hat seit Issue #53 keinen `center`-Slot mehr. Grund: die
