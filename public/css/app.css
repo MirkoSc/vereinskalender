@@ -729,6 +729,19 @@ dialog.sheet::backdrop {
     padding: 0;
 }
 
+/* Der Wochentag (listDaySideFormat) soll direkt neben dem Datum stehen
+   ("28. Juli 2026 - Dienstag"), nicht rechtsbündig am anderen Zeilenende:
+   FullCalendar positioniert .fc-list-day-side-text per float:right dorthin.
+   float:none lässt beide <a>-Elemente stattdessen inline hintereinander
+   fließen; das :before liefert den Trenner. */
+.fc.fc-direction-ltr .fc-list-day-text,
+.fc.fc-direction-ltr .fc-list-day-side-text {
+    float: none;
+}
+.fc.fc-direction-ltr .fc-list-day-side-text::before {
+    content: ' - ';
+}
+
 /* Issue #36: Vermietung eigener, gedeckter Look statt Platzfarbe (die sie
    nicht hat) - Text-Label ("Vermietung: …") bleibt das eigentliche Signal. */
 .ev-vermietung {
