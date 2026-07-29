@@ -15,6 +15,15 @@ final class Session
         if (session_status() === PHP_SESSION_NONE) {
             session_set_cookie_params([
                 'httponly' => true,
+                // HTTPS is an installation requirement (setup.php checks it),
+                // so in production this is always true and the admin session
+                // cookie is never sent over plain HTTP - without it a single
+                // http:// request on a hostile network leaks the session.
+                // Derived from the request instead of hardcoded because the
+                // docker dev setup serves http://localhost:8080, where a
+                // secure cookie would silently never be stored: the browser
+                // drops it, every login redirects back to the login form.
+                'secure' => Request::httpsFromGlobals(),
                 'samesite' => 'Lax',
                 'path' => '/',
             ]);

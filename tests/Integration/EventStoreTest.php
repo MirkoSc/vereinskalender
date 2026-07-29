@@ -112,6 +112,45 @@ final class EventStoreTest extends DatabaseTestCase
         );
     }
 
+    /**
+     * The name reaches event.editor_name VARCHAR(100). Without this guard a
+     * longer name only fails deep inside the INSERT ("Data too long" under
+     * strict mode), taking the whole write transaction down with a bare 500
+     * instead of a field error. The public write path rejects it earlier
+     * with a 422 (routes.php); this is the backstop for every other caller.
+     */
+    public function testAppendRejectsOverlongEditorName(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->eventStore()->append(
+            AggregateType::Team,
+            null,
+            EventType::Created,
+            self::teamPayload(),
+            new EventContext(str_repeat('a', EventContext::MAX_EDITOR_NAME + 1), '203.0.113.1', EventSource::Web),
+        );
+    }
+
+    /** A name exactly at the limit is still fine - and counted in characters. */
+    public function testAppendAcceptsEditorNameAtTheLimit(): void
+    {
+        // multi-byte on purpose: mb_strlen counts 100 characters, strlen
+        // would count 200 bytes and reject a name the column accepts
+        // (utf8mb4 VARCHAR(100) is 100 characters, not 100 bytes).
+        $name = str_repeat('ü', EventContext::MAX_EDITOR_NAME);
+
+        $event = $this->eventStore()->append(
+            AggregateType::Team,
+            null,
+            EventType::Created,
+            self::teamPayload(),
+            new EventContext($name, '203.0.113.1', EventSource::Web),
+        );
+
+        self::assertSame($name, $this->eventStore()->find($event->id)?->editorName);
+    }
+
     public function testAggregateSequenceNeverReusesIds(): void
     {
         $store = $this->eventStore();

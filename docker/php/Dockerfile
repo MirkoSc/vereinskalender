@@ -3,7 +3,7 @@ FROM php:8.5-apache
 RUN apt-get update \
  && apt-get install -y --no-install-recommends libzip-dev libpng-dev \
  && docker-php-ext-install pdo_mysql zip gd \
- && a2enmod rewrite \
+ && a2enmod rewrite headers \
  && rm -rf /var/lib/apt/lists/*
 
 # The docroot contains only the production-style shim (docker/web/);

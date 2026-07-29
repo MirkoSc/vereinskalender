@@ -44,6 +44,15 @@ final class EventStore
         if (trim($context->editorName) === '') {
             throw new \InvalidArgumentException('Writes without an editor name are rejected');
         }
+        // Invariant next to the emptiness check above: an event can never
+        // carry a name that does not fit its column. The public write path
+        // rejects this with a 422 before it gets here (routes.php); this is
+        // the backstop for every other caller.
+        if (mb_strlen($context->editorName) > EventContext::MAX_EDITOR_NAME) {
+            throw new \InvalidArgumentException(
+                'Editor name exceeds ' . EventContext::MAX_EDITOR_NAME . ' characters',
+            );
+        }
         if ($eventType !== EventType::Created && $aggregateId === null) {
             throw new \InvalidArgumentException('Aggregate id is required for ' . $eventType->value);
         }
