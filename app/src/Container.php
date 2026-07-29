@@ -69,6 +69,7 @@ use App\Service\Kalender\VenueMatcher;
 use App\Service\Kalender\VermietungService;
 use App\Service\Push\NotificationTrigger;
 use App\Service\Push\PushSender;
+use App\Service\MaintenanceMode;
 use App\Service\RateLimiter;
 use App\Service\Saison\SaisonService;
 use App\Service\Stats\AlarmMailer;
@@ -131,6 +132,7 @@ final class Container
             $this->wappenService()->exists(),
             $this->wappenService()->version(),
             $this->settingRepository()->get('app_name', 'Vereinskalender'),
+            $this->maintenanceMode(),
         ));
     }
 
@@ -142,6 +144,18 @@ final class Container
     public function session(): Session
     {
         return $this->cached('session', static fn(): Session => new Session());
+    }
+
+    /**
+     * One shared instance: the updater and the rebuild both set the flag,
+     * the admin layout reads it, and the release button clears it - they
+     * must all point at the same file.
+     */
+    public function maintenanceMode(): MaintenanceMode
+    {
+        return $this->cached('maintenanceMode', fn(): MaintenanceMode => new MaintenanceMode(
+            $this->paths->sharedDir() . '/maintenance.flag',
+        ));
     }
 
     public function projectorRegistry(): ProjectorRegistry
@@ -275,6 +289,7 @@ final class Container
             $this->projectorRegistry(),
             new Replayer($this->pdo(), $this->projectorRegistry()),
             $this->paths->sharedDir() . '/var/rebuild_state.json',
+            $this->maintenanceMode(),
         ));
     }
 
@@ -367,7 +382,7 @@ final class Container
             $this->settingRepository(),
             $this->backupService(),
             new ReleaseDownloader(),
-            new ReleaseSwitcher(dirname($this->paths->releaseRoot)),
+            new ReleaseSwitcher(dirname($this->paths->releaseRoot), $this->maintenanceMode()),
             new Migrator($this->pdo(), $this->paths->migrationsDir()),
             $this->alarmMailer(),
         ));
@@ -379,6 +394,7 @@ final class Container
             $this->view(),
             $this->session(),
             $this->updateService(),
+            $this->maintenanceMode(),
         ));
     }
 

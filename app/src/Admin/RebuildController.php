@@ -42,4 +42,17 @@ final class RebuildController extends AdminController
     {
         return Response::json($this->rebuild->step()->toArray());
     }
+
+    /**
+     * Abort: drops the shadow tables and lifts the write freeze. A plain
+     * form POST rather than part of the JS chain, because the case it exists
+     * for is precisely the one where the JS is gone (tab closed mid-rebuild).
+     */
+    public function cancel(Request $request): ResponseInterface
+    {
+        $this->rebuild->cancel();
+        $this->session->flash('Rebuild abgebrochen, Wartungsmodus aufgehoben. Die Projektionen sind unverändert.');
+
+        return Response::redirect('/admin/rebuild');
+    }
 }

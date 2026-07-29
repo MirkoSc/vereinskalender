@@ -170,12 +170,45 @@ final class UpdateService
     }
 
     /**
-     * Step 7: self-test + cleanup, keep the last 2 releases.
+     * Step 7: refresh the docroot shim, self-test, cleanup, keep the last 2
+     * releases.
+     *
+     * The shim refresh happens HERE and not earlier because finish is the
+     * first step running on the new release - check/backup/download/extract
+     * and the switch itself all still execute the outgoing version's code.
+     * It runs BEFORE the self-test on purpose: the self-test fetches '/'
+     * through the web server and therefore exercises the freshly written
+     * shim. A broken shim would take the whole site down including /admin,
+     * so if the self-test fails the previous shim goes back before the error
+     * is reported.
      */
     public function finish(string $baseUrl): UpdateState
     {
         return $this->step('finish', function (UpdateState $state) use ($baseUrl): UpdateState {
-            $this->selfTest($baseUrl);
+            $vorherigerShim = null;
+            $shimMeldung = null;
+            try {
+                $vorherigerShim = $this->switcher->refreshShim();
+                if ($vorherigerShim !== null) {
+                    $shimMeldung = 'Docroot-Shim aktualisiert.';
+                }
+            } catch (\Throwable $e) {
+                // Not fatal: the old shim keeps working, it just misses the
+                // newer maintenance handling. Surfaced as a message so it
+                // does not stay invisible - self-healing is the only way this
+                // installation gets the new shim.
+                $shimMeldung = 'Hinweis: Docroot-Shim konnte nicht aktualisiert werden (' . $e->getMessage() . ').';
+            }
+
+            try {
+                $this->selfTest($baseUrl);
+            } catch (\Throwable $e) {
+                if ($vorherigerShim !== null) {
+                    $this->switcher->restoreShim($vorherigerShim);
+                }
+                throw $e;
+            }
+
             $this->switcher->cleanupOldReleases();
 
             $zipFile = $this->zipFile((string) $state->zielVersion);
@@ -183,7 +216,15 @@ final class UpdateService
                 unlink($zipFile);
             }
 
-            return $state->mit(meldung: 'Selbsttest bestanden, alte Releases aufgeräumt.', fertig: true);
+            // One combined line on purpose: the admin UI logs only the LAST
+            // message of each step, so a shim warning in a second message
+            // would never be shown.
+            $meldung = 'Selbsttest bestanden, alte Releases aufgeräumt.';
+
+            return $state->mit(
+                meldung: $shimMeldung === null ? $meldung : $meldung . ' ' . $shimMeldung,
+                fertig: true,
+            );
         });
     }
 

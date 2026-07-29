@@ -4,9 +4,22 @@
         Baut alle fachlichen Tabellen aus dem Event-Verlauf neu auf (Schatten-Tabellen,
         atomarer Tausch am Ende). Ausgeschlossene Events werden dabei nicht mehr angewendet.
     </p>
+    <p class="hinweis">
+        Während des Rebuilds ist der <strong>Wartungsmodus</strong> aktiv: Besucher sehen eine
+        Wartungsseite und können nichts eintragen. Sonst gingen Änderungen, die zwischen dem
+        letzten Batch und dem Tabellentausch gespeichert werden, in der Projektion verloren –
+        das Event bliebe im Verlauf, der Termin verschwände aber aus dem Kalender.
+        Der Modus endet automatisch mit dem Tausch. Wird das Fenster vorher geschlossen,
+        bleibt er stehen – dann hier oder über das Banner abbrechen.
+    </p>
     <p>
         <button type="button" id="rebuild-start" class="button">Rebuild starten</button>
     </p>
+    <form method="post" action="/admin/rebuild/abbrechen" class="inline-form"
+          onsubmit="return confirm('Rebuild abbrechen? Die Projektionen bleiben unverändert, der Wartungsmodus wird aufgehoben.')">
+        <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
+        <button type="submit" class="linklike danger">Rebuild abbrechen und Wartungsmodus aufheben</button>
+    </form>
     <div id="rebuild-progress" hidden>
         <progress id="rebuild-bar" max="100" value="0"></progress>
         <p id="rebuild-status" aria-live="polite"></p>

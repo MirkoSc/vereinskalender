@@ -24,14 +24,21 @@ Dokument – oder es wird hier im selben PR bewusst geändert.
 ## 2. Verzeichnislayout (Server)
 
 ```
-/web/                DocumentRoot (fix): index.php → require ../current/public/index.php
+/web/                DocumentRoot (fix): index.php = Shim (Wartungsmodus- und
+                     Fehlt-das-Release-Prüfung, dann require
+                     ../current/public/index.php – Inhalt in
+                     `ReleaseSwitcher::SHIM`, Abschnitt 10)
                      + .htaccess (Rewrite auf index.php, Security-Header:
                      nosniff, Referrer-Policy, CSP `frame-ancestors`/
                      `base-uri`, HSTS). Beide Dateien schreibt setup.php
-                     EINMALIG bei der Neuinstallation; kein Release-ZIP
-                     fasst den DocumentRoot je an, Änderungen daran müssen
-                     bei Bestandsinstallationen also von Hand nachgezogen
-                     werden. Inhalt spiegelbildlich in docker/web/.
+                     bei der Neuinstallation; kein Release-ZIP fasst den
+                     DocumentRoot je an. Für index.php holt das der
+                     **Updater selbst nach** (`UpdateService::finish()`,
+                     Abschnitt 10) – die .htaccess dagegen NICHT (sie darf
+                     handgepflegt sein und wird nie überschrieben), ihre
+                     Header müssen bei Bestandsinstallationen also von Hand
+                     nachgezogen werden. Inhalt spiegelbildlich in
+                     docker/web/.
                      Die CSP trägt bewusst NUR script-unabhängige
                      Direktiven: `abonnieren.php`/`install.php` haben noch
                      Inline-`<script>`-Blöcke und die Admin-Listen
@@ -310,6 +317,20 @@ jederzeit per Replay rekonstruierbar.
   (quelle='admin', korrektur_von_event_id → Original).
 - **Rebuild** (Admin): Schatten-Tabellen (`<name>_rebuild`), batchweise
   Schrittkette, atomarer `RENAME TABLE`-Tausch, danach Replay-Report.
+  Läuft **komplett unter dem Wartungsmodus** (`MaintenanceMode`, Abschnitt
+  2/10): `start()` setzt das Flag VOR dem Anlegen der Schatten-Tabellen,
+  `step()` nimmt es erst NACH dem Tausch zurück. Ohne diese Klammer verliert
+  der Rebuild lautlos Schreibvorgänge – der Replay liest Events bis zum
+  letzten Batch, tauscht dann die Tabellen, und alles, was der Schreibpfad in
+  der Zwischenzeit auf die LIVE-Tabelle angewendet hat, verschwindet mit ihr.
+  Das Event bleibt im Log, die Projektion weicht aber still vom Log ab, bis
+  jemand zufällig erneut rebuildet; das Fenster ist klein, genau deshalb
+  fiele es nie auf. Der Freeze selbst wirkt eine Ebene höher (der
+  Docroot-Shim beantwortet alles außer `/admin` mit 503, und der öffentliche
+  Schreibpfad liegt unter `/api`) – im Schreibpfad selbst steht dafür keine
+  Zeile. Gegenstück ist `cancel()` (Schatten-Tabellen droppen, Statusdatei
+  löschen, Flag weg, Live-Projektionen unberührt): ein abgebrochener Rebuild
+  ließe die Instanz sonst dauerhaft im Wartungsmodus stehen.
 - **DSGVO**: IPs in Events nach 90 Tagen anonymisieren (Cron, Setting);
   Zweck Missbrauchsabwehr steht in der Datenschutzerklärung.
 
@@ -1160,8 +1181,42 @@ idempotent, < 30 s):
    sind **eine Version rückwärtskompatibel** (hinzufügen ja;
    umbenennen/löschen erst in der Folgeversion). Bei Fehler: Wartungsmodus
    bleibt, Admin wählt Rollback oder Wiederholen.
-6. **Abschluss**: Selbsttest (Startseite + /api/events → 200), die letzten
-   2 Releases behalten.
+6. **Abschluss**: **Docroot-Shim auffrischen** (s. u.), dann Selbsttest
+   (Startseite + /api/events → 200), die letzten 2 Releases behalten.
+
+**Docroot-Shim / Selbstheilung**: `web/index.php` ist die einzige Datei, die
+kein Release-ZIP und kein `rename()` je anfasst – und damit die einzige, die
+antworten kann, während `current/` gerade getauscht wird. Deshalb steht die
+Wartungsmodus-Prüfung DORT (`ReleaseSwitcher::SHIM`) und nicht nur in
+`current/public/index.php`: zwischen `rename(current, _prev)` und
+`rename(neu, current)` existiert das Release kurz nicht, ein `require` der
+fehlenden Datei wäre ein Fatal Error statt einer Wartungsseite. Der Shim
+prüft daher BEIDES – fehlendes Release und gesetztes Flag. `UpdateService::
+finish()` schreibt ihn bei Bedarf neu; das ist der erste Schritt, der bereits
+auf dem NEUEN Release läuft (check/backup/download/extract und das
+Umschalten selbst führen noch den Code der alten Version aus). Daraus folgt
+prinzipbedingt: **das Update, das eine Shim-Änderung einführt, kann seinen
+eigenen Umschaltvorgang nicht schützen, nur jeden danach.** Die Auffrischung
+läuft VOR dem Selbsttest, damit dieser den frischen Shim tatsächlich über den
+Webserver ausprobiert; schlägt er fehl, wird der vorherige Shim
+zurückgeschrieben (ein kaputter Shim nähme die ganze Seite inkl. `/admin`
+mit, ein Rollback wäre dann nicht mehr erreichbar). Ein nicht beschreibbarer
+Docroot bricht das Update nicht ab, sondern erscheint als Meldung im
+Update-Log. Der Shim-Inhalt existiert in drei Kopien (`ReleaseSwitcher::
+SHIM`, `bin/setup.template.php`, `docker/web/index.php`); `ShimContentTest`
+erzwingt Byte-Gleichheit und prüft die Syntax per `token_get_all(...,
+TOKEN_PARSE)` – `php -l` scheidet aus, weil auf dem Zielhosting kein
+`exec()` verfügbar ist.
+
+**Wartungsmodus** (`App\Service\MaintenanceMode`, `shared/maintenance.flag`):
+gemeinsame Mechanik von Updater und Rebuild (Abschnitt 4). Die Flag-Datei
+trägt Grund und Startzeitpunkt als JSON (Alt-Format „nur ISO-Zeitstempel"
+wird gelesen – eine Instanz kann WÄHREND gesetztem Flag aktualisiert werden).
+Weil sowohl ein abgestürztes Update als auch ein abgebrochener Rebuild das
+Flag stehen lassen können, zeigt das Admin-Layout auf JEDER Seite ein Banner
+mit Freigeben-Button (`POST /admin/wartung/aufheben`); vorher führte der
+einzige Weg zurück über FTP, da `UpdateService::reset()` nur die Statusdatei
+löscht, nie das Flag.
 
 **Rollback** = _prev zurück-renamen (Code läuft dank kompatibler Migrationen
 auf neuem Schema); Daten-Rollback nur über Backup-Restore.
