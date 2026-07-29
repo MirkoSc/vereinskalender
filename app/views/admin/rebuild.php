@@ -16,7 +16,7 @@
         <button type="button" id="rebuild-start" class="button">Rebuild starten</button>
     </p>
     <form method="post" action="/admin/rebuild/abbrechen" class="inline-form"
-          onsubmit="return confirm('Rebuild abbrechen? Die Projektionen bleiben unverändert, der Wartungsmodus wird aufgehoben.')">
+          data-confirm="Rebuild abbrechen? Die Projektionen bleiben unverändert, der Wartungsmodus wird aufgehoben.">
         <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
         <button type="submit" class="linklike danger">Rebuild abbrechen und Wartungsmodus aufheben</button>
     </form>

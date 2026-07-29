@@ -39,7 +39,7 @@
 
     <?php if (($filters['ip'] ?? '') !== '' || ($filters['editor'] ?? '') !== ''): ?>
         <form method="post" action="/admin/events/massenausschluss" class="mass-form"
-              onsubmit="return confirm('Wirklich alle passenden Events ausschließen?');">
+              data-confirm="Wirklich alle passenden Events ausschließen?">
             <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
             <input type="hidden" name="ip" value="<?= e($filters['ip'] ?? '') ?>">
             <input type="hidden" name="editor" value="<?= e($filters['editor'] ?? '') ?>">

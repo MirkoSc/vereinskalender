@@ -18,7 +18,7 @@
                     <td><?= e($bereich['sortierung']) ?></td>
                     <td>
                         <form method="post" action="/admin/bereiche/<?= e($bereich['id']) ?>/loeschen" class="inline-form"
-                              onsubmit="return confirm('Bereich „<?= e($bereich['name']) ?>&#8220; wirklich löschen?');">
+                              data-confirm="Bereich „<?= e($bereich['name']) ?>&#8220; wirklich löschen?">
                             <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
                             <button type="submit" class="linklike danger">Löschen</button>
                         </form>

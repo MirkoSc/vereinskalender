@@ -20,7 +20,7 @@
                     <td><?= e($team['sortierung']) ?></td>
                     <td>
                         <form method="post" action="/admin/teams/<?= e($team['id']) ?>/loeschen" class="inline-form"
-                              onsubmit="return confirm('Team „<?= e($team['name']) ?>&#8220; wirklich löschen?');">
+                              data-confirm="Team „<?= e($team['name']) ?>&#8220; wirklich löschen?">
                             <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
                             <button type="submit" class="linklike danger">Löschen</button>
                         </form>

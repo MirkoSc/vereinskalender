@@ -20,7 +20,7 @@
                     <td><?= e($venue['sortierung']) ?></td>
                     <td>
                         <form method="post" action="/admin/spielstaetten/<?= e($venue['id']) ?>/loeschen" class="inline-form"
-                              onsubmit="return confirm('Spielstätte „<?= e($venue['name']) ?>&#8220; wirklich löschen?');">
+                              data-confirm="Spielstätte „<?= e($venue['name']) ?>&#8220; wirklich löschen?">
                             <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
                             <button type="submit" class="linklike danger">Löschen</button>
                         </form>

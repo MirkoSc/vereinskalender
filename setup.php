@@ -463,29 +463,39 @@ try {
     // the header block below added by hand once.
     if (!is_file($webDir . '/.htaccess')) {
         file_put_contents($webDir . '/.htaccess', <<<'HTACCESS'
-            Options -Indexes
-            DirectoryIndex index.php
+        Options -Indexes
+        DirectoryIndex index.php
 
-            <IfModule mod_headers.c>
-                Header always set X-Content-Type-Options "nosniff"
-                Header always set Referrer-Policy "strict-origin-when-cross-origin"
-                # Only the script-independent CSP directives: the app still has
-                # inline <script> blocks (abonnieren, installer) and inline
-                # onsubmit handlers in the admin lists, so a script-src would
-                # silently kill the delete confirmations. Extending this to
-                # default-src/script-src/style-src needs those moved out first.
-                Header always set Content-Security-Policy "frame-ancestors 'none'; base-uri 'self'"
-                # HTTPS is an installation requirement (checklist above), so
-                # committing to it is safe. Drop this line if the site must
-                # ever be reachable over plain HTTP again.
-                Header always set Strict-Transport-Security "max-age=15768000"
-            </IfModule>
+        <IfModule mod_headers.c>
+            Header always set X-Content-Type-Options "nosniff"
+            Header always set Referrer-Policy "strict-origin-when-cross-origin"
+            # script-src 'self' without 'unsafe-inline' is the point of this header:
+            # every inline <script> and every onsubmit handler has been moved into
+            # public/js/, so nothing inline remains to allow. The app-data block in
+            # layout.php is type="application/json" - data, not script.
+            # 'unsafe-eval' is NOT needed: neither our code nor the FullCalendar
+            # bundle uses eval() or new Function().
+            # style-src DOES need 'unsafe-inline': layout.php emits the team/venue
+            # colour variables as a <style> block (values filtered against the
+            # palette on output), the admin lists use style="background: ..." colour
+            # swatches, and FullCalendar injects a stylesheet at runtime
+            # (createElement("style") + insertRule).
+            # font-src needs data:: FullCalendar ships its icon font (prev/next
+            # chevrons) as a base64 data: URI inside that injected stylesheet.
+            # Without it the navigation arrows render as empty boxes - caught only
+            # by loading the page in a real browser, never by reading the source.
+            Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; font-src 'self' data:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+            # HTTPS is an installation requirement (checklist above), so
+            # committing to it is safe. Drop this line if the site must
+            # ever be reachable over plain HTTP again.
+            Header always set Strict-Transport-Security "max-age=15768000"
+        </IfModule>
 
-            RewriteEngine On
-            RewriteCond %{REQUEST_FILENAME} !-f
-            RewriteRule ^ index.php [L]
+        RewriteEngine On
+        RewriteCond %{REQUEST_FILENAME} !-f
+        RewriteRule ^ index.php [L]
 
-            HTACCESS);
+        HTACCESS);
     }
 
     if (!rename($target, $rootDir . '/current')) {

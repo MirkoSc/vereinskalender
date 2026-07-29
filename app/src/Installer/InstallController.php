@@ -233,7 +233,14 @@ final readonly class InstallController
     private function render(array $data, int $status = 200): Response
     {
         return Response::html(
-            $this->view->render('install', ['title' => 'Installation', ...$data]),
+            $this->view->render('install', [
+                'title' => 'Installation',
+                // was an inline <script> until the CSP grew a script-src;
+                // loaded on every install render and inert without the
+                // restore markup
+                'scripts' => ['/js/install.js'],
+                ...$data,
+            ]),
             $status,
         );
     }

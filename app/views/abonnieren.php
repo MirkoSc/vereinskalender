@@ -40,27 +40,3 @@
     </ol>
 </section>
 
-<script>
-    (() => {
-        const select = document.querySelector('#feed-select');
-        const webcal = document.querySelector('#webcal-link');
-        const google = document.querySelector('#google-link');
-        const copyButton = document.querySelector('#copy-url');
-        const feedback = document.querySelector('#copy-feedback');
-
-        const update = () => {
-            const httpUrl = window.location.origin + select.value;
-            const webcalUrl = httpUrl.replace(/^https?:/, 'webcal:');
-            webcal.href = webcalUrl;
-            google.href = 'https://calendar.google.com/calendar/r?cid=' + encodeURIComponent(webcalUrl);
-        };
-
-        select.addEventListener('change', update);
-        copyButton.addEventListener('click', async () => {
-            await navigator.clipboard.writeText(window.location.origin + select.value);
-            feedback.textContent = 'Kopiert!';
-            setTimeout(() => { feedback.textContent = ''; }, 2000);
-        });
-        update();
-    })();
-</script>

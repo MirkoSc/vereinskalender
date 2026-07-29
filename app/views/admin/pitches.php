@@ -21,7 +21,7 @@
                     <td><?= e($pitch['sortierung']) ?></td>
                     <td>
                         <form method="post" action="/admin/plaetze/<?= e($pitch['id']) ?>/loeschen" class="inline-form"
-                              onsubmit="return confirm('Platz „<?= e($pitch['name']) ?>&#8220; wirklich löschen?');">
+                              data-confirm="Platz „<?= e($pitch['name']) ?>&#8220; wirklich löschen?">
                             <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
                             <button type="submit" class="linklike danger">Löschen</button>
                         </form>

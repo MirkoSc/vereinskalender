@@ -29,8 +29,7 @@ Dokument – oder es wird hier im selben PR bewusst geändert.
                      ../current/public/index.php – Inhalt in
                      `ReleaseSwitcher::SHIM`, Abschnitt 10)
                      + .htaccess (Rewrite auf index.php, Security-Header:
-                     nosniff, Referrer-Policy, CSP `frame-ancestors`/
-                     `base-uri`, HSTS). Beide Dateien schreibt setup.php
+                     nosniff, Referrer-Policy, CSP, HSTS). Beide Dateien schreibt setup.php
                      bei der Neuinstallation; kein Release-ZIP fasst den
                      DocumentRoot je an. Für index.php holt das der
                      **Updater selbst nach** (`UpdateService::finish()`,
@@ -39,13 +38,38 @@ Dokument – oder es wird hier im selben PR bewusst geändert.
                      Header müssen bei Bestandsinstallationen also von Hand
                      nachgezogen werden. Inhalt spiegelbildlich in
                      docker/web/.
-                     Die CSP trägt bewusst NUR script-unabhängige
-                     Direktiven: `abonnieren.php`/`install.php` haben noch
-                     Inline-`<script>`-Blöcke und die Admin-Listen
-                     Inline-`onsubmit`-Handler – ein `script-src` würde die
-                     Lösch-Bestätigungen lautlos abschalten. Erst wenn die
-                     ausgelagert sind, kann sie auf `default-src`/
-                     `script-src`/`style-src` erweitert werden.
+                     **CSP**: `default-src 'self'; script-src 'self';
+                     style-src 'self' 'unsafe-inline'; img-src 'self';
+                     font-src 'self' data:; object-src 'none';
+                     frame-ancestors 'none'; base-uri 'self';
+                     form-action 'self'`. Drei Punkte daran sind nicht
+                     verhandelbar und je einzeln begründet:
+                     (1) `script-src 'self'` OHNE `'unsafe-inline'` ist der
+                     eigentliche Zweck – dafür wurden alle Inline-`<script>`-
+                     Blöcke (`abonnieren.php`→`js/abonnieren.js`,
+                     `install.php`→`js/install.js`) und alle neun
+                     Inline-`onsubmit`-Handler ausgelagert. Letztere wären
+                     unter `script-src` **lautlos** abgeschaltet worden, die
+                     Lösch-Buttons hätten also ohne Rückfrage gefeuert; die
+                     Texte stehen jetzt in `data-confirm`, ein delegierter
+                     Listener in `admin.js` fragt. Der `app-data`-Block in
+                     `layout.php` bleibt zulässig, er ist
+                     `type="application/json"` (Daten, kein Skript).
+                     `'unsafe-eval'` wird nicht gebraucht – weder eigener
+                     Code noch das FullCalendar-Bundle nutzen `eval()`/
+                     `new Function()`.
+                     (2) `style-src` BRAUCHT `'unsafe-inline'`: der
+                     Farbvariablen-`<style>`-Block, die
+                     `style="background: …"`-Farbfelder im Admin und
+                     FullCalendars zur Laufzeit injiziertes Stylesheet
+                     (`createElement("style")` + `insertRule`).
+                     (3) `font-src` BRAUCHT `data:`: FullCalendar liefert
+                     seine Icon-Font (Vor-/Zurück-Pfeile) als base64-`data:`-
+                     URI in ebendiesem Stylesheet. Fehlt es, rendern die
+                     Pfeile als leere Kästchen – im Quelltext unsichtbar,
+                     nur beim Laden im echten Browser zu sehen.
+                     `CspComplianceTest` hält alles drei fest und schlägt an,
+                     sobald ein Template wieder etwas Inlines einführt.
 /current/            aktives Release (per rename() umgeschaltet)
 /releases/vX.Y.Z/    app/, public/, vendor/, bin/, migrations/, VERSION
 /shared/             überlebt Updates: config.php, var/backups/ (Rotation 10,

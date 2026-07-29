@@ -18,7 +18,7 @@
                     <td><?= e($sportheim['sortierung']) ?></td>
                     <td>
                         <form method="post" action="/admin/sportheime/<?= e($sportheim['id']) ?>/loeschen" class="inline-form"
-                              onsubmit="return confirm('Sportheim „<?= e($sportheim['name']) ?>&#8220; wirklich löschen?');">
+                              data-confirm="Sportheim „<?= e($sportheim['name']) ?>&#8220; wirklich löschen?">
                             <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
                             <button type="submit" class="linklike danger">Löschen</button>
                         </form>
