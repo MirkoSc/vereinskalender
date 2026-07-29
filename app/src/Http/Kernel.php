@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http;
 
+use App\Support\FileLogger;
 use App\View\View;
 
 /**
@@ -16,6 +17,7 @@ final class Kernel
         private readonly StaticFileHandler $staticFiles,
         private readonly View $view,
         private readonly bool $debug = false,
+        private readonly ?FileLogger $logger = null,
     ) {
     }
 
@@ -64,7 +66,7 @@ final class Kernel
         // (CLAUDE.md section 5) independent of that ini setting - defense in
         // depth, and a shorter, more useful log line (K2). PDO exception
         // messages never contain bound values, so getMessage() is safe here.
-        error_log(sprintf(
+        $zeile = sprintf(
             '%s: %s [%s %s] at %s:%d',
             $e::class,
             $e->getMessage(),
@@ -72,7 +74,14 @@ final class Kernel
             $request->path,
             $e->getFile(),
             $e->getLine(),
-        ));
+        );
+
+        error_log($zeile);
+        // Additionally into shared/var/log/: error_log() goes to the
+        // provider's PHP log, which is not reliably readable from the
+        // customer panel and rotates on its own schedule. Same line, so the
+        // "never the full exception string" guarantee above holds for both.
+        $this->logger?->append($zeile);
 
         // Full trace only in debug mode (dev/install), never in production.
         $body = $this->debug

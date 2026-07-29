@@ -64,6 +64,42 @@ final class BootstrapAdminTest extends DatabaseTestCase
         self::assertTrue(password_verify('sehr-sicheres-passwort', $hash));
     }
 
+    /**
+     * A successful login is the only moment the plaintext is available, so
+     * it is the only place a stored hash can follow a PASSWORD_DEFAULT
+     * change. Simulated with an explicitly weak bcrypt cost: nothing else
+     * ever rewrites the column, so without this an account would keep the
+     * algorithm that was current when its password was set, forever.
+     */
+    public function testLoginUpgradesAnOutdatedHash(): void
+    {
+        $auth = $this->auth();
+        $auth->createFirstAdmin('chef', 'sehr-sicheres-passwort', 'sehr-sicheres-passwort');
+
+        $veraltet = password_hash('sehr-sicheres-passwort', PASSWORD_BCRYPT, ['cost' => 5]);
+        $this->pdo()->exec("UPDATE admin SET password_hash = " . $this->pdo()->quote($veraltet));
+        self::assertTrue(password_needs_rehash($veraltet, PASSWORD_DEFAULT), 'sanity: the fixture really is outdated');
+
+        $result = $auth->attempt('chef', 'sehr-sicheres-passwort');
+
+        self::assertTrue($result->isAdmin);
+        $neu = (string) $this->pdo()->query('SELECT password_hash FROM admin')->fetchColumn();
+        self::assertNotSame($veraltet, $neu, 'the hash was rewritten');
+        self::assertFalse(password_needs_rehash($neu, PASSWORD_DEFAULT));
+        self::assertTrue(password_verify('sehr-sicheres-passwort', $neu), 'and still matches the same password');
+    }
+
+    public function testAnUpToDateHashIsLeftAlone(): void
+    {
+        $auth = $this->auth();
+        $auth->createFirstAdmin('chef', 'sehr-sicheres-passwort', 'sehr-sicheres-passwort');
+        $vorher = (string) $this->pdo()->query('SELECT password_hash FROM admin')->fetchColumn();
+
+        $auth->attempt('chef', 'sehr-sicheres-passwort');
+
+        self::assertSame($vorher, (string) $this->pdo()->query('SELECT password_hash FROM admin')->fetchColumn());
+    }
+
     public function testCreateFirstAdminValidatesInput(): void
     {
         $auth = $this->auth();
