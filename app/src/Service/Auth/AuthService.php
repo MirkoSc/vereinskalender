@@ -34,6 +34,15 @@ final readonly class AuthService
 
         $admin = $this->admins->findByUsername($username);
         if ($admin !== null && password_verify($password, $admin['password_hash'])) {
+            // The plaintext is only available here, so this is the one
+            // moment a stored hash can follow a PASSWORD_DEFAULT change.
+            // Without it an account keeps whatever algorithm was current
+            // when the password was set - forever, since nothing else ever
+            // rewrites it.
+            if (password_needs_rehash($admin['password_hash'], PASSWORD_DEFAULT)) {
+                $this->admins->updatePasswordHash($admin['id'], password_hash($password, PASSWORD_DEFAULT));
+            }
+
             return LoginResult::admin($admin['id'], $admin['username']);
         }
 

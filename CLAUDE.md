@@ -73,8 +73,15 @@ Dokument – oder es wird hier im selben PR bewusst geändert.
 /current/            aktives Release (per rename() umgeschaltet)
 /releases/vX.Y.Z/    app/, public/, vendor/, bin/, migrations/, VERSION
 /shared/             überlebt Updates: config.php, var/backups/ (Rotation 10,
-                     .htaccess-gesperrt), var/log/, maintenance.flag,
-                     update_state.json
+                     .htaccess-gesperrt), var/log/app.log (`Support\
+                     FileLogger`, eine Generation `.1` ab 5 MB – der
+                     Error-Handler schreibt dorthin ZUSÄTZLICH zu
+                     `error_log()`, weil dessen Ziel beim Shared-Hosting-
+                     Anbieter aus dem Kundenmenü kaum lesbar ist und eigenständig
+                     rotiert; jeder Schreibvorgang ist best effort, ein
+                     werfender Logger würde im globalen Error-Handler aus
+                     einem behandelten Fehler einen unbehandelten machen),
+                     maintenance.flag, update_state.json
 ```
 
 Repo spiegelt ein Release: `app/` (src/ mit Domain/Repository/Service, views/),
@@ -399,7 +406,15 @@ Stacktrace trägt bei `zend.exception_ignore_args=Off` die Funktionsargumente,
 z. B. das Klartext-Passwort aus dem Login-Pfad), sondern nur
 Exception-Klasse, `getMessage()`, Request-Methode/-Pfad und Fehlerort; die
 php.ini des Shared-Hosting-Anbieters setzt zusätzlich `zend.exception_ignore_args=On` (Defense in
-Depth). Farbwerte, die in den öffentlichen `<style>`-Block fließen, werden
+Depth). Dieselbe Zeile geht auch nach `shared/var/log/app.log` (Abschnitt 2)
+– die Garantie gilt also für beide Ziele, und für das Datei-Log erst recht,
+weil es das ist, das ein Admin tatsächlich zu lesen bekommt. Der
+**Installer-Kernel läuft bewusst NICHT im Debug-Modus** (`bootstrap.php`):
+mit Debug rendert eine unbehandelte Exception den vollen Exception-String in
+den Browser, und ein Stacktrace trägt auf diesem Pfad das gerade eingetippte
+DB-Passwort aus `InstallController::connect()`. Die Fehler, die dort zählen
+(der Verbindungstest), zeigt das Formular ohnehin selbst; alles andere steht
+im Log. Farbwerte, die in den öffentlichen `<style>`-Block fließen, werden
 an der AUSGABE gegen `Palette` gefiltert (nicht nur beim Schreiben) – eine
 per Event-Korrektur eingeschleuste Nicht-Palette-Farbe kann so nicht aus dem
 Style-Element ausbrechen.

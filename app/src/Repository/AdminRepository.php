@@ -38,6 +38,16 @@ final readonly class AdminRepository
         ];
     }
 
+    /**
+     * Replaces a stored hash, used when PASSWORD_DEFAULT has moved on since
+     * the password was set (see AuthService::attempt()).
+     */
+    public function updatePasswordHash(int $id, string $passwordHash): void
+    {
+        $stmt = $this->pdo->prepare('UPDATE admin SET password_hash = ? WHERE id = ?');
+        $stmt->execute([$passwordHash, $id]);
+    }
+
     public function create(string $username, string $passwordHash): int
     {
         $stmt = $this->pdo->prepare(

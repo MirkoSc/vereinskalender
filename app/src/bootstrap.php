@@ -11,6 +11,7 @@ use App\Http\Response;
 use App\Http\Router;
 use App\Http\StaticFileHandler;
 use App\Installer\InstallController;
+use App\Support\FileLogger;
 use App\Support\Version;
 use App\View\View;
 
@@ -43,7 +44,15 @@ if (!is_file($configFile)) {
         router: $router,
         staticFiles: new StaticFileHandler($paths->publicDir(), longCache: false),
         view: $view,
-        debug: true,
+        // NOT debug mode, even though this is the install step: with debug
+        // on, an unhandled exception renders the full exception string into
+        // the browser - and with zend.exception_ignore_args off a trace
+        // carries function arguments, which on this path means the database
+        // password the user just typed into InstallController::connect().
+        // The installer surfaces the errors that matter (the connection
+        // test) in the form itself; everything else goes to the log below.
+        debug: false,
+        logger: new FileLogger($paths->sharedDir() . '/var/log/app.log'),
     );
 }
 
@@ -60,4 +69,5 @@ return new Kernel(
     staticFiles: new StaticFileHandler($paths->publicDir(), longCache: !$version->isDev()),
     view: $container->view(),
     debug: $config->debug,
+    logger: new FileLogger($paths->sharedDir() . '/var/log/app.log'),
 );

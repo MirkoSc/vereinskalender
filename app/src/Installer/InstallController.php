@@ -76,6 +76,9 @@ final readonly class InstallController
             $upload = $_FILES['backup'] ?? null;
             if (!is_array($upload) || ($upload['error'] ?? \UPLOAD_ERR_NO_FILE) !== \UPLOAD_ERR_OK) {
                 $errors['backup'] = 'Bitte ein Backup-ZIP hochladen.';
+            } elseif (!is_uploaded_file((string) $upload['tmp_name'])) {
+                // the path is opened as a ZIP below; prove it is an upload
+                $errors['backup'] = 'Ungültiger Upload.';
             }
         }
 

@@ -236,4 +236,36 @@ final class NotificationTriggerTest extends DatabaseTestCase
             ['pitch_id' => 1],
         ), 'team filter does not block team-less notifications');
     }
+
+    /**
+     * markSent() moved out of the queue loop to after flush(), so an
+     * interrupted delivery is retried instead of counting as sent. This
+     * guards the other side of that move: with NO subscriptions there is
+     * nothing to flush, and the entries must still be marked. Had the
+     * marking landed inside the "we actually have subscribers" branch, the
+     * queue would never drain on an instance where nobody opted in - the
+     * cron would rework the same 50 rows every ten minutes, forever.
+     */
+    public function testQueueDrainsEvenWithoutAnySubscriptions(): void
+    {
+        $queue = new NotificationQueueRepository($this->pdo());
+        $queue->enqueue('platzsperrung', ['pitch_id' => 1, 'art' => 'gesperrt', 'von' => '2026-08-01 10:00:00', 'bis' => '2026-08-01 12:00:00'], null);
+        $queue->enqueue('spielaenderung', ['team_id' => 1, 'typ' => 'verlegt'], null);
+
+        self::assertCount(2, $queue->pending());
+
+        $sender = new \App\Service\Push\PushSender(
+            new \App\Repository\PushSubscriptionRepository($this->pdo()),
+            $queue,
+            new \App\Repository\TeamRepository($this->pdo()),
+            new \App\Repository\PitchRepository($this->pdo()),
+            sys_get_temp_dir() . '/vk_vapid_' . uniqid('', true) . '.json',
+        );
+
+        $ergebnis = $sender->processQueue();
+
+        self::assertSame(2, $ergebnis['verarbeitet']);
+        self::assertSame(0, $ergebnis['gesendet']);
+        self::assertSame([], $queue->pending(), 'the queue drained instead of piling up');
+    }
 }

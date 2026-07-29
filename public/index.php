@@ -28,6 +28,43 @@ if (is_file($maintenanceFlag) && !str_starts_with($requestPath, '/admin')) {
     exit;
 }
 
-/** @var Kernel $kernel */
-$kernel = require dirname(__DIR__) . '/app/src/bootstrap.php';
-$kernel->handle(Request::fromGlobals())->send();
+// Bootstrap runs OUTSIDE the Kernel's own error handler, and things do fail
+// there: the Kernel is built with view: $container->view(), which reads the
+// app name from the DB, so an unreachable database - the single likeliest
+// outage on shared hosting - throws before the Kernel exists. The result
+// was a blank 500 with nothing written anywhere, which is exactly the blind
+// spot shared/var/log/ is meant to close.
+//
+// Deliberately hand-rolled rather than using Support\FileLogger: the
+// autoloader is what bootstrap.php loads first, so it may itself be the
+// thing that failed. Same redaction rule as Http\Kernel - class, message,
+// method, path, file, line, never the full exception string (a trace
+// carries function arguments, and config credentials travel through here).
+try {
+    /** @var Kernel $kernel */
+    $kernel = require dirname(__DIR__) . '/app/src/bootstrap.php';
+    $kernel->handle(Request::fromGlobals())->send();
+} catch (\Throwable $e) {
+    $zeile = sprintf(
+        '[%s] BOOTSTRAP %s: %s [%s %s] at %s:%d',
+        date('c'),
+        $e::class,
+        $e->getMessage(),
+        $_SERVER['REQUEST_METHOD'] ?? '-',
+        $requestPath,
+        $e->getFile(),
+        $e->getLine(),
+    );
+
+    error_log($zeile);
+    $logDatei = dirname(__DIR__, 2) . '/shared/var/log/app.log';
+    if (is_dir(dirname($logDatei)) || @mkdir(dirname($logDatei), 0775, true) || is_dir(dirname($logDatei))) {
+        @file_put_contents($logDatei, $zeile . "\n", FILE_APPEND | LOCK_EX);
+    }
+
+    http_response_code(500);
+    header('Content-Type: text/html; charset=utf-8');
+    echo '<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>Fehler</title></head>'
+        . '<body><h1>Interner Fehler</h1><p>Der Vereinskalender ist gerade nicht erreichbar. '
+        . 'Bitte später erneut versuchen.</p></body></html>';
+}

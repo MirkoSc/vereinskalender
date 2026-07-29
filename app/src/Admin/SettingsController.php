@@ -53,6 +53,16 @@ final class SettingsController extends AdminController
 
             return Response::redirect('/admin/einstellungen');
         }
+        // The path is handed to getimagesize()/imagecreatefrompng() below,
+        // so it must be proven to come from an upload rather than being an
+        // arbitrary server path. $_FILES is not forgeable today, which makes
+        // this belt and braces - but it is the one line that keeps it that
+        // way if the surrounding code ever changes.
+        if (!is_uploaded_file((string) $upload['tmp_name'])) {
+            $this->session->flash('Ungültiger Upload.');
+
+            return Response::redirect('/admin/einstellungen');
+        }
 
         $fehler = $this->wappen->upload((string) $upload['tmp_name'], (int) $upload['size']);
         if ($fehler !== []) {

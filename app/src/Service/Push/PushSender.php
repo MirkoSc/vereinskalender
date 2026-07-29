@@ -78,8 +78,6 @@ final class PushSender
                     $gesendet++;
                 }
             }
-
-            $this->queue->markSent((int) $entry['id']);
         }
 
         if ($webPush !== null) {
@@ -89,6 +87,17 @@ final class PushSender
                     $entfernt++;
                 }
             }
+        }
+
+        // Marked only AFTER the delivery attempt. flush() talks to every
+        // push endpoint synchronously, so a cron request timing out in the
+        // middle of it is the likeliest failure here - and marking first
+        // meant those entries counted as sent and were never retried. This
+        // way an interrupted run repeats itself on the next cron: at worst
+        // a notification arrives twice, which for push is by far the
+        // friendlier direction than never arriving.
+        foreach ($entries as $entry) {
+            $this->queue->markSent((int) $entry['id']);
         }
 
         return ['verarbeitet' => count($entries), 'gesendet' => $gesendet, 'entfernt' => $entfernt];
