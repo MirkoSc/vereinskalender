@@ -1,3 +1,23 @@
+// ---- confirmation prompts for destructive forms ----
+//
+// Replaces the inline onsubmit="return confirm(...)" handlers the admin
+// lists used to carry. Those were the reason the CSP could not restrict
+// scripts: script-src without 'unsafe-inline' disables inline handlers
+// silently, which would have left every delete button firing WITHOUT a
+// prompt - worse than no CSP at all. The text now lives in data-confirm and
+// one delegated listener does the asking, so new forms only need the
+// attribute.
+//
+// Registered first in this file on purpose. admin.js is a module and
+// therefore deferred, so a submit in the few milliseconds before it runs
+// would skip the prompt; nothing else here should widen that window.
+document.addEventListener('submit', (event) => {
+    const form = event.target.closest?.('form[data-confirm]');
+    if (form !== null && form !== undefined && !window.confirm(form.dataset.confirm)) {
+        event.preventDefault();
+    }
+});
+
 // Admin: rebuild step chain. Calls /admin/rebuild/start once, then
 // /admin/rebuild/step until done (each request stays short, PHP time limit).
 

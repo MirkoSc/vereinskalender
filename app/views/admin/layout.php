@@ -43,7 +43,7 @@
                 Öffentliche Änderungen sind währenddessen blockiert.
             </p>
             <form method="post" action="/admin/wartung/aufheben" class="inline-form"
-                  onsubmit="return confirm('Wartungsmodus wirklich aufheben? Nur tun, wenn gerade kein Update und kein Rebuild läuft.')">
+                  data-confirm="Wartungsmodus wirklich aufheben? Nur tun, wenn gerade kein Update und kein Rebuild läuft.">
                 <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
                 <button type="submit" class="button">Wartungsmodus aufheben</button>
             </form>

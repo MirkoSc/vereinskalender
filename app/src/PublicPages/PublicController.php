@@ -161,6 +161,8 @@ final readonly class PublicController
                 static fn(array $t): bool => (int) $t['aktiv'] === 1,
             )),
             'pitches' => $this->pitches->findAll(),
+            // was an inline <script> until the CSP grew a script-src
+            'scripts' => ['/js/abonnieren.js'],
         ]));
     }
 

@@ -36,7 +36,7 @@
                     </td>
                     <td>
                         <form method="post" action="/admin/import-quellen/<?= e($source['id']) ?>/loeschen" class="inline-form"
-                              onsubmit="return confirm('Import-Quelle wirklich löschen?');">
+                              data-confirm="Import-Quelle wirklich löschen?">
                             <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
                             <button type="submit" class="linklike danger">Löschen</button>
                         </form>
