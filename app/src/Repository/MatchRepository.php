@@ -23,18 +23,12 @@ final readonly class MatchRepository
     }
 
     /**
-     * @return array<string, mixed>|null
-     */
-    public function findBySourceAndUid(int $importSourceId, string $icsUid): ?array
-    {
-        $stmt = $this->pdo->prepare('SELECT * FROM `match` WHERE import_source_id = ? AND ics_uid = ?');
-        $stmt->execute([$importSourceId, $icsUid]);
-        $row = $stmt->fetch();
-
-        return $row === false ? null : $row;
-    }
-
-    /**
+     * Every match of one import source, oldest kickoff first. The ICS sync
+     * loads this ONCE per run and keys it by ics_uid (unique per source)
+     * rather than looking up each feed entry individually - a season feed
+     * has dozens of entries per team, and the cancel follow-up needs the
+     * full list anyway.
+     *
      * @return list<array<string, mixed>>
      */
     public function findBySource(int $importSourceId): array

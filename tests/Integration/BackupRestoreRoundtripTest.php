@@ -95,7 +95,7 @@ final class BackupRestoreRoundtripTest extends DatabaseTestCase
 
         self::assertIsString($dump);
         self::assertSame('9.9.9-test', $manifest['app_version']);
-        self::assertSame(18, $manifest['schema_version']);
+        self::assertSame(19, $manifest['schema_version']);
 
         // wipe everything, then restore exactly like the installer does
         foreach ($this->pdo()->query('SHOW TABLES')->fetchAll(\PDO::FETCH_COLUMN) as $table) {

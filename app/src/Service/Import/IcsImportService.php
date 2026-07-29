@@ -139,6 +139,15 @@ final readonly class IcsImportService
         $nowStr = ($this->now ?? new \DateTimeImmutable('now'))->format('Y-m-d H:i:s');
         $spielfreiBegriffe = self::spielfreiBegriffe($this->settings->get('spielfrei_begriffe', 'Spielfrei'));
 
+        // One query for the source's whole stock instead of one lookup per
+        // feed entry: a season feed has dozens of events per team and the
+        // cancel follow-up below needed the full list anyway. Keyed by UID,
+        // which is unique per source (UNIQUE(import_source_id, ics_uid)).
+        $bestand = [];
+        foreach ($this->matches->findBySource($sourceId) as $row) {
+            $bestand[(string) $row['ics_uid']] = $row;
+        }
+
         $inserted = $updated = $skipped = 0;
         $feedUids = [];
 
@@ -152,7 +161,7 @@ final readonly class IcsImportService
             $syncHash = self::syncHash($anstoss, $gegner, $ortText, $status);
             $spielfrei = self::istSpielfrei($ortText, $icsEvent->summary, $spielfreiBegriffe);
 
-            $existing = $this->matches->findBySourceAndUid($sourceId, $icsEvent->uid);
+            $existing = $bestand[$icsEvent->uid] ?? null;
             $storedSpielfrei = $existing !== null && (int) $existing['spielfrei'] === 1;
 
             // home detection at import time; the pitch itself is NOT in the
@@ -207,20 +216,39 @@ final readonly class IcsImportService
             ];
 
             if ($existing === null) {
-                $this->eventStore->append(AggregateType::Match, null, EventType::Created, $payload, $context);
+                $event = $this->eventStore->append(AggregateType::Match, null, EventType::Created, $payload, $context);
+                $matchId = $event->aggregateId;
                 $inserted++;
             } else {
-                $this->eventStore->append(AggregateType::Match, (int) $existing['id'], EventType::Updated, $payload, $context);
+                $matchId = (int) $existing['id'];
+                $this->eventStore->append(AggregateType::Match, $matchId, EventType::Updated, $payload, $context);
                 $updated++;
             }
+
+            // Keep the stock in step with what was just written. A feed CAN
+            // repeat a UID - IcsParser does not collapse RECURRENCE-ID
+            // overrides - and a second occurrence has to update the row the
+            // first one created. Re-reading per entry used to hide this;
+            // against a stale snapshot it would insert twice and die on
+            // UNIQUE(import_source_id, ics_uid), failing the whole source.
+            // Payload keys are the column names (projection contract), so the
+            // payload doubles as a row once the id is added.
+            $bestand[$icsEvent->uid] = ['id' => $matchId, ...$payload];
         }
 
         // follow-up: future matches whose UID vanished from the feed are
         // cancelled (never deleted); matches that have already started
         // (kickoff <= import moment, boundary included) are left untouched,
         // some feeds drop past events (Issue #48)
+        //
+        // Iterates the stock loaded above instead of re-querying. Same
+        // result: every row this run touched carries a UID that IS in the
+        // feed, so it is skipped here either way, and rows the run did not
+        // touch read identically before and after. Order is unchanged too -
+        // the pre-existing entries keep the query's ORDER BY anstoss, and
+        // the freshly created ones appended at the end are always skipped.
         $cancelled = 0;
-        foreach ($this->matches->findBySource($sourceId) as $match) {
+        foreach ($bestand as $match) {
             if (isset($feedUids[(string) $match['ics_uid']])
                 || (string) $match['status'] === 'abgesagt'
                 || (string) $match['anstoss'] <= $nowStr) {
