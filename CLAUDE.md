@@ -435,6 +435,20 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   (Kandidaten-Lookup UND Absage-Nachlauf) – **manuelle Spiele
   (`import_source_id IS NULL`) sind für ihn unsichtbar**: kein Update,
   keine Absage, kein Platz-Reflow (Regressionstest in IcsImportTest).
+  Der Bestand der Quelle wird dabei **einmal je Lauf** geladen
+  (`MatchRepository::findBySource()`) und nach `ics_uid` indiziert, statt je
+  Feed-Eintrag einzeln abzufragen; der Absage-Nachlauf iteriert denselben
+  Bestand weiter, statt ein zweites Mal zu lesen. Ergebnis und Reihenfolge
+  sind identisch (jede in diesem Lauf geschriebene Zeile trägt eine UID aus
+  dem Feed und wird vom Nachlauf ohnehin übersprungen; unberührte Zeilen
+  lesen sich vor und nach den Schreibvorgängen gleich). Wichtig dabei: der
+  Bestand wird **nach jedem Schreibvorgang fortgeschrieben** (`['id' => …,
+  …$payload]` – die Payload-Schlüssel sind die Spaltennamen). Ein Feed darf
+  eine UID wiederholen (`IcsParser` fasst `RECURRENCE-ID`-Overrides nicht
+  zusammen); gegen einen eingefrorenen Schnappschuss liefe der zweite
+  Treffer in ein zweites Insert und damit in
+  `UNIQUE(import_source_id, ics_uid)` – die ganze Quelle fiele aus. Der
+  frühere Einzel-Lookup verdeckte das, weil er jedes Mal neu las.
 - `sync_hash` über anstoss + ort_text + gegner + summary-relevante Felder
   (NICHT pitch_id).
 - Heimspiel-Erkennung via `VenueMatcher`; Platz steht NICHT im ICS →
@@ -1299,7 +1313,14 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   Wochen); der Diff der älteren `events-*.json` ist rein additiv – nur das
   neue Feld, kein einziges geändertes Datum, was den Intervall-1-Pfad als
   regressionsfrei belegt);
-  ICS-Sync (insert/update/skip/abgesagt, Verlegung per gleicher UID);
+  ICS-Sync (insert/update/skip/abgesagt, Verlegung per gleicher UID;
+  **im Feed wiederholte UID** aktualisiert die im selben Lauf angelegte
+  Zeile statt ein zweites Insert zu versuchen –
+  `testRepeatedUidInOneFeedUpdatesInsteadOfInsertingTwice`; **Absage-Nachlauf
+  im gemischten Lauf**, d. h. ein Eintrag wird aktualisiert WÄHREND ein
+  anderer aus dem Feed verschwindet und abgesagt werden muss –
+  `testCancelFollowUpStillSeesRowsThisRunDidNotTouch`, der Fall, den die
+  übrigen Nachlauf-Tests mit ihrem leeren Feed nicht abdecken);
   VenueMatcher (Mehrfach-Begriffe, Priorität, case-insensitive, heim vs.
   auswärts); Konfliktprüfung (gesperrt blockiert, eingeschraenkt warnt,
   **Doppelbelegung** – Belegung-über-Belegung UND Belegung-über-Spiel warnen

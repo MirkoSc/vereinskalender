@@ -87,6 +87,67 @@ final class IcsImportTest extends DatabaseTestCase
         self::assertNotNull($source['letzter_lauf']);
     }
 
+    /**
+     * The sync loads the source's whole stock once and keys it by UID
+     * instead of querying per feed entry. A feed CAN repeat a UID -
+     * IcsParser does not collapse RECURRENCE-ID overrides into one event -
+     * and the second occurrence has to update the row the first one created.
+     * Against a stale snapshot it would insert a second time and die on
+     * UNIQUE(import_source_id, ics_uid), failing the entire source; the
+     * per-entry lookup used to mask that by re-reading the DB every time.
+     */
+    public function testRepeatedUidInOneFeedUpdatesInsteadOfInsertingTwice(): void
+    {
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('wiederholt', '20990808T150000', 'SV Musterstadt - FC Gegner', 'Sportanlage Musterstadt'),
+            self::vevent('wiederholt', '20990809T110000', 'SV Musterstadt - FC Gegner', 'Sportanlage Musterstadt', 1),
+        )]);
+
+        $result = $this->icsImportService($fetcher)->runAll()[0];
+
+        self::assertTrue($result->ok, 'a repeated UID must not fail the whole source: ' . (string) $result->fehlertext);
+        self::assertSame([1, 1, 0, 0], [$result->inserted, $result->updated, $result->cancelled, $result->skipped]);
+
+        $matches = $this->dumpTable('match');
+        self::assertCount(1, $matches);
+        // last occurrence wins, exactly as a second run with the later value would
+        self::assertSame('2099-08-09 11:00:00', $matches[0]['anstoss']);
+    }
+
+    /**
+     * The cancel follow-up runs off the same in-memory stock as the sync
+     * loop. Rows the run did not touch have to remain visible to it - the
+     * mixed case (one entry updated, another one gone from the feed) is the
+     * one a snapshot bug would break, and the existing follow-up tests all
+     * use an empty feed, where nothing is updated at all.
+     */
+    public function testCancelFollowUpStillSeesRowsThisRunDidNotTouch(): void
+    {
+        $now = new \DateTimeImmutable('2099-08-01 12:00:00');
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('bleibt', '20990808T150000', 'Spiel A', 'Stadion A'),
+            self::vevent('verschwindet', '20990815T150000', 'Spiel B', 'Stadion B'),
+        )]);
+        $this->icsImportService($fetcher, $now)->runAll();
+
+        // 'bleibt' is relocated (so it IS written this run), 'verschwindet'
+        // drops out of the feed and must still be cancelled
+        $fetcher->set(self::URL, self::feed(
+            self::vevent('bleibt', '20990808T170000', 'Spiel A', 'Stadion A', 1),
+        ));
+        $result = $this->icsImportService($fetcher, $now)->runAll()[0];
+
+        self::assertSame([0, 1, 1, 0], [$result->inserted, $result->updated, $result->cancelled, $result->skipped]);
+
+        $byUid = [];
+        foreach ($this->dumpTable('match') as $match) {
+            $byUid[$match['ics_uid']] = $match;
+        }
+        self::assertSame('geplant', $byUid['bleibt']['status']);
+        self::assertSame('2099-08-08 17:00:00', $byUid['bleibt']['anstoss'], 'the relocation was applied');
+        self::assertSame('abgesagt', $byUid['verschwindet']['status']);
+    }
+
     public function testHomeDetectionPrefillsDefaultPitch(): void
     {
         $fetcher = new FakeFeedFetcher([self::URL => self::feed(
