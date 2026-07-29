@@ -9,6 +9,7 @@ use App\Domain\EventSource;
 use App\Service\EventStore\EventStore;
 use App\Service\EventStore\RebuildService;
 use App\Service\EventStore\Replayer;
+use App\Service\MaintenanceMode;
 use App\Service\Migration\Migrator;
 use App\Service\Projection\BereichProjector;
 use App\Service\Projection\ImportSourceProjector;
@@ -42,6 +43,10 @@ abstract class DatabaseTestCase extends TestCase
 
     private ?string $rebuildStateFile = null;
 
+    private ?string $maintenanceFlagFile = null;
+
+    private ?MaintenanceMode $maintenance = null;
+
     protected function setUp(): void
     {
         $pdo = self::connect();
@@ -59,6 +64,9 @@ abstract class DatabaseTestCase extends TestCase
     {
         if ($this->rebuildStateFile !== null && is_file($this->rebuildStateFile)) {
             unlink($this->rebuildStateFile);
+        }
+        if ($this->maintenanceFlagFile !== null && is_file($this->maintenanceFlagFile)) {
+            unlink($this->maintenanceFlagFile);
         }
     }
 
@@ -94,6 +102,18 @@ abstract class DatabaseTestCase extends TestCase
         return new EventStore($this->pdo(), $this->projectorRegistry());
     }
 
+    /**
+     * The maintenance flag a rebuild sets and clears (write freeze, see
+     * RebuildService). Same instance for the whole test so assertions and
+     * the service under test look at the same file.
+     */
+    protected function maintenanceMode(): MaintenanceMode
+    {
+        $this->maintenanceFlagFile ??= sys_get_temp_dir() . '/vk_test_wartung_' . uniqid('', true) . '.flag';
+
+        return $this->maintenance ??= new MaintenanceMode($this->maintenanceFlagFile);
+    }
+
     protected function rebuildService(): RebuildService
     {
         $this->rebuildStateFile ??= tempnam(sys_get_temp_dir(), 'rebuild_state_');
@@ -103,6 +123,7 @@ abstract class DatabaseTestCase extends TestCase
             $this->projectorRegistry(),
             new Replayer($this->pdo(), $this->projectorRegistry()),
             $this->rebuildStateFile,
+            $this->maintenanceMode(),
         );
     }
 

@@ -8,12 +8,19 @@ use App\Http\Request;
 use App\Http\Response;
 use App\Http\ResponseInterface;
 use App\Http\Session;
+use App\Service\MaintenanceMode;
 use App\Service\Update\UpdateService;
 use App\View\View;
 
 /**
  * Admin UI for the update step chain: the page's JS calls one endpoint per
  * step; on errors it offers retry (steps are idempotent) or rollback.
+ *
+ * Also owns the manual release of the maintenance flag. It is reachable
+ * from the banner in the admin layout rather than only from this page,
+ * because the flag can be left behind by a crashed update AND by an
+ * abandoned rebuild - and before this existed the only way to clear it was
+ * FTP (reset() only ever deleted the status file, never the flag).
  */
 final class UpdateController extends AdminController
 {
@@ -21,8 +28,20 @@ final class UpdateController extends AdminController
         View $view,
         Session $session,
         private readonly UpdateService $updates,
+        private readonly MaintenanceMode $maintenance,
     ) {
         parent::__construct($view, $session);
+    }
+
+    public function releaseMaintenance(Request $request): ResponseInterface
+    {
+        $this->maintenance->disable();
+        $this->session->flash('Wartungsmodus aufgehoben – die Seite ist wieder öffentlich erreichbar.');
+
+        // Fixed target, deliberately not a "return to where you came from"
+        // parameter: that would be an open redirect for the price of saving
+        // one click.
+        return Response::redirect('/admin');
     }
 
     public function page(Request $request): ResponseInterface

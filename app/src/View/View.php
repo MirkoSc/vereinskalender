@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\View;
 
+use App\Service\MaintenanceMode;
+
 /**
  * Minimal template renderer: plain PHP templates inside a layout.
  * Data keys become local variables in the template (EXTR_SKIP: the
@@ -17,6 +19,7 @@ final readonly class View
         private bool $wappenVorhanden = false,
         private string $wappenVersion = '0',
         private string $appName = 'Vereinskalender',
+        private ?MaintenanceMode $maintenance = null,
     ) {
     }
 
@@ -36,6 +39,13 @@ final readonly class View
                 'wappenVorhanden' => $this->wappenVorhanden,
                 'wappenVersion' => $this->wappenVersion,
                 'appName' => $this->appName,
+                // Global like appName: the admin layout must show the
+                // maintenance banner on EVERY page, not just on /admin/update
+                // and /admin/rebuild - the flag can be left behind by either
+                // and the way out has to be reachable from wherever you are.
+                // Only ever rendered in the admin layout: while the flag is
+                // set the public side is answered with a 503 by the shim.
+                'wartung' => $this->maintenance?->state(),
             ],
         );
     }

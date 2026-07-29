@@ -35,6 +35,20 @@
     <?php endif; ?>
 </header>
 <main>
+    <?php if (($wartung ?? null) !== null): ?>
+        <div class="wartung-banner" role="status">
+            <p>
+                <strong>Wartungsmodus aktiv</strong> – die Seite ist für Besucher gesperrt
+                (Grund: <?= e($wartung['grund']) ?><?= $wartung['seit'] !== '' ? ', seit ' . e($wartung['seit']) : '' ?>).
+                Öffentliche Änderungen sind währenddessen blockiert.
+            </p>
+            <form method="post" action="/admin/wartung/aufheben" class="inline-form"
+                  onsubmit="return confirm('Wartungsmodus wirklich aufheben? Nur tun, wenn gerade kein Update und kein Rebuild läuft.')">
+                <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
+                <button type="submit" class="button">Wartungsmodus aufheben</button>
+            </form>
+        </div>
+    <?php endif; ?>
     <?php if (($flash ?? null) !== null): ?>
         <p class="flash"><?= e($flash) ?></p>
     <?php endif; ?>

@@ -104,6 +104,78 @@ final class ReleaseSwitcherTest extends TestCase
         self::assertDirectoryDoesNotExist($this->base . '/releases/v0.8.0');
     }
 
+    // ---- docroot shim self-healing (CLAUDE.md section 10) ----
+
+    private function prepareShim(string $content): string
+    {
+        mkdir($this->base . '/web', 0775, true);
+        $file = $this->base . '/web/index.php';
+        file_put_contents($file, $content);
+
+        return $file;
+    }
+
+    public function testRefreshShimReplacesAnOutdatedShimAndReturnsThePrevious(): void
+    {
+        $alt = "<?php require dirname(__DIR__).'/current/public/index.php';\n";
+        $file = $this->prepareShim($alt);
+
+        $vorher = new ReleaseSwitcher($this->base)->refreshShim();
+
+        self::assertSame($alt, $vorher, 'previous content is returned so a failed self-test can undo it');
+        self::assertSame(ReleaseSwitcher::SHIM, file_get_contents($file));
+    }
+
+    public function testRefreshShimIsANoOpWhenAlreadyCurrent(): void
+    {
+        $file = $this->prepareShim(ReleaseSwitcher::SHIM);
+
+        self::assertNull(
+            new ReleaseSwitcher($this->base)->refreshShim(),
+            'null means "nothing replaced", so finish() has nothing to roll back',
+        );
+        self::assertSame(ReleaseSwitcher::SHIM, file_get_contents($file));
+    }
+
+    /**
+     * Not every installation follows the web/-shim layout (a custom docroot,
+     * for instance). Writing a shim where none exists would be guessing
+     * about someone else's setup, so the updater stays out of it instead.
+     */
+    public function testRefreshShimLeavesAForeignLayoutAlone(): void
+    {
+        self::assertNull(new ReleaseSwitcher($this->base)->refreshShim());
+        self::assertFileDoesNotExist($this->base . '/web/index.php');
+    }
+
+    public function testRestoreShimPutsThePreviousContentBack(): void
+    {
+        $alt = "<?php require dirname(__DIR__).'/current/public/index.php';\n";
+        $file = $this->prepareShim($alt);
+        $switcher = new ReleaseSwitcher($this->base);
+
+        $vorher = $switcher->refreshShim();
+        self::assertNotNull($vorher);
+        $switcher->restoreShim($vorher);
+
+        // the undo path after a failed self-test: a broken shim would take
+        // the whole site down, /admin included, so there must be a way back
+        self::assertSame($alt, file_get_contents($file));
+    }
+
+    public function testMaintenanceFlagCarriesItsReason(): void
+    {
+        $switcher = new ReleaseSwitcher($this->base);
+
+        $switcher->setMaintenanceFlag('Rebuild');
+        $inhalt = (string) file_get_contents($this->base . '/shared/maintenance.flag');
+
+        self::assertStringContainsString('Rebuild', $inhalt, 'the admin banner shows why the site is down');
+
+        $switcher->removeMaintenanceFlag();
+        self::assertFileDoesNotExist($this->base . '/shared/maintenance.flag');
+    }
+
     private static function removeTree(string $dir): void
     {
         if (!is_dir($dir)) {

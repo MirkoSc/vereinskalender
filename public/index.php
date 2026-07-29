@@ -5,9 +5,17 @@ declare(strict_types=1);
 use App\Http\Kernel;
 use App\Http\Request;
 
-// Maintenance mode (CLAUDE.md section 10): the flag only exists while the
-// updater switches releases. Checked before bootstrap so it works even if
-// the app is mid-switch; /admin stays reachable for the update step chain.
+// Maintenance mode (CLAUDE.md sections 2/4/10): set while the updater
+// switches releases AND for the whole duration of a projection rebuild.
+// Checked before bootstrap so it works even if the app is mid-switch;
+// /admin stays reachable for the update step chain.
+//
+// The docroot shim (ReleaseSwitcher::SHIM) performs the SAME check one
+// level up, and that is the one that actually matters: between the two
+// renames of a switch this file does not exist, so it cannot answer. This
+// copy is kept because the shim only reaches an installation through the
+// updater's self-healing - until that has run once, this is the only check
+// there is.
 $maintenanceFlag = dirname(__DIR__, 2) . '/shared/maintenance.flag';
 $requestPath = (string) parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 if (is_file($maintenanceFlag) && !str_starts_with($requestPath, '/admin')) {

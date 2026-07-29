@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Service\Update;
 
+use App\Service\MaintenanceMode;
+
 /**
  * Switches the active release via rename() (atomic on the same filesystem,
  * CLAUDE.md section 10): maintenance.flag -> current => releases/_prev ->
@@ -13,8 +15,59 @@ namespace App\Service\Update;
  */
 final class ReleaseSwitcher
 {
-    public function __construct(private readonly string $baseDir)
-    {
+    /**
+     * The docroot shim. Kept here because this class already owns the
+     * on-disk layout, and because the content must be byte-identical in
+     * three places (ShimContentTest enforces that): this constant, the copy
+     * bin/setup.template.php writes on a fresh install, and docker/web/.
+     *
+     * The maintenance check lives in the SHIM, not in
+     * current/public/index.php, for one reason: between
+     * rename(current, _prev) and rename(new, current) the release directory
+     * is briefly gone. A require of the missing file is a fatal error, so
+     * the very file that renders the maintenance page cannot be the one that
+     * disappears. The shim is the only file no release ZIP and no rename()
+     * ever touches.
+     */
+    public const string SHIM = <<<'PHP'
+        <?php
+        // Docroot shim - written by setup.php on a fresh install and kept up
+        // to date by the updater (UpdateService::finish()). Do not edit.
+        $basis = dirname(__DIR__);
+        $release = $basis . '/current/public/index.php';
+        $pfad = (string) parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+
+        // Missing release = mid-switch or a crashed one; the flag = update or
+        // projection rebuild in progress. /admin stays reachable while the
+        // flag is set (the update step chain runs there), but not while the
+        // release itself is gone - there is nothing to serve it with.
+        if (!is_file($release)
+            || (is_file($basis . '/shared/maintenance.flag') && !str_starts_with($pfad, '/admin'))) {
+            http_response_code(503);
+            header('Content-Type: text/html; charset=utf-8');
+            header('Retry-After: 30');
+            echo '<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>Wartung</title></head>'
+                . '<body><h1>Kurze Wartungspause</h1><p>Der Vereinskalender wird gerade aktualisiert. '
+                . 'Bitte in einer Minute erneut laden.</p></body></html>';
+            exit;
+        }
+
+        require $release;
+
+        PHP;
+
+    private readonly MaintenanceMode $maintenance;
+
+    /**
+     * @param MaintenanceMode|null $maintenance shared instance from the
+     *        container; defaults to the flag inside this base dir so tests
+     *        (and setup.php) can construct the switcher from a path alone
+     */
+    public function __construct(
+        private readonly string $baseDir,
+        ?MaintenanceMode $maintenance = null,
+    ) {
+        $this->maintenance = $maintenance ?? new MaintenanceMode($baseDir . '/shared/maintenance.flag');
     }
 
     public function switchTo(string $version): void
@@ -120,21 +173,68 @@ final class ReleaseSwitcher
         return is_dir($this->baseDir . '/releases/_prev');
     }
 
-    public function setMaintenanceFlag(): void
+    public function setMaintenanceFlag(string $grund = 'Update'): void
     {
-        $shared = $this->baseDir . '/shared';
-        if (!is_dir($shared)) {
-            mkdir($shared, 0775, true);
-        }
-        file_put_contents($shared . '/maintenance.flag', new \DateTimeImmutable()->format('c'));
+        $this->maintenance->enable($grund);
     }
 
     public function removeMaintenanceFlag(): void
     {
-        $flag = $this->baseDir . '/shared/maintenance.flag';
-        if (is_file($flag)) {
-            unlink($flag);
+        $this->maintenance->disable();
+    }
+
+    public function shimFile(): string
+    {
+        return $this->baseDir . '/web/index.php';
+    }
+
+    /**
+     * Brings the docroot shim up to date (self-healing, CLAUDE.md section
+     * 10). Called from the finish step, i.e. the first step that already
+     * runs on the NEW release - the earlier steps still execute the old
+     * version's code and could not know about a newer shim.
+     *
+     * Consequence, and the reason this is not the whole story: the update
+     * that INTRODUCES a shim change cannot protect its own switch, only
+     * every switch after it. That is a property of self-healing, not a bug.
+     *
+     * @return string|null the previous content when the shim was replaced,
+     *         null when it was already current (nothing to roll back)
+     * @throws \RuntimeException when the docroot is not writable
+     */
+    public function refreshShim(): ?string
+    {
+        $file = $this->shimFile();
+        if (!is_file($file)) {
+            // Not our docroot layout (e.g. a custom setup): writing a shim
+            // where none exists would be guessing, so stay out of it.
+            return null;
         }
+
+        $current = file_get_contents($file);
+        if ($current === false) {
+            throw new \RuntimeException('Shim nicht lesbar: ' . $file);
+        }
+        if ($current === self::SHIM) {
+            return null;
+        }
+
+        if (@file_put_contents($file, self::SHIM, LOCK_EX) === false) {
+            throw new \RuntimeException('Shim nicht beschreibbar: ' . $file);
+        }
+
+        return $current;
+    }
+
+    /**
+     * Puts a previous shim back after a failed self-test. A broken shim
+     * takes the ENTIRE site down (including /admin, so not even a rollback
+     * would be reachable), which is why refreshShim() is always followed by
+     * the self-test and this undo.
+     */
+    public function restoreShim(string $content): void
+    {
+        @file_put_contents($this->shimFile(), $content, LOCK_EX);
     }
 
     private static function removeTree(string $dir): void

@@ -215,6 +215,12 @@ return static function (Router $router, Container $c): void {
     $router->get('/admin/rebuild', $guard(fn(Request $r, array $p) => $c->rebuildController()->page($r)));
     $router->post('/admin/rebuild/start', $guard(fn(Request $r, array $p) => $c->rebuildController()->start($r)));
     $router->post('/admin/rebuild/step', $guard(fn(Request $r, array $p) => $c->rebuildController()->step($r)));
+    $router->post('/admin/rebuild/abbrechen', $guard(fn(Request $r, array $p) => $c->rebuildController()->cancel($r)));
+
+    // Lifts the maintenance flag by hand - reachable from the banner in the
+    // admin layout, since both a crashed update and an abandoned rebuild can
+    // leave it behind.
+    $router->post('/admin/wartung/aufheben', $guard(fn(Request $r, array $p) => $c->updateController()->releaseMaintenance($r)));
 
     $router->get('/admin/backups', $guard(fn(Request $r, array $p) => $c->backupController()->index($r)));
     $router->post('/admin/backups', $guard(fn(Request $r, array $p) => $c->backupController()->create($r)));

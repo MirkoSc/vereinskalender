@@ -1416,6 +1416,36 @@ tr.dragging {
     border: 1px solid var(--color-accent);
 }
 
+/* Maintenance banner in the admin layout: shown on EVERY admin page while
+   the flag is set, because both a crashed update and an abandoned rebuild
+   can leave it behind and the way out has to be reachable from anywhere.
+   Deliberately loud - while it is up, the public site is a 503. */
+.wartung-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1rem;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--color-danger) 12%, var(--color-bg));
+    border: 1px solid var(--color-danger);
+}
+
+.wartung-banner p {
+    margin: 0;
+    flex: 1 1 20rem;
+}
+
+/* Explanatory paragraph before a destructive or long-running admin action. */
+.hinweis {
+    padding: 0.75rem 1rem;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--color-text) 6%, var(--color-bg));
+    border-left: 3px solid color-mix(in srgb, var(--color-text) 35%, var(--color-bg));
+    font-size: 0.95rem;
+}
+
 .error-message,
 .field-error {
     color: var(--color-danger);
