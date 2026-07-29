@@ -25,6 +25,20 @@ Dokument – oder es wird hier im selben PR bewusst geändert.
 
 ```
 /web/                DocumentRoot (fix): index.php → require ../current/public/index.php
+                     + .htaccess (Rewrite auf index.php, Security-Header:
+                     nosniff, Referrer-Policy, CSP `frame-ancestors`/
+                     `base-uri`, HSTS). Beide Dateien schreibt setup.php
+                     EINMALIG bei der Neuinstallation; kein Release-ZIP
+                     fasst den DocumentRoot je an, Änderungen daran müssen
+                     bei Bestandsinstallationen also von Hand nachgezogen
+                     werden. Inhalt spiegelbildlich in docker/web/.
+                     Die CSP trägt bewusst NUR script-unabhängige
+                     Direktiven: `abonnieren.php`/`install.php` haben noch
+                     Inline-`<script>`-Blöcke und die Admin-Listen
+                     Inline-`onsubmit`-Handler – ein `script-src` würde die
+                     Lösch-Bestätigungen lautlos abschalten. Erst wenn die
+                     ausgelagert sind, kann sie auf `default-src`/
+                     `script-src`/`style-src` erweitert werden.
 /current/            aktives Release (per rename() umgeschaltet)
 /releases/vX.Y.Z/    app/, public/, vendor/, bin/, migrations/, VERSION
 /shared/             überlebt Updates: config.php, var/backups/ (Rotation 10,
@@ -304,7 +318,14 @@ jederzeit per Replay rekonstruierbar.
 1. **Lesen**: öffentlich, keine Session.
 2. **Ändern (öffentlich)**: `editor_name` aus localStorage, wird bei jedem
    Schreib-Request mitgesendet; Server lehnt Schreiben ohne Namen ab, prüft
-   ihn nicht weiter (Vertrauensmodell). Absicherung: Event-Historie +
+   ihn nicht weiter (Vertrauensmodell). „Nicht weiter geprüft" meint die
+   **Identität**, nicht das Feld: Länge (max. `EventContext::
+   MAX_EDITOR_NAME` = 100, die Breite von `event.editor_name`) wird sehr
+   wohl validiert – im `$publicWrite`-Guard als 422 und in
+   `EventStore::append()` als Invariante, genau aufgeteilt wie die
+   bestehende Leer-Prüfung. Ohne sie ließe ein zu langer Name den ganzen
+   Schreibvorgang im „Data too long" der Spalte auflaufen (Strict Mode),
+   also als nacktes 500 statt als Feldfehler. Absicherung: Event-Historie +
    Rate-Limit pro IP (~30 Schreibzugriffe/Minute).
 3. **Admin**: username + password_hash, PHP-Session. **Bootstrap-Regel**:
    Credentials aus config.php gelten NUR bei leerer admin-Tabelle; erster
@@ -319,7 +340,15 @@ jederzeit per Replay rekonstruierbar.
    User-Enumeration). Durchsetzung im `AuthController` (nicht im generischen
    `$guard`), weil nur dort Erfolg/Fehlschlag bekannt ist.
 
-CSRF-Token für alle Schreibrouten. **Passwörter nie loggen**: der globale
+CSRF-Token für alle Schreibrouten. Das Admin-Session-Cookie trägt
+`httponly`, `samesite=Lax` **und `secure`** – letzteres aus dem Schema des
+laufenden Requests abgeleitet (`Request::httpsFromGlobals()`, dieselbe
+Quelle wie `UpdateController::baseUrl()`), nicht hart auf `true`: HTTPS ist
+zwar Installationsvoraussetzung (setup.php-Checkliste), die Docker-Dev-
+Umgebung läuft aber auf `http://localhost:8080`, wo ein secure-Cookie
+lautlos verworfen würde und jeder Login zurück aufs Formular fiele. Ein
+Host, der `$_SERVER['HTTPS']` gar nicht setzt, bekommt damit den bisherigen
+Zustand – nie ein kaputtes Cookie. **Passwörter nie loggen**: der globale
 Error-Handler (`Http/Kernel`) loggt nie den vollen Exception-String (ein
 Stacktrace trägt bei `zend.exception_ignore_args=Off` die Funktionsargumente,
 z. B. das Klartext-Passwort aus dem Login-Pfad), sondern nur

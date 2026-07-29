@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Container;
+use App\Domain\EventContext;
 use App\Http\HttpMethod;
 use App\Http\Request;
 use App\Http\Response;
@@ -72,8 +73,22 @@ return static function (Router $router, Container $c): void {
             if (!$c->rateLimiter()->allow($request->ip)) {
                 return Response::json(['fehler' => ['rate' => 'Zu viele Änderungen – bitte kurz warten.']], 429);
             }
-            if ($requireName && trim((string) ($request->post['editor_name'] ?? '')) === '') {
-                return Response::json(['fehler' => ['editor_name' => 'Bitte zuerst einen Namen angeben.']], 422);
+            if ($requireName) {
+                // Not a check of WHO writes (trust model, CLAUDE.md section
+                // 5) but of the field itself: the name reaches
+                // event.editor_name VARCHAR(100), and the form's maxlength
+                // does not bind an API caller. Without this an over-long
+                // name fails the write transaction with a bare 500.
+                $editorName = trim((string) ($request->post['editor_name'] ?? ''));
+                if ($editorName === '') {
+                    return Response::json(['fehler' => ['editor_name' => 'Bitte zuerst einen Namen angeben.']], 422);
+                }
+                if (mb_strlen($editorName) > EventContext::MAX_EDITOR_NAME) {
+                    return Response::json(['fehler' => ['editor_name' => sprintf(
+                        'Der Name darf höchstens %d Zeichen lang sein.',
+                        EventContext::MAX_EDITOR_NAME,
+                    )]], 422);
+                }
             }
 
             return $handler($request, $params);

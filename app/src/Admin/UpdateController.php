@@ -81,9 +81,8 @@ final class UpdateController extends AdminController
 
     private function baseUrl(Request $request): string
     {
-        $https = ($_SERVER['HTTPS'] ?? '') !== '' && $_SERVER['HTTPS'] !== 'off';
         $host = $request->header('host') ?? 'localhost';
 
-        return ($https ? 'https://' : 'http://') . $host;
+        return (Request::httpsFromGlobals() ? 'https://' : 'http://') . $host;
     }
 }

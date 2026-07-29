@@ -6,6 +6,7 @@
     "require": {
         "php": "^8.5",
         "ext-curl": "*",
+        "ext-gd": "*",
         "ext-mbstring": "*",
         "ext-openssl": "*",
         "ext-pdo": "*",
@@ -35,6 +36,7 @@
         "platform": {
             "php": "8.5.0",
             "ext-curl": "8.5.0",
+            "ext-gd": "8.5.0",
             "ext-mbstring": "8.5.0",
             "ext-openssl": "8.5.0",
             "ext-pdo": "8.5.0",

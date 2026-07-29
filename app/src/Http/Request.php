@@ -57,6 +57,24 @@ final readonly class Request
         );
     }
 
+    /**
+     * Whether the current request arrived over TLS. Read from $_SERVER for
+     * the same reason fromGlobals() is: it is the scheme of the request PHP
+     * is answering right now, not a property of the parsed snapshot.
+     *
+     * Deliberately NOT derived from X-Forwarded-Proto: that header is
+     * client-controlled unless a trusted proxy is configured, and this
+     * installation terminates TLS on the web server itself. When the host
+     * does not expose HTTPS at all the answer is false, which only ever
+     * means "no improvement" - never a broken cookie (see Session::start()).
+     */
+    public static function httpsFromGlobals(): bool
+    {
+        $https = (string) ($_SERVER['HTTPS'] ?? '');
+
+        return $https !== '' && strtolower($https) !== 'off';
+    }
+
     public function header(string $name): ?string
     {
         return $this->headers[strtolower($name)] ?? null;

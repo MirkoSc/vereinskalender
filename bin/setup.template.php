@@ -220,11 +220,35 @@ try {
 
     // production shim - identical content to docker/web/index.php
     file_put_contents($webDir . '/index.php', "<?php require dirname(__DIR__).'/current/public/index.php';\n");
+    // Only written for a FRESH install - an existing .htaccess is never
+    // overwritten (it may be hand-tuned, and it lives in the docroot, which
+    // no release ZIP ever touches). Existing installations therefore need
+    // the header block below added by hand once.
     if (!is_file($webDir . '/.htaccess')) {
-        file_put_contents(
-            $webDir . '/.htaccess',
-            "Options -Indexes\nDirectoryIndex index.php\n\nRewriteEngine On\nRewriteCond %{REQUEST_FILENAME} !-f\nRewriteRule ^ index.php [L]\n",
-        );
+        file_put_contents($webDir . '/.htaccess', <<<'HTACCESS'
+            Options -Indexes
+            DirectoryIndex index.php
+
+            <IfModule mod_headers.c>
+                Header always set X-Content-Type-Options "nosniff"
+                Header always set Referrer-Policy "strict-origin-when-cross-origin"
+                # Only the script-independent CSP directives: the app still has
+                # inline <script> blocks (abonnieren, installer) and inline
+                # onsubmit handlers in the admin lists, so a script-src would
+                # silently kill the delete confirmations. Extending this to
+                # default-src/script-src/style-src needs those moved out first.
+                Header always set Content-Security-Policy "frame-ancestors 'none'; base-uri 'self'"
+                # HTTPS is an installation requirement (checklist above), so
+                # committing to it is safe. Drop this line if the site must
+                # ever be reachable over plain HTTP again.
+                Header always set Strict-Transport-Security "max-age=15768000"
+            </IfModule>
+
+            RewriteEngine On
+            RewriteCond %{REQUEST_FILENAME} !-f
+            RewriteRule ^ index.php [L]
+
+            HTACCESS);
     }
 
     if (!rename($target, $rootDir . '/current')) {
