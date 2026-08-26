@@ -216,7 +216,32 @@ sind KEINE Projektionen.
 - **pitch_restriction**: pitch_id FK, von, bis,
   art ('gesperrt'|'eingeschraenkt'), grund (Pflicht). 'gesperrt' →
   Konfliktprüfung lehnt neue Belegungen ab; 'eingeschraenkt' → Belegen
-  erlaubt, Buchungsdialog warnt mit Grund, Termine tragen Markierung.
+  erlaubt, Buchungsdialog warnt mit Grund.
+  **Betroffene Termine tragen die Restriktion sichtbar mit**: jedes Training
+  und jedes Spiel, dessen Platz im eigenen Zeitraum gesperrt bzw.
+  eingeschränkt ist, zeigt am Termin ⛔ (gesperrt, rot) bzw. 🚧
+  (eingeschränkt, gelb) VOR den Farbpunkten plus einen Rahmen am Terminblock
+  (in der Terminliste einen Balken links); Grund und voller Zeitraum stehen
+  im Detail-Dialog. Vorher war eine Restriktion ausschließlich am
+  Sperrungs-Termin selbst zu sehen – als FullCalendar-Background-Event in der
+  Art-Farbe, das im Monat und in der Liste praktisch unsichtbar ist und in
+  Tag/Woche ohne Platzspalten sogar über allen Plätzen liegt. Zwei
+  verschiedene Zeichen statt zweier Farben desselben Zeichens, weil ⚠ bereits
+  die Doppelbelegung trägt und „Farbe ist nie das einzige Signal" (Abschnitt
+  8) sonst verletzt wäre. Die Ableitung folgt exakt dem
+  Doppelbelegungs-Muster: reine Overlap-Logik in
+  `public/js/platzsperrung.js` (`findeUeberschneidende()` gegen den
+  UNGEFILTERTEN Bestand `alleTermineAktuell`, damit ein aktiver Filter die
+  Warnung nicht verschwinden lässt), gerendert in `eventContent`/
+  `eventDidMount`/`showDetail` – nie im Event-Datensatz vorberechnet
+  (Abschnitt 7). Trifft beides denselben Termin, erscheinen beide Zeichen,
+  der Rahmen aber nur einmal: `staerksteArt()` ist die eine Stelle, die
+  gesperrt vor eingeschränkt setzt (dieselbe Rangfolge wie
+  `AvailabilityCalculator::buildTimeline()`), und die CSS-Blöcke stehen in
+  der Reihenfolge Doppelbelegung → eingeschränkt → gesperrt, weil es je
+  Element nur EIN `outline`/`::after` gibt. 'eingeschraenkt' bekommt bewusst
+  einen gestrichelten Rahmen ohne Schraffur – es teilt sich die Warnfarbe mit
+  der Doppelbelegung und wäre sonst nicht von ihr zu unterscheiden.
   **Bearbeiten/Löschen öffentlich** (Ebene 2) als Events, Löschen =
   delete-Event – exakt das Muster von manuellen Spielen/Vermietungen
   (Issue #64); Platz, Zeitraum und Grund sind alle änderbar (das Payload ist
@@ -660,7 +685,13 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   filterbereinigte wie beim 🏠-Vermietungshinweis
   (`vermietungenAktuell`/`findeUeberschneidende` in `vermietung-hinweis.js`)
   – eine Doppelbelegung darf nicht verschwinden, nur weil ein Team-/
-  Bereichs-/Platzfilter gerade den Partner-Termin ausblendet.
+  Bereichs-/Platzfilter gerade den Partner-Termin ausblendet. Der
+  **Platzsperrungs-Marker** (⛔/🚧, Abschnitt 3) folgt derselben Regel aus
+  denselben zwei Gründen – abgeleitet in `eventContent`/`eventDidMount`
+  (`public/js/platzsperrung.js`, `findeUeberschneidende()`/`staerksteArt()`)
+  aus ebenfalls `alleTermineAktuell`, damit ein Termintyp- oder Platzfilter,
+  der gerade die Sperrung selbst ausblendet, die Warnung am betroffenen
+  Training nicht mitnimmt.
 - Filter „manuelle Termine" (`filter-manuell`, dreistufig: Alle / Ohne
   manuelle / Nur manuelle): clientseitig wie der Platzfilter, `/api/events`
   kennt ihn nicht; er wirkt auf das `manuell`-Flag im Event-Payload und
@@ -725,7 +756,16 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   splitFilterList()` ist die geteilte Tokenisierung dafür. Mehr-Team-Slots
   matchen zusätzlich, wenn EIN Team des Slots EINEN der Filter-Werte erfüllt;
   API liefert `team_ids` zusätzlich zu `team_id` (= erstes Team, bestimmt
-  Farbe).
+  Farbe). **Sperrungen unterliegen `team`/`bereich` NICHT** (sie haben kein
+  Team): sie wurden früher unter jedem Team-/Bereichsfilter komplett
+  unterdrückt, womit auf einem gefilterten Kalender überhaupt keine
+  Restriktionsdaten ankamen und die Termin-Markierung (Abschnitt 3) dort
+  ersatzlos fehlte – ein gesperrter Platz betrifft ohnehin jedes Team, das
+  auf ihm spielt. `venue` gilt für sie weiter und ist harmlos: eine Belegung
+  auf Platz X kann nur von einer Restriktion an dessen Spielstätte getroffen
+  werden. Der Offline-Pfad (`fetchEventsRange` in `kalender.js`, Spiegelbild
+  von `EventFeedService::events()`) lässt Sperrungen aus demselben Grund
+  durch beide Filter.
 - Belegungen tragen zusätzlich `intervall_wochen` (Rhythmus der Serie,
   Abschnitt 3). Kein reines Anzeigefeld: `startEdit()` baut den Prefill des
   Bearbeiten-Dialogs aus den Event-Props, ohne das Feld setzte jedes
@@ -993,6 +1033,8 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   `sportheimRaeume` bereits mit); ein Platz mit `sportheim_id` zeigt sein
   Sportheim zusätzlich als 🏠-Text in der Plätze-Gruppe. Ein
   Symbole-Abschnitt erklärt den ⚠-Doppelbelegungs-Marker (Abschnitt 3),
+  die ⛔-/🚧-Platzsperrungs-Marker an Terminen (Platz gesperrt bzw. nur
+  eingeschränkt nutzbar, Abschnitt 3),
   den 🏠-Indikator an Terminen (Sportheim gerade vermietet), die
   Vermietungs-Darstellung (nur Spielstätten-Punkt, kein Team) und den
   Spielfrei-Punkt (Issue #65: kein Auswärtsspiel, für dieses Team ist an
@@ -1411,7 +1453,18 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   Belegung zu entfernen –, `betroffene`-Hinweisliste bei überlappenden
   Trainings-/Spielterminen sowohl bei create als auch bei update,
   Push-Auslösung nur bei Created/Updated nicht bei Deleted, Replay nach
-  Update); **Bereich-
+  Update); **Platzsperrung am betroffenen Termin** (Abschnitt 3:
+  `tests/js/platzsperrung.test.js` – Treffer bei Überlappung auf demselben
+  Platz, Berührung ist keiner, anderer Platz ist keiner, eine mehrtägige
+  Sperrung erfasst einen Termin am Zwischentag, abgesagtes Spiel und
+  Auswärtsspiel/Spielfrei (`pitch_id null`) werden nie markiert, eine
+  Sperrung markiert nie sich selbst, andere Belegungen/Vermietungen sind
+  keine Sperrungs-Treffer; `staerksteArt()` setzt gesperrt vor
+  eingeschränkt und liefert ohne Treffer `null`.
+  `EventFeedTest::testRestrictionIsNotHiddenByTeamOrBereichFilter` hält die
+  Feed-Seite fest: die Sperrung erscheint unter `team=`/`bereich=` – auch
+  für ein Team, das gar nicht auf dem Platz trainiert –, ein `venue=`-Filter
+  auf eine andere Spielstätte blendet sie weiterhin aus); **Bereich-
   Upcasting** (Issue #27: Alt-Team-Event mit nur dem Enum-String → über die
   System-Seed-Events im Event-Log auf die passende bereich_id gehoben,
   deterministisch unabhängig von der Replay-Reihenfolge relativ zu den

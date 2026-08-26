@@ -380,6 +380,34 @@
         props.art === 'gesperrt' ? 'var(--color-danger)' : 'var(--color-warning)'
     );
 
+    // Wortlaut der beiden Restriktions-Arten - EINE Quelle für Termin-Tooltip,
+    // Detail-Dialog und Legende (die Legende zieht ihn nicht von hier, sie
+    // rendert auf anderen Seiten ohne kalender.js; die Formulierung ist dort
+    // aber bewusst dieselbe).
+    const sperrungLabel = (art) => (
+        art === 'gesperrt' ? 'Platz gesperrt' : 'Platz nur eingeschränkt nutzbar'
+    );
+
+    // Eine Restriktion ist ein DATETIME-Zeitraum (pitch_restriction.von/bis)
+    // und kann über mehrere Tage laufen - dann müssen beide Datumsangaben
+    // genannt werden, sonst liest sich "08:00-22:00 Uhr" wie ein einzelner
+    // Abend. Direkt aus den ISO-Strings formatiert statt über Date(), wie
+    // sonst überall dort, wo nur Textausgabe gebraucht wird.
+    const sperrungZeitraum = (sperrung) => {
+        const datum = (iso) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
+        const uhr = (iso) => iso.slice(11, 16);
+        return sperrung.start.slice(0, 10) === sperrung.ende.slice(0, 10)
+            ? `${datum(sperrung.start)}, ${uhr(sperrung.start)}–${uhr(sperrung.ende)} Uhr`
+            : `${datum(sperrung.start)} ${uhr(sperrung.start)} – ${datum(sperrung.ende)} ${uhr(sperrung.ende)} Uhr`;
+    };
+
+    const sperrungBeschriftung = (sperrung) => `${sperrung.grund} (${sperrungZeitraum(sperrung)})`;
+
+    // Die Restriktionen, die diesen Termin treffen - immer aus dem
+    // UNGEFILTERTEN Bestand (alleTermineAktuell), damit ein aktiver Filter die
+    // Warnung nicht verschwinden lässt, analog zur Doppelbelegung.
+    const platzsperrungen = (props) => window.VKPlatzsperrung.findeUeberschneidende(alleTermineAktuell, props);
+
     // Die Platzfarbe am Termin (Issue #6/#11). Rein aus den Event-Props -
     // OB und WIE sie erscheint, entscheidet platzFarbDarstellung() beim
     // Rendern. Sperrungen (eigene Art-Farbe) und Vermietungen (kein Platz,
@@ -504,6 +532,29 @@
             wrapper.append(zeit);
         }
 
+        // Platzsperrung/-einschränkung (CLAUDE.md Abschnitt 3): der Platz ist
+        // im Zeitraum des Termins gesperrt (⛔, rot) bzw. nur eingeschränkt
+        // nutzbar (🚧, gelb). Steht noch VOR dem Doppelbelegungs-⚠, weil eine
+        // Sperrung die stärkere Aussage ist; Quelle ist derselbe UNGEFILTERTE
+        // Bestand (alleTermineAktuell). Beide Arten können denselben Termin
+        // treffen - dann erscheinen beide Zeichen, die Block-Markierung in
+        // eventDidMount entscheidet sich per staerksteArt() für eine.
+        const restriktionen = platzsperrungen(props);
+        for (const art of ['gesperrt', 'eingeschraenkt']) {
+            const treffer = restriktionen.filter((s) => s.art === art);
+            if (treffer.length === 0) {
+                continue;
+            }
+            const text = `${sperrungLabel(art)}: ${treffer.map(sperrungBeschriftung).join(', ')}`;
+            const marker = document.createElement('span');
+            marker.className = `ev-platzsperrung-hinweis ev-platzsperrung-hinweis-${art}`;
+            marker.textContent = art === 'gesperrt' ? '⛔' : '🚧';
+            marker.setAttribute('role', 'img');
+            marker.setAttribute('aria-label', text);
+            marker.title = text;
+            wrapper.append(marker);
+        }
+
         // Doppelbelegung (CLAUDE.md Abschnitt 3): seit die Konfliktprüfung
         // eine Überlappung nur noch warnt statt ablehnt, ist ein doppelt
         // belegter Platz ein dauerhafter Zustand - unübersehbar VOR den
@@ -612,6 +663,17 @@
             'ev-doppelbelegung',
             window.VKDoppelbelegung.findeUeberschneidende(alleTermineAktuell, info.event.extendedProps).length > 0,
         );
+
+        // Platzsperrung/-einschränkung: aus demselben Grund hier und nicht in
+        // toFcEvent(). Fällt ein Termin in beide Arten, gewinnt die stärkere -
+        // es gibt nur EINEN Rahmen je Element, und staerksteArt() ist die eine
+        // Stelle, die das entscheidet (die Zeichen in eventContent bleiben
+        // additiv, es geht also keine Information verloren).
+        const sperrungArt = window.VKPlatzsperrung.staerksteArt(
+            platzsperrungen(info.event.extendedProps),
+        );
+        info.el.classList.toggle('ev-platz-gesperrt', sperrungArt === 'gesperrt');
+        info.el.classList.toggle('ev-platz-eingeschraenkt', sperrungArt === 'eingeschraenkt');
 
         if (platzFarbDarstellung() !== 'hintergrund') {
             return;
@@ -758,7 +820,12 @@
             const bundleEvents = window.VKOfflineEvents.eventsAusBundle(bundle, von, bis)
                 .filter((e) => {
                     const gewaehlt = gewaehlteWerte('team');
-                    if (gewaehlt.length === 0) {
+                    if (gewaehlt.length === 0 || e.typ === 'sperrung') {
+                        // Sperrungen haben kein Team und werden vom Team-/
+                        // Bereichsfilter bewusst NICHT entfernt - Spiegelbild
+                        // von EventFeedService::events(), damit die Markierung
+                        // an betroffenen Terminen (platzsperrung.js) offline
+                        // genauso erscheint wie online.
                         return true;
                     }
                     // multi-team bookings match when ANY selected team matches
@@ -766,7 +833,7 @@
                 })
                 .filter((e) => {
                     const gewaehlt = gewaehlteWerte('bereich');
-                    if (gewaehlt.length === 0) {
+                    if (gewaehlt.length === 0 || e.typ === 'sperrung') {
                         return true;
                     }
                     return (e.team_ids ?? [e.team_id]).some(
@@ -1761,6 +1828,21 @@
         const ende = new Date(props.ende);
         const datum = start.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
         detailContent.append(zeile('Termin', `${datum}, ${start.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}–${ende.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr`));
+
+        // Platzsperrung/-einschränkung (CLAUDE.md Abschnitt 3): voller Text mit
+        // Grund und Zeitraum, den das ⛔/🚧 am Termin nur andeutet. Steht vor
+        // der Doppelbelegung, weil eine Sperrung die stärkere Aussage ist.
+        if (props.typ === 'belegung' || props.typ === 'spiel') {
+            for (const s of platzsperrungen(props)) {
+                const hinweis = document.createElement('p');
+                hinweis.className = s.art === 'gesperrt'
+                    ? 'warning-message warning-message-danger'
+                    : 'warning-message';
+                hinweis.textContent = `${s.art === 'gesperrt' ? '⛔' : '🚧'} ${sperrungLabel(s.art)}: `
+                    + `${sperrungBeschriftung(s)}.`;
+                detailContent.append(hinweis);
+            }
+        }
 
         // Doppelbelegung (CLAUDE.md Abschnitt 3): der Platz ist zeitgleich
         // noch von einem anderen Termin belegt - erlaubt, aber unübersehbar,
