@@ -238,11 +238,18 @@ final readonly class EventFeedService
                 $events[] = $event;
             }
 
-            // restrictions as background layer of the occupancy view
+            // restrictions as background layer of the occupancy view.
+            // Deliberately NOT hidden by the team/bereich filters (they used
+            // to be, as restrictions carry no team): a closed pitch concerns
+            // every team playing on it, and the calendar derives the marker on
+            // affected trainings/matches from these very rows (platzsperrung.js)
+            // - suppressing them would silently drop the warning on a filtered
+            // calendar. The venue filter still applies and is harmless: a
+            // booking on pitch X can only ever be hit by a restriction at
+            // pitch X's venue.
             foreach ($this->restrictions->findOverlapping($von . ' 00:00:00', $bis . ' 23:59:59') as $restriction) {
                 $event = $serializer->sperrung($restriction);
-                if (!$matchesVenue($event['venue_id']) || ($teamFilter !== [] || $bereichIdFilter !== [])) {
-                    // restrictions have no team; hide them under team filters
+                if (!$matchesVenue($event['venue_id'])) {
                     continue;
                 }
                 $events[] = $event;

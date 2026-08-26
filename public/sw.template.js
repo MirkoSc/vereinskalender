@@ -30,6 +30,7 @@ const APP_SHELL = [
     '/js/kalender-titel.js?v=__VERSION__',
     '/js/vermietung-hinweis.js?v=__VERSION__',
     '/js/doppelbelegung.js?v=__VERSION__',
+    '/js/platzsperrung.js?v=__VERSION__',
     '/js/slot-umfang.js?v=__VERSION__',
     '/js/kalender.js?v=__VERSION__',
     '/js/verfuegbarkeit.js?v=__VERSION__',

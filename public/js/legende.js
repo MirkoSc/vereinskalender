@@ -124,6 +124,36 @@
             ),
         );
 
+        // Platzsperrung/-einschränkung (CLAUDE.md Abschnitt 3): eine
+        // Restriktion war bisher nur als Hintergrundfläche am Sperrungs-Termin
+        // selbst zu sehen - die betroffenen Trainings/Spiele tragen sie jetzt
+        // sichtbar mit. Zwei verschiedene Zeichen, nicht nur zwei Farben.
+        const gesperrt = document.createElement('p');
+        gesperrt.className = 'legende-symbol-erklaerung';
+        const gesperrtZeichen = document.createElement('span');
+        gesperrtZeichen.textContent = '⛔';
+        gesperrtZeichen.setAttribute('aria-hidden', 'true');
+        gesperrt.append(
+            gesperrtZeichen,
+            document.createTextNode(
+                ' an einem Training oder Spiel: der Platz ist zu diesem Zeitpunkt gesperrt. '
+                + 'Grund und Zeitraum stehen im Detail-Dialog.',
+            ),
+        );
+
+        const eingeschraenkt = document.createElement('p');
+        eingeschraenkt.className = 'legende-symbol-erklaerung';
+        const eingeschraenktZeichen = document.createElement('span');
+        eingeschraenktZeichen.textContent = '🚧';
+        eingeschraenktZeichen.setAttribute('aria-hidden', 'true');
+        eingeschraenkt.append(
+            eingeschraenktZeichen,
+            document.createTextNode(
+                ' an einem Training oder Spiel: der Platz ist zu diesem Zeitpunkt nur '
+                + 'eingeschränkt nutzbar. Grund und Zeitraum stehen im Detail-Dialog.',
+            ),
+        );
+
         const haus = document.createElement('p');
         haus.className = 'legende-symbol-erklaerung';
         const hausPunkt = document.createElement('span');
@@ -160,7 +190,7 @@
             document.createTextNode(' Spielfrei: für dieses Team ist an diesem Termin kein Spiel angesetzt.'),
         );
 
-        return abschnitt('Symbole', [doppelbelegung, haus, vermietung, spielfrei]);
+        return abschnitt('Symbole', [doppelbelegung, gesperrt, eingeschraenkt, haus, vermietung, spielfrei]);
     };
 
     const render = (root, appData) => {

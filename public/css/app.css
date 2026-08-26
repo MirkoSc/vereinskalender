@@ -404,6 +404,15 @@ dialog.sheet::backdrop {
     color: var(--color-warning);
 }
 
+/* Gesperrter Platz im Detail-Dialog: derselbe Callout in Rot statt Gelb -
+   dieselbe Farbtrennung wie am Termin selbst und im Verfügbarkeits-Zeitstrahl
+   (gesperrt = --color-danger, eingeschränkt = --color-warning). */
+.warning-message-danger {
+    border-left-color: var(--color-danger);
+    background: color-mix(in srgb, var(--color-danger) 12%, var(--color-bg));
+    color: var(--color-danger);
+}
+
 .warn-titel {
     display: block;
     margin-bottom: 0.35rem;
@@ -806,6 +815,77 @@ dialog.sheet::backdrop {
    Titel trägt dort ohnehin die Hauptlast des Signals. */
 .fc .fc-list-table tr.ev-doppelbelegung td.fc-list-event-title {
     box-shadow: inset 4px 0 0 var(--color-warning);
+}
+
+/* Platzsperrung/-einschränkung am betroffenen Termin (CLAUDE.md Abschnitt 3):
+   ⛔ bzw. 🚧 vor den Farbpunkten, dieselbe Mechanik wie das
+   Doppelbelegungs-⚠. Die beiden Zeichen sind schon ohne Farbe eindeutig
+   ("Farbe ist nie das einzige Signal") - ⚠ wäre es nicht, das trägt bereits
+   die Doppelbelegung. Als Emoji bringen sie ihre eigene Farbe mit; `color`
+   greift nur, wo sie in Text-Präsentation gerendert werden, und stimmt dann
+   mit der Rahmenfarbe überein. */
+.ev-platzsperrung-hinweis {
+    margin-right: 0.25rem;
+    flex: 0 0 auto;
+}
+
+.ev-platzsperrung-hinweis-gesperrt {
+    color: var(--color-danger);
+}
+
+.ev-platzsperrung-hinweis-eingeschraenkt {
+    color: var(--color-warning);
+}
+
+/* Rahmen am Terminblock, Technik 1:1 von .ev-doppelbelegung (outline statt
+   border, damit die inline gesetzte Platzfarbe unangetastet bleibt;
+   :not(.fc-list-event) grenzt die Terminliste aus).
+
+   Diese drei Blöcke stehen bewusst NACH .ev-doppelbelegung und in der
+   Reihenfolge eingeschränkt -> gesperrt: es gibt nur EINEN outline und EIN
+   ::after je Element, bei mehreren zutreffenden Markierungen gewinnt so das
+   stärkste Signal. Die Zeichen im Titel bleiben additiv, es geht also keine
+   Information verloren.
+
+   Eingeschränkt trägt bewusst nur einen GESTRICHELTEN Rahmen ohne Schraffur:
+   es teilt sich die Warnfarbe mit der Doppelbelegung und wäre sonst von ihr
+   nicht zu unterscheiden. */
+.ev-platz-eingeschraenkt:not(.fc-list-event) {
+    position: relative;
+    outline: 2px dashed var(--color-warning);
+    outline-offset: -2px;
+}
+
+.ev-platz-eingeschraenkt:not(.fc-list-event)::after {
+    content: none;
+}
+
+.ev-platz-gesperrt:not(.fc-list-event) {
+    position: relative;
+    outline: 2px solid var(--color-danger);
+    outline-offset: -2px;
+}
+
+.ev-platz-gesperrt:not(.fc-list-event)::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+        45deg,
+        color-mix(in srgb, var(--color-danger) 35%, transparent),
+        color-mix(in srgb, var(--color-danger) 35%, transparent) 6px,
+        transparent 6px,
+        transparent 12px
+    );
+    pointer-events: none;
+}
+
+.fc .fc-list-table tr.ev-platz-eingeschraenkt td.fc-list-event-title {
+    box-shadow: inset 4px 0 0 var(--color-warning);
+}
+
+.fc .fc-list-table tr.ev-platz-gesperrt td.fc-list-event-title {
+    box-shadow: inset 4px 0 0 var(--color-danger);
 }
 
 /* Maps-Link im Termindetail (Issue #5): Icon + Text, nie Farbe allein */

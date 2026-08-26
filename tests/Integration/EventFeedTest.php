@@ -535,6 +535,49 @@ final class EventFeedTest extends DatabaseTestCase
     }
 
     /**
+     * A restriction carries no team, but it concerns every team playing on
+     * that pitch - the calendar derives the ⛔/🚧 marker on the affected
+     * trainings and matches from these very rows (public/js/platzsperrung.js).
+     * Hiding them under a team/bereich filter (which is what the feed used to
+     * do) would silently drop the warning on a filtered calendar. The venue
+     * filter still applies and is harmless: a booking on a pitch can only ever
+     * be hit by a restriction at that pitch's venue.
+     */
+    public function testRestrictionIsNotHiddenByTeamOrBereichFilter(): void
+    {
+        $otherVenue = $this->createVenue('SV Nachbarort', 'Dorfstraße 2');
+        $otherTeam = $this->createTeam('Herren 1', 'Herren');
+        $this->restrictionService()->create([
+            'pitch_id' => $this->pitchId,
+            'von' => '2026-08-04 08:00',
+            'bis' => '2026-08-06 22:00',
+            'art' => 'gesperrt',
+            'grund' => 'Platzpflege',
+        ], $this->context());
+
+        $feed = $this->eventFeedService();
+        $range = ['von' => '2026-08-03', 'bis' => '2026-08-09'];
+        $sperrungen = static fn(array $events): array => array_values(array_filter(
+            $events,
+            static fn(array $e): bool => $e['typ'] === 'sperrung',
+        ));
+
+        self::assertCount(1, $sperrungen($feed->events([...$range, 'team' => (string) $this->teamId])));
+        self::assertCount(
+            1,
+            $sperrungen($feed->events([...$range, 'team' => (string) $otherTeam])),
+            'also for a team that does not train on that pitch - the pitch is closed either way',
+        );
+        self::assertCount(1, $sperrungen($feed->events([...$range, 'bereich' => 'E'])));
+        self::assertCount(1, $sperrungen($feed->events([...$range, 'venue' => (string) $this->venueId])));
+        self::assertCount(
+            0,
+            $sperrungen($feed->events([...$range, 'venue' => (string) $otherVenue])),
+            'the venue filter still applies',
+        );
+    }
+
+    /**
      * Issue #36: Vermietungen only ever appear in the merged feed (typ=''),
      * never under typ=belegung/spiel; they carry no team, so a team/bereich
      * filter hides them.
