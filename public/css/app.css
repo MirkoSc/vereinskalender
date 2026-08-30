@@ -298,6 +298,25 @@ main {
     margin-bottom: 1rem;
 }
 
+/* Woche-Navigation der Verfügbarkeitsansicht (prev/heute/next), optisch
+   analog FullCalendars eigener .fc-button-Gruppe im Kalender-Toolbar
+   (kompakt, Touch-Ziel >= 44px, s. .fc .fc-button oben). */
+.week-nav {
+    display: inline-flex;
+    gap: 2px;
+}
+
+.week-nav-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0.3rem 0.55rem;
+    font-size: 1rem;
+    line-height: 1;
+}
+
 .toolbar .filter {
     margin: 0;
     font-size: 0.85rem;

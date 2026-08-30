@@ -11,13 +11,15 @@
     const artHinweis = (wert) => (appData.vermietungArten ?? [])
         .find((a) => a.wert === (wert ?? 'vermietung'))?.hinweis ?? 'Sportheim belegt';
 
-    let wochenstart = (() => {
+    const berechneWochenstart = () => {
         const heute = new Date();
         const offset = (heute.getDay() + 6) % 7; // Monday = 0
         heute.setDate(heute.getDate() - offset);
         heute.setHours(0, 0, 0, 0);
         return heute;
-    })();
+    };
+
+    let wochenstart = berechneWochenstart();
 
     const container = document.querySelector('#verfuegbarkeit');
     const rangeLabel = document.querySelector('#range-label');
@@ -444,6 +446,10 @@
 
     document.querySelector('#prev-week').addEventListener('click', () => {
         wochenstart = addDays(wochenstart, -7);
+        load();
+    });
+    document.querySelector('#today-week').addEventListener('click', () => {
+        wochenstart = berechneWochenstart();
         load();
     });
     document.querySelector('#next-week').addEventListener('click', () => {
