@@ -2,9 +2,15 @@
     <h2>Platz-Verfügbarkeit</h2>
 
     <div class="toolbar">
-        <button type="button" id="prev-week" class="linklike">‹ Vorherige Woche</button>
+        <!-- Analog dem Kalender-Toolbar (FullCalendar headerToolbar
+             left: 'prev,next today'): kompakte Icon-Button-Gruppe statt
+             der früheren linklike-Textlinks, plus "Heute"-Schaltfläche. -->
+        <div class="week-nav" role="group" aria-label="Woche navigieren">
+            <button type="button" id="prev-week" class="button week-nav-btn" aria-label="Vorherige Woche" title="Vorherige Woche">‹</button>
+            <button type="button" id="today-week" class="button week-nav-btn" aria-label="Heute" title="Heute">●</button>
+            <button type="button" id="next-week" class="button week-nav-btn" aria-label="Nächste Woche" title="Nächste Woche">›</button>
+        </div>
         <strong id="range-label"></strong>
-        <button type="button" id="next-week" class="linklike">Nächste Woche ›</button>
 
         <button type="button" id="filter-button" class="button filter-button filter-narrow">
             Filter <span id="filter-badge" class="badge" hidden>0</span>
