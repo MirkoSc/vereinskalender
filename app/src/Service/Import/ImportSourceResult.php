@@ -12,6 +12,7 @@ final readonly class ImportSourceResult
         public int $inserted = 0,
         public int $updated = 0,
         public int $cancelled = 0,
+        public int $deleted = 0,
         public int $skipped = 0,
         public ?string $fehlertext = null,
     ) {
@@ -28,6 +29,7 @@ final readonly class ImportSourceResult
             'neu' => $this->inserted,
             'aktualisiert' => $this->updated,
             'abgesagt' => $this->cancelled,
+            'geloescht' => $this->deleted,
             'unveraendert' => $this->skipped,
             'fehlertext' => $this->fehlertext,
         ];

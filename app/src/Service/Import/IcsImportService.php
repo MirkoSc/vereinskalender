@@ -10,6 +10,7 @@ use App\Domain\EventSource;
 use App\Domain\EventType;
 use App\Repository\ImportSourceRepository;
 use App\Repository\MatchRepository;
+use App\Repository\PitchRepository;
 use App\Repository\SettingRepository;
 use App\Repository\TeamHomePitchRepository;
 use App\Repository\VenueRepository;
@@ -22,9 +23,10 @@ use App\Service\Stats\AlarmMailer;
  * (import_source_id, ics_uid): unknown -> insert, sync_hash changed ->
  * update (a relocated match moves automatically, the UID stays), unchanged
  * -> skip. Afterwards: UIDs in the DB but missing from the feed are set to
- * status 'abgesagt' - NEVER hard-deleted (also protects against empty
- * feeds). Errors are isolated per source. All writes go through the event
- * store (quelle 'import').
+ * status 'abgesagt' - hard-deleted only as the feed-rebuild exception
+ * documented below, never for a genuine absence (also protects against
+ * empty feeds). Errors are isolated per source. All writes go through the
+ * event store (quelle 'import').
  *
  * Pitch assignment for home matches follows a fixed priority (CLAUDE.md
  * section 6): (1) a manual assignment (pitch_manuell) is never touched -
@@ -54,6 +56,22 @@ use App\Service\Stats\AlarmMailer;
  * `$spielfrei === $storedSpielfrei` skip clause below (same idiom as the
  * pitch-reflow `$pitchId === $stored` clause); a second run after a keyword
  * change is idempotent.
+ *
+ * Feed rebuild (a source occasionally reassigns every VEVENT a fresh UID):
+ * without special handling this reads as "every match cancelled, every
+ * match re-created" - a duplicate at the exact same kickoff, one row
+ * abgesagt and one geplant, plus a spurious "Spielverlegung/-absage" push
+ * for each. A live feed entry (this run) sharing the SAME kickoff as a
+ * stale UID (gone from the feed) is treated as its replacement rather than
+ * an unrelated coincidence: the stale row is hard-deleted instead of
+ * cancelled, strictly future kickoffs only (same Issue #48 boundary as the
+ * ordinary cancel path, so a feed that merely drops past events never loses
+ * history). This runs AFTER the "already abgesagt" state would otherwise
+ * short-circuit it, so it also retroactively cleans up duplicates an
+ * earlier run already created before this behaviour existed - the fix
+ * heals itself on the next run. A manual pitch assignment on the deleted
+ * row moves to its replacement, but only within the same venue (an
+ * away/other-venue replacement keeps its automatically derived pitch).
  */
 final readonly class IcsImportService
 {
@@ -64,6 +82,7 @@ final readonly class IcsImportService
         private ImportSourceRepository $sources,
         private MatchRepository $matches,
         private VenueRepository $venues,
+        private PitchRepository $pitches,
         private TeamHomePitchRepository $homePitchRules,
         private VenueMatcher $venueMatcher,
         private IcsFeedFetcher $fetcher,
@@ -132,6 +151,13 @@ final readonly class IcsImportService
             $defaultPitchByVenue[(int) $venue['id']] = $venue['default_pitch_id'] !== null
                 ? (int) $venue['default_pitch_id']
                 : null;
+        }
+
+        // pitch -> venue, only needed to decide whether a manual pitch
+        // assignment may move onto a feed-rebuild replacement (same venue)
+        $venueByPitch = [];
+        foreach ($this->pitches->findAll() as $pitch) {
+            $venueByPitch[(int) $pitch['id']] = (int) $pitch['venue_id'];
         }
 
         $rules = $this->homePitchRules->findByTeam($teamId);
@@ -236,10 +262,29 @@ final readonly class IcsImportService
             $bestand[$icsEvent->uid] = ['id' => $matchId, ...$payload];
         }
 
-        // follow-up: future matches whose UID vanished from the feed are
-        // cancelled (never deleted); matches that have already started
-        // (kickoff <= import moment, boundary included) are left untouched,
-        // some feeds drop past events (Issue #48)
+        // A feed rebuild reassigns every VEVENT a fresh UID. A CURRENT,
+        // active (non-abgesagt) feed entry sharing the exact same kickoff as
+        // a stale UID is its replacement, not an unrelated coincidence - one
+        // import_source is one team, so the kickoff alone identifies the
+        // fixture. Built from $bestand (already current after the loop
+        // above), not $feedUids alone, because it needs each candidate's
+        // anstoss/status/pitch, not just its uid.
+        $ersatzUidNachAnstoss = [];
+        foreach ($bestand as $row) {
+            if (isset($feedUids[(string) $row['ics_uid']]) && (string) $row['status'] !== 'abgesagt') {
+                $ersatzUidNachAnstoss[(string) $row['anstoss']] ??= (string) $row['ics_uid'];
+            }
+        }
+
+        // follow-up: a future match whose UID vanished from the feed is
+        // either the stale half of a feed rebuild (deleted, see above) or a
+        // genuine cancellation (marked abgesagt, never deleted). A match
+        // that has already started (kickoff <= import moment, boundary
+        // included) is left untouched either way - some feeds drop past
+        // events (Issue #48), and a past duplicate is not proof of a
+        // rebuild. The rebuild check runs BEFORE the "already abgesagt"
+        // skip, so it also retroactively deletes a duplicate an earlier run
+        // (before this behaviour existed) already cancelled.
         //
         // Iterates the stock loaded above instead of re-querying. Same
         // result: every row this run touched carries a UID that IS in the
@@ -248,34 +293,59 @@ final readonly class IcsImportService
         // the pre-existing entries keep the query's ORDER BY anstoss, and
         // the freshly created ones appended at the end are always skipped.
         $cancelled = 0;
+        $deleted = 0;
         foreach ($bestand as $match) {
             if (isset($feedUids[(string) $match['ics_uid']])
-                || (string) $match['status'] === 'abgesagt'
                 || (string) $match['anstoss'] <= $nowStr) {
                 continue;
             }
 
-            $payload = [
-                'team_id' => (int) $match['team_id'],
-                'anstoss' => (string) $match['anstoss'],
-                'ende' => $match['ende'] !== null ? (string) $match['ende'] : null,
-                'gegner' => (string) $match['gegner'],
-                'heimspiel' => (int) $match['heimspiel'] === 1,
-                'spielfrei' => (int) $match['spielfrei'] === 1,
-                'ort_text' => (string) $match['ort_text'],
-                'pitch_id' => $match['pitch_id'] !== null ? (int) $match['pitch_id'] : null,
-                'pitch_manuell' => (int) $match['pitch_manuell'] === 1,
+            $ersatzUid = $ersatzUidNachAnstoss[(string) $match['anstoss']] ?? null;
+            if ($ersatzUid !== null) {
+                $altPitch = $match['pitch_id'] !== null ? (int) $match['pitch_id'] : null;
+                if ((int) $match['pitch_manuell'] === 1 && $altPitch !== null) {
+                    $ersatz = $bestand[$ersatzUid];
+                    $ersatzPitch = $ersatz['pitch_id'] !== null ? (int) $ersatz['pitch_id'] : null;
+                    $altVenue = $venueByPitch[$altPitch] ?? null;
+                    // only within the same venue: an away/other-venue
+                    // replacement keeps its automatically derived pitch
+                    // instead of inheriting one from a different location
+                    if ($ersatzPitch !== $altPitch && $altVenue !== null
+                        && $altVenue === $this->venueMatcher->match((string) $ersatz['ort_text'])) {
+                        $ersatzPayload = self::rowPayload($ersatz, $sourceId, [
+                            'pitch_id' => $altPitch,
+                            'pitch_manuell' => true,
+                        ]);
+                        $this->eventStore->append(AggregateType::Match, (int) $ersatz['id'], EventType::Updated, $ersatzPayload, $context);
+                        $bestand[$ersatzUid] = ['id' => (int) $ersatz['id'], ...$ersatzPayload];
+                        $updated++;
+                    }
+                }
+
+                $this->eventStore->append(
+                    AggregateType::Match,
+                    (int) $match['id'],
+                    EventType::Deleted,
+                    self::rowPayload($match, $sourceId),
+                    $context,
+                );
+                $deleted++;
+                continue;
+            }
+
+            if ((string) $match['status'] === 'abgesagt') {
+                continue;
+            }
+
+            $payload = self::rowPayload($match, $sourceId, [
                 'status' => 'abgesagt',
-                'import_source_id' => $sourceId,
-                'ics_uid' => (string) $match['ics_uid'],
-                'ics_sequence' => (int) $match['ics_sequence'],
                 'sync_hash' => self::syncHash(
                     (string) $match['anstoss'],
                     (string) $match['gegner'],
                     (string) $match['ort_text'],
                     'abgesagt',
                 ),
-            ];
+            ]);
             $this->eventStore->append(AggregateType::Match, (int) $match['id'], EventType::Updated, $payload, $context);
             $cancelled++;
         }
@@ -286,8 +356,40 @@ final readonly class IcsImportService
             inserted: $inserted,
             updated: $updated,
             cancelled: $cancelled,
+            deleted: $deleted,
             skipped: $skipped,
         );
+    }
+
+    /**
+     * Full-picture payload from a $bestand row (mixed PDO-string / native
+     * types, see the comment at $bestand above) - same shape as
+     * MatchService::rowPayload(). $overrides replaces individual columns,
+     * e.g. a recomputed sync_hash when the status changes.
+     *
+     * @param array<string, mixed> $row
+     * @param array<string, mixed> $overrides
+     * @return array<string, mixed>
+     */
+    private static function rowPayload(array $row, int $sourceId, array $overrides = []): array
+    {
+        return [
+            'team_id' => (int) $row['team_id'],
+            'anstoss' => (string) $row['anstoss'],
+            'ende' => $row['ende'] !== null ? (string) $row['ende'] : null,
+            'gegner' => (string) $row['gegner'],
+            'heimspiel' => (int) $row['heimspiel'] === 1,
+            'spielfrei' => (int) $row['spielfrei'] === 1,
+            'ort_text' => (string) $row['ort_text'],
+            'pitch_id' => $row['pitch_id'] !== null ? (int) $row['pitch_id'] : null,
+            'pitch_manuell' => (int) $row['pitch_manuell'] === 1,
+            'status' => (string) $row['status'],
+            'import_source_id' => $sourceId,
+            'ics_uid' => (string) $row['ics_uid'],
+            'ics_sequence' => (int) $row['ics_sequence'],
+            'sync_hash' => (string) $row['sync_hash'],
+            ...$overrides,
+        ];
     }
 
     /**

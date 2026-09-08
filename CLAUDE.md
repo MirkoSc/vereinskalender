@@ -280,7 +280,7 @@ sind KEINE Projektionen.
   **Manuelle Spiele** (Freundschaftsspiele, Turniere): Kennzeichnung
   `import_source_id IS NULL` (ics_uid ''), API-Feld `manuell`. Anlegen/
   Bearbeiten/Löschen öffentlich (Ebene 2) als Events, Löschen =
-  delete-Event; nur manuelle Spiele sind so editierbar, importierte lehnt
+  delete-Event; nur manuelle Spiele sind so bearbeitbar, importierte lehnt
   der Server ab (Platz-Zuordnung über die eigene Route bleibt). Pflicht:
   Team, Anstoß, Gegner/Titel; Platz ODER ort_text (Platz gewählt →
   heimspiel + pitch_manuell; sonst heimspiel per VenueMatcher wie beim
@@ -288,6 +288,15 @@ sind KEINE Projektionen.
   Slot-/Spiel-Überlappung und 'eingeschraenkt' warnen mit Bestätigung.
   Bearbeiten erhöht ics_sequence (Kalender-Abos erkennen die Verlegung);
   Verlegung/Absage lösen Push aus wie bei Import-Spielen, Löschen nicht.
+  **Löschen ist die eine Ausnahme**: ein importiertes Spiel im Status
+  `abgesagt` ist ebenfalls öffentlich löschbar (`MatchService::
+  assertDeletable()`, statt der sonst geltenden `assertManual()`) – der
+  manuelle Ausweg für einen Doppel-Termin, den ein ICS-Feed-Neuaufbau
+  hinterlassen hat (Abschnitt 6/8), etwa weil er in der Vergangenheit liegt
+  und der Import ihn deshalb nie automatisch bereinigt. Ein geplantes
+  importiertes Spiel bleibt weiterhin ausschließlich Sache des Imports; ein
+  gelöschtes Spiel, dessen UID noch im Feed steht, kommt beim nächsten
+  Lauf als neues Aggregat zurück – bewusst kein Tombstone-Mechanismus.
 - **team_home_pitch**: team_id FK, pitch_id FK, gueltig_ab, gueltig_bis
   (beide INKLUSIVE, wie training_slot). Je Team überlappungsfrei (auch ein
   gemeinsamer Grenztag zählt als Überlappung). Pflege eingebettet im
@@ -481,13 +490,13 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
 - Sync pro Event über `(import_source_id, ics_uid)`: unbekannt → INSERT;
   bekannt + sync_hash geändert → UPDATE (Verlegung: UID bleibt,
   DTSTART/SEQUENCE ändern sich); unverändert → skip. Nachlauf: im Feed
-  fehlende UIDs → `status='abgesagt'`, NIEMALS hart löschen – **beschränkt
-  auf die Zukunft** (Issue #48): abgesagt wird nur ein Spiel, dessen Anstoß
-  NACH dem Importzeitpunkt (`Europe/Berlin`) liegt; bereits begonnene bzw.
-  vergangene Spiele (Grenzfall Anstoß = Importzeitpunkt zählt als
-  „begonnen“) rührt der Nachlauf nie an, unabhängig davon, ob ihre UID noch
-  im Feed steht – manche Feeds lassen vergangene Termine fallen, das ist
-  keine echte Absage. Anstoß statt Anstoß+`MatchDuration`, da für
+  fehlende UIDs → `status='abgesagt'`, grundsätzlich NIEMALS hart gelöscht –
+  **beschränkt auf die Zukunft** (Issue #48): abgesagt wird nur ein Spiel,
+  dessen Anstoß NACH dem Importzeitpunkt (`Europe/Berlin`) liegt; bereits
+  begonnene bzw. vergangene Spiele (Grenzfall Anstoß = Importzeitpunkt zählt
+  als „begonnen“) rührt der Nachlauf nie an, unabhängig davon, ob ihre UID
+  noch im Feed steht – manche Feeds lassen vergangene Termine fallen, das
+  ist keine echte Absage. Anstoß statt Anstoß+`MatchDuration`, da für
   Import-Spiele nur ein geschätztes Ende existiert (Fallback in
   `MatchDuration`) und eine destruktive Statusänderung nicht an eine
   Schätzung gekoppelt werden soll; ein laufendes Spiel bleibt so in jedem
@@ -495,6 +504,28 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   unberührt: ein vergangenes Spiel mit geändertem `sync_hash` wird
   weiterhin aktualisiert, nur das automatische Absagen ist auf die Zukunft
   beschränkt.
+- **Feed-Neuaufbau** (die Datenquelle vergibt gelegentlich jedem VEVENT eine
+  neue UID): ohne Sonderbehandlung liest sich das als „jedes Spiel
+  abgesagt, jedes Spiel neu angelegt" – ein Doppel-Termin zur exakt
+  gleichen Anstoßzeit, einer abgesagt, einer geplant, dazu für jeden ein
+  unnötiger „Spielverlegung/-absage"-Push. Deckt ein AKTUELLER, aktiver
+  (nicht abgesagter) Feed-Eintrag genau denselben Anstoß wie eine
+  verwaiste UID derselben Quelle, gilt die verwaiste Zeile als ersetzt statt
+  als abgesagt und wird per Deleted-Event hart gelöscht – ein positiver
+  Beleg (ein vorhandener, aktiver Eintrag), nicht die bloße Abwesenheit
+  einer UID, die weiterhin nur zur Absage führt. Die Zukunfts-Schranke aus
+  Issue #48 gilt unverändert auch hier: ein vergangener Doppel-Termin wird
+  nie automatisch gelöscht, selbst mit passendem Ersatz im Feed – dafür ist
+  der Lösch-Button am abgesagten Termin im Kalender da (Abschnitt 3/8). Die
+  Prüfung läuft VOR dem „bereits abgesagt"-Kurzschluss des Nachlaufs, sodass
+  ein Doppel-Termin, den ein früherer Lauf (vor dieser Änderung) bereits
+  fälschlich abgesagt hat, beim nächsten Lauf rückwirkend bereinigt wird.
+  Eine manuelle Platzzuordnung (`pitch_manuell`) der gelöschten Zeile
+  wandert auf den Ersatz, aber NUR innerhalb derselben Spielstätte (per
+  `VenueMatcher` auf dem Ersatz-`ort_text` ermittelt) – ein Ersatz an einer
+  anderen Spielstätte oder ein Auswärtsspiel behält seine automatisch
+  abgeleitete Zuordnung. `ImportSourceResult` führt dafür einen eigenen
+  Zähler `deleted`/`geloescht`, getrennt von `cancelled`/`abgesagt`.
 - Der Sync arbeitet ausschließlich auf `WHERE import_source_id = ?`
   (Kandidaten-Lookup UND Absage-Nachlauf) – **manuelle Spiele
   (`import_source_id IS NULL`) sind für ihn unsichtbar**: kein Update,
@@ -1401,7 +1432,26 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   im gemischten Lauf**, d. h. ein Eintrag wird aktualisiert WÄHREND ein
   anderer aus dem Feed verschwindet und abgesagt werden muss –
   `testCancelFollowUpStillSeesRowsThisRunDidNotTouch`, der Fall, den die
-  übrigen Nachlauf-Tests mit ihrem leeren Feed nicht abdecken);
+  übrigen Nachlauf-Tests mit ihrem leeren Feed nicht abdecken); **Feed-
+  Neuaufbau** (ein aktueller Feed-Eintrag mit exakt demselben Anstoß wie
+  eine verwaiste UID löscht diese hart statt sie abzusagen –
+  `testUidRebuildDeletesTheOrphanInsteadOfCancellingIt`; eine abweichende
+  Anstoßzeit sagt weiterhin normal ab –
+  `testUidRebuildAtDifferentKickoffStillCancels`; ein von einem früheren
+  Lauf bereits fälschlich abgesagter Doppel-Termin wird beim nächsten Lauf
+  rückwirkend gelöscht – `testAlreadyCancelledDuplicateIsCleanedUpOnTheNextRun`;
+  die Issue-#48-Zukunftsschranke gilt auch für das Löschen –
+  `testPastDuplicateIsNeverDeletedAutomatically`; ein leerer/fehlerhafter
+  Feed löscht nie, nur die bestehende Absage bleibt möglich –
+  `testEmptyFeedNeverDeletesOnlyCancels`; eine manuelle Platzzuordnung
+  wandert nur innerhalb derselben Spielstätte auf den Ersatz –
+  `testManualPitchMovesToTheReplacementWithinTheSameVenue`/
+  `testManualPitchIsNotCarriedOverToAnotherVenue`; Idempotenz eines
+  dritten Laufs, Replay-Determinismus des Deleted-Events ohne Verwaisten
+  im Report, und kein Push für Löschung ODER Neuanlage –
+  `testUidRebuildIsIdempotentOnASecondRun`/
+  `testUidRebuildReplaysDeterministically`/
+  `testUidRebuildTriggersNoCancellationPush`);
   VenueMatcher (Mehrfach-Begriffe, Priorität, case-insensitive, heim vs.
   auswärts); Konfliktprüfung (gesperrt blockiert, eingeschraenkt warnt,
   **Doppelbelegung** – Belegung-über-Belegung UND Belegung-über-Spiel warnen
@@ -1424,7 +1474,11 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   blockiert / Überlappung + eingeschraenkt warnen, **„Import ignoriert
   manuelle Spiele"-Regression**, ende-Fallback in Konfliktprüfung/
   Verfügbarkeit/Feed/Export, ende-NULL-Upcasting beim Replay, Push bei
-  Verlegung/Absage manueller Spiele, kein Push bei Löschung); **Vermietungen**
+  Verlegung/Absage manueller Spiele, kein Push bei Löschung; **gelockerter
+  Lösch-Guard** – ein importiertes Spiel im Status `abgesagt` ist löschbar
+  (`testCancelledImportedMatchCanBeDeleted`), ein geplantes importiertes
+  Spiel bleibt abgelehnt (`testImportedMatchRejectedByDelete`));
+  **Vermietungen**
   (Issue #36: Nicht-Blockade-Regression – Belegung/Spiel über eine
   überlappende Vermietung hinweg wird gespeichert, ohne Bestätigungszwang
   durch die Vermietung, Hinweis nur in `ConflictCheckResult::$hinweise`;

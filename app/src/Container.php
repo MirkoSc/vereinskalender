@@ -428,6 +428,7 @@ final class Container
             $this->importSourceRepository(),
             $this->matchRepository(),
             $this->venueRepository(),
+            $this->pitchRepository(),
             $this->teamHomePitchRepository(),
             $this->venueMatcher(),
             new HttpIcsFeedFetcher(),

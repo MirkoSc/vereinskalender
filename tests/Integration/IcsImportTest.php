@@ -225,6 +225,282 @@ final class IcsImportTest extends DatabaseTestCase
         self::assertSame('geplant', $back['status']);
     }
 
+    /**
+     * The source occasionally rebuilds itself and reassigns every VEVENT a
+     * fresh UID. A current, active feed entry sharing the exact same
+     * kickoff as a stale UID is its replacement: the stale row is deleted,
+     * not cancelled, so exactly one row survives.
+     */
+    public function testUidRebuildDeletesTheOrphanInsteadOfCancellingIt(): void
+    {
+        $now = new \DateTimeImmutable('2099-08-01 12:00:00');
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('alt', '20990808T150000', 'Spiel A', 'Stadion A'),
+        )]);
+        $import = $this->icsImportService($fetcher, $now);
+        $import->runAll();
+        $oldMatchId = (int) $this->dumpTable('match')[0]['id'];
+
+        // the source rebuilds: same fixture, same kickoff, brand new UID
+        $fetcher->set(self::URL, self::feed(
+            self::vevent('neu', '20990808T150000', 'Spiel A', 'Stadion A'),
+        ));
+        $result = $import->runAll()[0];
+
+        self::assertSame([1, 0, 0, 1], [$result->inserted, $result->updated, $result->cancelled, $result->deleted]);
+
+        $matches = $this->dumpTable('match');
+        self::assertCount(1, $matches, 'the stale duplicate must be gone, not just cancelled');
+        self::assertSame('neu', $matches[0]['ics_uid']);
+        self::assertSame('geplant', $matches[0]['status']);
+
+        $deletedEvents = array_values(array_filter(
+            $this->dumpTable('event'),
+            static fn(array $e): bool => $e['aggregat_typ'] === 'match'
+                && (int) $e['aggregat_id'] === $oldMatchId
+                && $e['event_typ'] === 'deleted',
+        ));
+        self::assertCount(1, $deletedEvents, 'the orphan must be removed via a Deleted event, not just an Updated one');
+    }
+
+    /**
+     * Abgrenzung zur echten Absage: a same-source replacement only counts
+     * when the kickoff matches EXACTLY. A merely similar new entry is an
+     * unrelated addition, and the vanished UID is a genuine cancellation.
+     */
+    public function testUidRebuildAtDifferentKickoffStillCancels(): void
+    {
+        $now = new \DateTimeImmutable('2099-08-01 12:00:00');
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('alt', '20990808T150000', 'Spiel A', 'Stadion A'),
+        )]);
+        $import = $this->icsImportService($fetcher, $now);
+        $import->runAll();
+
+        $fetcher->set(self::URL, self::feed(
+            self::vevent('neu', '20990808T160000', 'Spiel A', 'Stadion A'),
+        ));
+        $result = $import->runAll()[0];
+
+        self::assertSame([1, 0, 1, 0], [$result->inserted, $result->updated, $result->cancelled, $result->deleted]);
+
+        $matches = $this->dumpTable('match');
+        self::assertCount(2, $matches);
+        $byUid = [];
+        foreach ($matches as $m) {
+            $byUid[$m['ics_uid']] = $m;
+        }
+        self::assertSame('abgesagt', $byUid['alt']['status']);
+        self::assertSame('geplant', $byUid['neu']['status']);
+    }
+
+    /**
+     * The rebuild check runs BEFORE the "already abgesagt" short-circuit, so
+     * a duplicate an earlier run already cancelled (before this behaviour
+     * existed) is cleaned up retroactively on the very next run.
+     */
+    public function testAlreadyCancelledDuplicateIsCleanedUpOnTheNextRun(): void
+    {
+        $now = new \DateTimeImmutable('2099-08-01 12:00:00');
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('alt', '20990808T150000', 'Spiel A', 'Stadion A'),
+        )]);
+        $import = $this->icsImportService($fetcher, $now);
+        $import->runAll();
+
+        // simulate the pre-fix state: an old run already cancelled 'alt'
+        // (empty feed) before a rebuild replacement ever appeared
+        $fetcher->set(self::URL, self::feed());
+        $import->runAll();
+        self::assertSame('abgesagt', $this->dumpTable('match')[0]['status']);
+
+        // now the replacement shows up under a new UID
+        $fetcher->set(self::URL, self::feed(
+            self::vevent('neu', '20990808T150000', 'Spiel A', 'Stadion A'),
+        ));
+        $result = $import->runAll()[0];
+
+        self::assertSame(1, $result->deleted, 'the already-cancelled duplicate must be deleted, not left alone');
+        $matches = $this->dumpTable('match');
+        self::assertCount(1, $matches);
+        self::assertSame('neu', $matches[0]['ics_uid']);
+    }
+
+    /**
+     * Issue #48 boundary applies to the rebuild-delete path too: a past
+     * duplicate is never touched automatically, even with a same-kickoff
+     * replacement in the feed - the only way to remove it is the manual
+     * delete button on the cancelled match in the calendar.
+     */
+    public function testPastDuplicateIsNeverDeletedAutomatically(): void
+    {
+        $now = new \DateTimeImmutable('2099-08-08 16:00:00');
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('alt', '20990808T150000', 'Spiel A', 'Stadion A'),
+        )]);
+        $import = $this->icsImportService($fetcher, $now);
+        $import->runAll();
+
+        $fetcher->set(self::URL, self::feed(
+            self::vevent('neu', '20990808T150000', 'Spiel A', 'Stadion A'),
+        ));
+        $result = $import->runAll()[0];
+
+        self::assertSame(0, $result->deleted, 'the kickoff has already passed, Issue #48 keeps it untouched');
+        self::assertCount(2, $this->dumpTable('match'));
+    }
+
+    /**
+     * An empty/broken feed never has an active replacement for anything, so
+     * it can only ever cancel, never delete - the existing "never
+     * hard-delete" guarantee for a genuine absence holds unconditionally.
+     */
+    public function testEmptyFeedNeverDeletesOnlyCancels(): void
+    {
+        $now = new \DateTimeImmutable('2099-08-01 12:00:00');
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('zukunft', '20990808T150000', 'Spiel A', 'Stadion A'),
+        )]);
+        $import = $this->icsImportService($fetcher, $now);
+        $import->runAll();
+
+        $fetcher->set(self::URL, self::feed());
+        $result = $import->runAll()[0];
+
+        self::assertSame(0, $result->deleted);
+        self::assertSame(1, $result->cancelled);
+        self::assertCount(1, $this->dumpTable('match'));
+    }
+
+    public function testManualPitchMovesToTheReplacementWithinTheSameVenue(): void
+    {
+        $now = new \DateTimeImmutable('2099-08-01 12:00:00');
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('alt', '20990808T150000', 'SV Musterstadt - FC Gegner', 'Sportanlage Musterstadt'),
+        )]);
+        $import = $this->icsImportService($fetcher, $now);
+        $import->runAll();
+
+        $manualPitch = $this->createPitch($this->venueId, 'Ausweichplatz');
+        $matchId = (int) $this->dumpTable('match')[0]['id'];
+        $this->matchService()->assignPitch($matchId, ['pitch_id' => (string) $manualPitch], $this->context('Platzwart Paul'));
+
+        // rebuild: same venue text, new UID
+        $fetcher->set(self::URL, self::feed(
+            self::vevent('neu', '20990808T150000', 'SV Musterstadt - FC Gegner', 'Sportanlage Musterstadt'),
+        ));
+        $import->runAll();
+
+        $match = $this->dumpTable('match')[0];
+        self::assertSame('neu', $match['ics_uid']);
+        self::assertSame($manualPitch, (int) $match['pitch_id']);
+        self::assertSame(1, (int) $match['pitch_manuell']);
+    }
+
+    public function testManualPitchIsNotCarriedOverToAnotherVenue(): void
+    {
+        $now = new \DateTimeImmutable('2099-08-01 12:00:00');
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('alt', '20990808T150000', 'SV Musterstadt - FC Gegner', 'Sportanlage Musterstadt'),
+        )]);
+        $import = $this->icsImportService($fetcher, $now);
+        $import->runAll();
+
+        $manualPitch = $this->createPitch($this->venueId, 'Ausweichplatz');
+        $matchId = (int) $this->dumpTable('match')[0]['id'];
+        $this->matchService()->assignPitch($matchId, ['pitch_id' => (string) $manualPitch], $this->context('Platzwart Paul'));
+
+        // rebuild, but the replacement's LOCATION resolves to a different
+        // venue (no matching venue_begriff) - the manual pitch must stay put
+        $fetcher->set(self::URL, self::feed(
+            self::vevent('neu', '20990808T150000', 'FC Anders - SV Musterstadt', 'Stadion Anders'),
+        ));
+        $import->runAll();
+
+        $match = $this->dumpTable('match')[0];
+        self::assertSame('neu', $match['ics_uid']);
+        self::assertSame(0, (int) $match['heimspiel'], 'away match at the other venue');
+        self::assertNull($match['pitch_id'], 'automatically derived (none for an away match), not the old manual one');
+    }
+
+    public function testUidRebuildIsIdempotentOnASecondRun(): void
+    {
+        $now = new \DateTimeImmutable('2099-08-01 12:00:00');
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('alt', '20990808T150000', 'Spiel A', 'Stadion A'),
+        )]);
+        $import = $this->icsImportService($fetcher, $now);
+        $import->runAll();
+
+        $fetcher->set(self::URL, self::feed(
+            self::vevent('neu', '20990808T150000', 'Spiel A', 'Stadion A'),
+        ));
+        $import->runAll();
+
+        $eventCountAfterRebuild = count($this->dumpTable('event'));
+        $result = $import->runAll()[0];
+
+        self::assertSame([0, 0, 0, 0, 1], [$result->inserted, $result->updated, $result->cancelled, $result->deleted, $result->skipped]);
+        self::assertCount($eventCountAfterRebuild, $this->dumpTable('event'), 'a stable feed must not append anything further');
+    }
+
+    public function testUidRebuildReplaysDeterministically(): void
+    {
+        $now = new \DateTimeImmutable('2099-08-01 12:00:00');
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('alt', '20990808T150000', 'Spiel A', 'Stadion A'),
+        )]);
+        $import = $this->icsImportService($fetcher, $now);
+        $import->runAll();
+
+        $fetcher->set(self::URL, self::feed(
+            self::vevent('neu', '20990808T150000', 'Spiel A', 'Stadion A'),
+        ));
+        $import->runAll();
+
+        $before = $this->dumpTable('match');
+        $state = $this->runRebuildToCompletion($this->rebuildService());
+
+        self::assertTrue($state->done);
+        self::assertSame([], $state->skipped, 'the deleted aggregate must not surface as an orphan');
+        self::assertSame($before, $this->dumpTable('match'), 'rebuilt projection must match the live state');
+    }
+
+    public function testUidRebuildTriggersNoCancellationPush(): void
+    {
+        $pdo = $this->pdo();
+        $trigger = new \App\Service\Push\NotificationTrigger($pdo, new \App\Repository\NotificationQueueRepository($pdo));
+        $store = new \App\Service\EventStore\EventStore(
+            $pdo,
+            $this->projectorRegistry(),
+            fn(\App\Domain\StoredEvent $event) => $trigger->afterEventInsert($event),
+        );
+        $fetcher = new FakeFeedFetcher([self::URL => self::feed(
+            self::vevent('alt', '20990808T150000', 'Spiel A', 'Stadion A'),
+        )]);
+        $now = new \DateTimeImmutable('2099-08-01 12:00:00');
+        $import = new \App\Service\Import\IcsImportService(
+            $store,
+            new \App\Repository\ImportSourceRepository($pdo),
+            new \App\Repository\MatchRepository($pdo),
+            new \App\Repository\VenueRepository($pdo),
+            new \App\Repository\PitchRepository($pdo),
+            new \App\Repository\TeamHomePitchRepository($pdo),
+            \App\Service\Kalender\VenueMatcher::fromDatabase($pdo),
+            $fetcher,
+            new \App\Repository\SettingRepository($pdo),
+            now: $now,
+        );
+        $import->runAll();
+
+        $fetcher->set(self::URL, self::feed(
+            self::vevent('neu', '20990808T150000', 'Spiel A', 'Stadion A'),
+        ));
+        $import->runAll();
+
+        self::assertCount(0, $this->dumpTable('notification_queue'), 'neither the delete nor the insert is a Verlegung/Absage');
+    }
+
     public function testPastMatchesAreNotAutoCancelled(): void
     {
         $fetcher = new FakeFeedFetcher([self::URL => self::feed(

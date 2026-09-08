@@ -128,9 +128,17 @@ final readonly class MatchService
         return ['warnings' => $result->warnings];
     }
 
+    /**
+     * Unlike create/update/assignPitch, delete also allows an imported match
+     * that is already cancelled (status 'abgesagt') - the public escape
+     * hatch for a duplicate a feed rebuild left behind before the import's
+     * own cleanup (IcsImportService) existed or ran. A still-planned
+     * imported match stays the import's exclusive responsibility: deleting
+     * it here would just have it reappear as a new aggregate on the next run.
+     */
     public function deleteMatch(int $matchId, EventContext $context): void
     {
-        $match = $this->assertManual($matchId);
+        $match = $this->assertDeletable($matchId);
 
         $this->eventStore->append(AggregateType::Match, $matchId, EventType::Deleted, self::rowPayload($match), $context);
     }
@@ -150,6 +158,22 @@ final readonly class MatchService
         }
         if ($match['import_source_id'] !== null) {
             throw new ValidationException(['id' => 'Importierte Spiele können nur über den Import geändert werden.']);
+        }
+
+        return $match;
+    }
+
+    /**
+     * @return array<string, mixed> the match row
+     */
+    private function assertDeletable(int $matchId): array
+    {
+        $match = $this->matches->find($matchId);
+        if ($match === null) {
+            throw new ValidationException(['id' => 'Spiel nicht gefunden.']);
+        }
+        if ($match['import_source_id'] !== null && (string) $match['status'] !== 'abgesagt') {
+            throw new ValidationException(['id' => 'Geplante importierte Spiele können nur über den Import geändert werden.']);
         }
 
         return $match;
