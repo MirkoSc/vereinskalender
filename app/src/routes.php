@@ -210,6 +210,8 @@ return static function (Router $router, Container $c): void {
     $router->get('/admin/import-quellen/{id:\d+}', $guard(fn(Request $r, array $p) => $c->importSourceController()->editForm($r, $p)));
     $router->post('/admin/import-quellen/{id:\d+}', $guard(fn(Request $r, array $p) => $c->importSourceController()->update($r, $p)));
     $router->post('/admin/import-quellen/{id:\d+}/loeschen', $guard(fn(Request $r, array $p) => $c->importSourceController()->delete($r, $p)));
+    $router->post('/admin/import-quellen/{id:\d+}/reset', $guard(fn(Request $r, array $p) => $c->importSourceController()->reset($r, $p)));
+    $router->post('/admin/import-spiele/verwaist/loeschen', $guard(fn(Request $r, array $p) => $c->importSourceController()->deleteOrphans($r)));
     $router->post('/admin/import/run', $guard(fn(Request $r, array $p) => $c->importSourceController()->run($r)));
 
     $router->get('/admin/rebuild', $guard(fn(Request $r, array $p) => $c->rebuildController()->page($r)));

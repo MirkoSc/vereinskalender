@@ -40,6 +40,27 @@ final readonly class MatchRepository
     }
 
     /**
+     * Matches whose import_source_id points at a source that no longer
+     * exists (ImportSourceService::delete() deliberately never touches
+     * match rows, and import_source_id carries no FK constraint). Invisible
+     * to the sync itself, which only ever queries a live import_source_id -
+     * ImportSourceService::deleteOrphanedMatches() is their one way out.
+     * import_source_id IS NOT NULL still excludes every manually created
+     * match, same guard as MatchService::assertManual().
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function findOrphanedImports(): array
+    {
+        return $this->pdo->query(
+            'SELECT m.* FROM `match` m
+             LEFT JOIN import_source s ON s.id = m.import_source_id
+             WHERE m.import_source_id IS NOT NULL AND s.id IS NULL
+             ORDER BY m.anstoss, m.id',
+        )->fetchAll();
+    }
+
+    /**
      * All matches (offline bundle, CLAUDE.md section 8: complete dataset,
      * past+future - the client filters/expands from this).
      *

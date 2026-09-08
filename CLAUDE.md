@@ -459,7 +459,8 @@ Listen per Drag&Drop – Pointer Events, Touch-Ziel ≥ 44 px –, das Zahlenfel
 bleibt als Fallback), Sportheime-CRUD (Issue #36, inkl. eingebetteter
 Räume-Verwaltung analog Spielstätten-Begriffe, Drag&Drop-Sortierung je Liste,
 Delete-Guard bei referenzierenden Plätzen/Räumen/Vermietungen → deaktivieren
-statt löschen), Import-Quellen, Event-Historie (Filter:
+statt löschen), Import-Quellen (inkl. Quellen-Reset je Quelle und
+verwaisten Import-Spielen, Abschnitt 6), Event-Historie (Filter:
 IP/Name/Typ/Quelle/Zeitraum; Einzel- und Massen-Ausschluss, Korrektur,
 Ausschluss aufheben, Rebuild mit Fortschritt), Backup
 erstellen/herunterladen, Update einspielen, Saison-Assistent (Hinweis auf
@@ -587,6 +588,57 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   spät) und wird erst zur Anzeige (`EventSerializer`) bzw. im ICS-Export
   abgeleitet.
 - Fehler pro Quelle isolieren; Fehlertext in import_source, Anzeige im Admin.
+- **Quellen-Reset und verwaiste Import-Spiele**: der Sync arbeitet
+  ausschließlich auf `WHERE import_source_id = ?`
+  (`MatchRepository::findBySource()`) – sowohl beim Kandidaten-Lookup als
+  auch im Absage-Nachlauf. Ein Spiel, dessen `import_source_id` auf eine
+  ANDERE oder eine inzwischen gelöschte Quelle zeigt, ist für den Sync
+  unsichtbar: nie aktualisiert, nie abgesagt, nie ersetzt. Solche Zeilen
+  entstehen zwangsläufig, weil das Löschen einer Import-Quelle
+  (`ImportSourceService::delete()`) ihre Spiele bewusst nicht anfasst und
+  `match.import_source_id` keinen FK-Constraint trägt – wird eine Quelle
+  gelöscht und neu angelegt (z. B. weil fussball.de pro Saison neue
+  Import-URLs vergibt), bleiben ihre alten Spiele als Karteileichen liegen
+  und können zu Doppel-Terminen führen. Sie überleben auch einen Rebuild:
+  `Replayer::applyRow()` prüft die Referenz `import_source_id →
+  import_source` nur zum Zeitpunkt des jeweiligen Events, und die
+  Ereignisfolge ist immer *Quelle angelegt → Spiele angelegt → Quelle
+  gelöscht* – das Created-Event des Spiels findet die Quelle also noch vor,
+  das spätere Deleted-Event der Quelle löscht nur die `import_source`-Zeile,
+  ohne Kaskade. Zwei getrennte Admin-Werkzeuge dagegen, je mit eigener
+  Reichweite:
+  - **Quellen-Reset** (`IcsImportService::resetSource()`, Button „Spiele
+    zurücksetzen" je Quelle in der Import-Verwaltung): löscht alle
+    **zukünftigen** Spiele DIESER EINEN Quelle (`anstoss` echt nach jetzt –
+    dieselbe Issue-#48-Schranke wie der Absage-Nachlauf, ein Reset darf
+    genau wie eine automatische Absage keine Historie vernichten) und ruft
+    den Feed danach normal ab, sodass jede gelöschte UID als frische
+    Neuanlage zurückkommt. Der Feed wird bewusst VOR dem Löschen geholt und
+    geparst (`sync()` akzeptiert dafür optional vorab geladene ICS-Events,
+    geteilte Fehlerbehandlung mit dem regulären Lauf über
+    `runIsolated()`) – ein Netzwerk- oder Parse-Fehler darf das Team nie
+    ohne Spiele zurücklassen. Läuft auch für eine inaktive Quelle (das
+    `aktiv`-Flag steuert nur den Cron-Lauf über `findActive()`). Manuelle
+    Platz-Zuordnungen (`pitch_manuell`) gehen dabei verloren – die neuen
+    Spiele bekommen ihre Zuordnung wieder automatisch über
+    Heimspielstätten-Regel bzw. Standardplatz.
+  - **Verwaiste Import-Spiele löschen**
+    (`ImportSourceService::deleteOrphanedMatches()`,
+    `MatchRepository::findOrphanedImports()`, eigener Abschnitt in der
+    Import-Verwaltung mit Vorschau-Tabelle vor dem Löschen): entfernt jedes
+    Spiel, dessen `import_source_id` auf eine nicht mehr existierende
+    Quelle zeigt – unabhängig vom Team der angeklickten Quelle und OHNE
+    Zeitschranke, weil es für diese Zeilen keinen Feed mehr gibt, der sie
+    zurückbringen könnte; ein vergangener Karteileichen-Termin ist damit
+    endgültig weg. `import_source_id IS NOT NULL` schützt dabei manuell
+    angelegte Spiele, dieselbe Kennzeichnung wie
+    `MatchService::assertManual()`.
+
+  Beide schreiben nur `Deleted`-Events (keine Doppelbelegungs- oder
+  Rebuild-Logik nötig) und lösen deshalb **keinen** Push aus –
+  `NotificationTrigger` reagiert bei Spielen ausschließlich auf
+  `Updated`. Beide sind ohne Schritt-Kette machbar (eine Saison-Quelle
+  umfasst ~30–50 Spiele, deutlich unter dem Zeitlimit pro Request).
 
 ## 7. Anzeigemodi, Farben, Filter
 
@@ -1451,7 +1503,33 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
   im Report, und kein Push für Löschung ODER Neuanlage –
   `testUidRebuildIsIdempotentOnASecondRun`/
   `testUidRebuildReplaysDeterministically`/
-  `testUidRebuildTriggersNoCancellationPush`);
+  `testUidRebuildTriggersNoCancellationPush`); **Quellen-Reset und
+  verwaiste Import-Spiele** (`tests/Integration/ImportCleanupTest.php`:
+  Reset löscht nur zukünftige Spiele DIESER Quelle und lässt vergangene,
+  den Grenzfall `anstoss == jetzt` und manuelle Spiele unangetastet –
+  `testResetPurgesOnlyFutureMatchesOfThisSourceAndLeavesManualAndPastMatchesAlone`;
+  Idempotenz über mehrere Resets, ein regulärer Lauf danach meldet alles
+  unverändert – `testResetIsIdempotentAndASubsequentRegularRunSeesNothingToDo`;
+  ein fehlschlagender Feed-Abruf löscht nichts, Beleg für Fetch-vor-Löschen –
+  `testResetLeavesMatchesUntouchedWhenTheFeedFetchFails`; andere
+  Quellen/Teams bleiben unberührt –
+  `testResetDoesNotTouchOtherSourcesOrTeams`; kein Push bei Reset UND
+  Verwaisten-Löschung – `testResetAndOrphanCleanupNeverEnqueueAPush`; der
+  Kern-Fall – eine gelöschte Quelle hinterlässt ein Karteileichen-Spiel zur
+  selben Anstoßzeit wie das aktive der neuen Quelle, danach existiert genau
+  eines, zugleich Beleg für `ImportSourceService::delete()`s Rückgabewert
+  der zurückbleibenden Spiele –
+  `testDeleteOrphanedMatchesFixesTheDuplicateLeftByADeletedSource`;
+  `findOrphanedImports()` schließt manuelle Spiele UND Spiele lebender
+  Quellen aus –
+  `testFindOrphanedImportsExcludesManualMatchesAndMatchesOfLiveSources`;
+  Verwaisten-Löschung kennt anders als der Reset keine Zeitschranke –
+  `testDeleteOrphanedMatchesHasNoTimeBoundaryUnlikeReset`; No-op ohne
+  Verwaiste, kein Event geschrieben –
+  `testDeleteOrphanedMatchesIsANoOpWhenNothingIsOrphaned`;
+  Replay-Determinismus für beide kombiniert, kein Verwaister im Report, weil
+  ein Deleted-Event beim Replay nie erneut auf seine Referenz prüft –
+  `testResetAndOrphanCleanupReplayDeterministically`);
   VenueMatcher (Mehrfach-Begriffe, Priorität, case-insensitive, heim vs.
   auswärts); Konfliktprüfung (gesperrt blockiert, eingeschraenkt warnt,
   **Doppelbelegung** – Belegung-über-Belegung UND Belegung-über-Spiel warnen
