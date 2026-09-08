@@ -1816,6 +1816,30 @@
         return p;
     };
 
+    // Shared by both delete paths in the "spiel" branch below: a manually
+    // entered match (always deletable) and a cancelled imported match (the
+    // manual escape hatch for a duplicate an ICS feed rebuild left behind,
+    // CLAUDE.md section 3) - same request, different confirmation text.
+    const spielLoeschenButton = (props, frageText) => {
+        const deleteButton = document.createElement('button');
+        deleteButton.type = 'button';
+        deleteButton.className = 'button danger';
+        deleteButton.textContent = 'Spiel löschen';
+        deleteButton.addEventListener('click', async () => {
+            if (!confirm(frageText)) {
+                return;
+            }
+            const result = await VK.post(`/api/spiele/${props.match_id}/loeschen`).catch(() => null);
+            if (result?.ok) {
+                detailDialog.close();
+                aktualisiereEventsNachSchreiben();
+            } else if (result) {
+                alert(VK.fehlerText(result.data));
+            }
+        });
+        return deleteButton;
+    };
+
     const showDetail = (props) => {
         detailContent.replaceChildren();
         detailActions.replaceChildren();
@@ -1968,52 +1992,49 @@
                     openMatchDialog(props);
                 });
 
-                const deleteButton = document.createElement('button');
-                deleteButton.type = 'button';
-                deleteButton.className = 'button danger';
-                deleteButton.textContent = 'Spiel löschen';
-                deleteButton.addEventListener('click', async () => {
-                    if (!confirm('Dieses Spiel endgültig löschen?')) {
-                        return;
+                detailActions.append(editButton, spielLoeschenButton(props, 'Dieses Spiel endgültig löschen?'));
+            } else {
+                if (props.heimspiel) {
+                    // the pitch is not part of the ICS: manual assignment,
+                    // saved as an event with the editor's name (CLAUDE.md
+                    // section 7)
+                    const label = document.createElement('label');
+                    label.textContent = 'Platz-Zuordnung';
+                    const select = document.createElement('select');
+                    select.add(new Option('– automatisch (Regel/Standard-Platz) –', ''));
+                    for (const pitch of appData.pitches) {
+                        select.add(new Option(`${pitch.name} (${pitch.venue_name})`, String(pitch.id)));
                     }
-                    const result = await VK.post(`/api/spiele/${props.match_id}/loeschen`).catch(() => null);
-                    if (result?.ok) {
-                        detailDialog.close();
-                        aktualisiereEventsNachSchreiben();
-                    } else if (result) {
-                        alert(VK.fehlerText(result.data));
-                    }
-                });
+                    select.value = props.pitch_id !== null ? String(props.pitch_id) : '';
+                    label.append(select);
+                    detailContent.append(label);
 
-                detailActions.append(editButton, deleteButton);
-            } else if (props.heimspiel) {
-                // the pitch is not part of the ICS: manual assignment, saved
-                // as an event with the editor's name (CLAUDE.md section 7)
-                const label = document.createElement('label');
-                label.textContent = 'Platz-Zuordnung';
-                const select = document.createElement('select');
-                select.add(new Option('– automatisch (Regel/Standard-Platz) –', ''));
-                for (const pitch of appData.pitches) {
-                    select.add(new Option(`${pitch.name} (${pitch.venue_name})`, String(pitch.id)));
+                    const saveButton = document.createElement('button');
+                    saveButton.type = 'button';
+                    saveButton.className = 'button';
+                    saveButton.textContent = 'Platz speichern';
+                    saveButton.addEventListener('click', async () => {
+                        const result = await VK.post(`/api/spiele/${props.match_id}/platz`, { pitch_id: select.value }).catch(() => null);
+                        if (result?.ok) {
+                            detailDialog.close();
+                            aktualisiereEventsNachSchreiben();
+                        } else if (result) {
+                            alert(VK.fehlerText(result.data));
+                        }
+                    });
+                    detailActions.append(saveButton);
                 }
-                select.value = props.pitch_id !== null ? String(props.pitch_id) : '';
-                label.append(select);
-                detailContent.append(label);
 
-                const saveButton = document.createElement('button');
-                saveButton.type = 'button';
-                saveButton.className = 'button';
-                saveButton.textContent = 'Platz speichern';
-                saveButton.addEventListener('click', async () => {
-                    const result = await VK.post(`/api/spiele/${props.match_id}/platz`, { pitch_id: select.value }).catch(() => null);
-                    if (result?.ok) {
-                        detailDialog.close();
-                        aktualisiereEventsNachSchreiben();
-                    } else if (result) {
-                        alert(VK.fehlerText(result.data));
-                    }
-                });
-                detailActions.append(saveButton);
+                if (props.status === 'abgesagt') {
+                    // the manual escape hatch for a duplicate an ICS feed
+                    // rebuild left behind (CLAUDE.md section 3/6) - a
+                    // still-planned imported match has no delete button,
+                    // that stays the import's job
+                    detailActions.append(spielLoeschenButton(
+                        props,
+                        'Dieses abgesagte Spiel endgültig löschen? Steht es noch in der Import-Quelle, legt der nächste Import es erneut an.',
+                    ));
+                }
             }
         } else if (props.typ === 'sperrung') {
             detailContent.append(zeileFarbe('Spielstätte', 'ev-punkt-venue', props.venue_farbe, venueName(props)));

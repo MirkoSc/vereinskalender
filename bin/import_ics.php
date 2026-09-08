@@ -37,11 +37,12 @@ try {
     foreach ($results as $result) {
         if ($result->ok) {
             echo sprintf(
-                "Source #%d: %d new, %d updated, %d cancelled, %d unchanged\n",
+                "Source #%d: %d new, %d updated, %d cancelled, %d deleted, %d unchanged\n",
                 $result->sourceId,
                 $result->inserted,
                 $result->updated,
                 $result->cancelled,
+                $result->deleted,
                 $result->skipped,
             );
         } else {

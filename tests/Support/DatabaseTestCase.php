@@ -353,6 +353,7 @@ abstract class DatabaseTestCase extends TestCase
             new \App\Repository\ImportSourceRepository($pdo),
             new \App\Repository\MatchRepository($pdo),
             new \App\Repository\VenueRepository($pdo),
+            new \App\Repository\PitchRepository($pdo),
             new \App\Repository\TeamHomePitchRepository($pdo),
             \App\Service\Kalender\VenueMatcher::fromDatabase($pdo),
             $fetcher,

@@ -140,11 +140,12 @@ final class ImportSourceController extends AdminController
             foreach ($results as $result) {
                 $parts[] = $result->ok
                     ? sprintf(
-                        'Quelle #%d: %d neu, %d aktualisiert, %d abgesagt, %d unverändert.',
+                        'Quelle #%d: %d neu, %d aktualisiert, %d abgesagt, %d gelöscht, %d unverändert.',
                         $result->sourceId,
                         $result->inserted,
                         $result->updated,
                         $result->cancelled,
+                        $result->deleted,
                         $result->skipped,
                     )
                     : sprintf('Quelle #%d: FEHLER – %s', $result->sourceId, (string) $result->fehlertext);

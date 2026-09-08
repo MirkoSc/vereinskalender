@@ -232,6 +232,34 @@ final class ManualMatchServiceTest extends DatabaseTestCase
         self::assertCount(1, $this->dumpTable('match'), 'imported match must survive the rejected delete');
     }
 
+    /**
+     * The one exception to "importierte Spiele können nur über den Import
+     * geändert werden": a CANCELLED imported match is the public escape
+     * hatch for a duplicate an ICS feed rebuild left behind (CLAUDE.md
+     * section 3/6). A still-planned imported match stays rejected -
+     * testImportedMatchRejectedByDelete above.
+     */
+    public function testCancelledImportedMatchCanBeDeleted(): void
+    {
+        $importSourceId = $this->createImportSource($this->teamId);
+        $matchId = $this->createMatch($this->teamId, [
+            'import_source_id' => $importSourceId,
+            'ics_uid' => 'abc',
+            'status' => 'abgesagt',
+        ]);
+
+        $this->matchService()->deleteMatch($matchId, $this->context());
+
+        self::assertCount(0, $this->dumpTable('match'));
+        $events = array_values(array_filter(
+            $this->dumpTable('event'),
+            static fn(array $e): bool => $e['aggregat_typ'] === 'match'
+                && (int) $e['aggregat_id'] === $matchId
+                && $e['event_typ'] === 'deleted',
+        ));
+        self::assertCount(1, $events);
+    }
+
     public function testConflictWithOverlappingSlotWarnsButStillWrites(): void
     {
         $datum = '2026-09-05';
