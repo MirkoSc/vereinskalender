@@ -72,6 +72,21 @@ use App\Service\Stats\AlarmMailer;
  * heals itself on the next run. A manual pitch assignment on the deleted
  * row moves to its replacement, but only within the same venue (an
  * away/other-venue replacement keeps its automatically derived pitch).
+ *
+ * Reset (public admin trigger, ImportSourceController::reset()): purges a
+ * source's own FUTURE matches (same Issue #48 boundary as the cancel
+ * follow-up - a reset must not be able to destroy history either) and then
+ * runs the normal sync, so every purged UID comes back as a fresh insert.
+ * The feed is fetched and parsed BEFORE anything is purged - a broken feed
+ * or network error must never leave the team without matches - so
+ * resetSource() and runSource() share the try/catch/status-write wrapper
+ * (runIsolated()) but not the fetch step. Scoped to the ONE source clicked
+ * in the admin UI; matches whose import_source_id points at a source that
+ * no longer exists at all (orphaned by ImportSourceService::delete(), which
+ * deliberately never touches match rows) are invisible to any
+ * import_source_id-scoped query and are instead ImportSourceService's
+ * deleteOrphanedMatches() - a separate cleanup with no time boundary, since
+ * there is no feed left to re-fetch them from.
  */
 final readonly class IcsImportService
 {
@@ -110,10 +125,45 @@ final readonly class IcsImportService
      */
     public function runSource(array $source): ImportSourceResult
     {
+        return $this->runIsolated($source, fn(): ImportSourceResult => $this->sync($source));
+    }
+
+    /**
+     * Purges the source's own future matches, then runs the normal sync so
+     * every purged UID comes back as a fresh insert (class docblock
+     * "Reset"). $purgeContext is the admin who clicked the button - the
+     * purge Deleted events carry it, quelle=admin, while the sync's own
+     * Created/Updated events keep the usual quelle=import editor name.
+     *
+     * @param array<string, mixed> $source import_source row
+     */
+    public function resetSource(array $source, EventContext $purgeContext): ImportSourceResult
+    {
+        return $this->runIsolated($source, function () use ($source, $purgeContext): ImportSourceResult {
+            // fetch FIRST: a broken feed must never leave the team without
+            // matches - see the class docblock's "Reset" paragraph.
+            $icsEvents = IcsParser::parse($this->fetcher->fetch((string) $source['ics_url']));
+            $purged = $this->purgeFutureMatches((int) $source['id'], $purgeContext);
+
+            return $this->sync($source, $icsEvents)->withPurged($purged);
+        });
+    }
+
+    /**
+     * Shared try/catch/status-write wrapper of runSource() and
+     * resetSource(): one broken source never stops the others, and both
+     * successes and failures are written to the same run-status columns and
+     * alarm-mail channel.
+     *
+     * @param array<string, mixed> $source import_source row
+     * @param \Closure(): ImportSourceResult $work
+     */
+    private function runIsolated(array $source, \Closure $work): ImportSourceResult
+    {
         $sourceId = (int) $source['id'];
 
         try {
-            $result = $this->sync($source);
+            $result = $work();
             $this->sources->updateRunStatus($sourceId, 'ok', null);
 
             return $result;
@@ -136,15 +186,46 @@ final readonly class IcsImportService
     }
 
     /**
-     * @param array<string, mixed> $source
+     * Every future match of $sourceId (kickoff strictly after now - same
+     * Issue #48 boundary as the cancel follow-up, see the class docblock)
+     * removed via a Deleted event each, so the following sync() re-inserts
+     * every UID still in the feed as a fresh aggregate.
      */
-    private function sync(array $source): ImportSourceResult
+    private function purgeFutureMatches(int $sourceId, EventContext $context): int
+    {
+        $nowStr = $this->nowStr();
+        $purged = 0;
+
+        foreach ($this->matches->findBySource($sourceId) as $match) {
+            if ((string) $match['anstoss'] <= $nowStr) {
+                continue;
+            }
+
+            $this->eventStore->append(
+                AggregateType::Match,
+                (int) $match['id'],
+                EventType::Deleted,
+                self::rowPayload($match, $sourceId),
+                $context,
+            );
+            $purged++;
+        }
+
+        return $purged;
+    }
+
+    /**
+     * @param array<string, mixed> $source
+     * @param list<IcsEvent>|null $icsEvents pre-fetched by resetSource();
+     *        fetched here when null (the regular run)
+     */
+    private function sync(array $source, ?array $icsEvents = null): ImportSourceResult
     {
         $sourceId = (int) $source['id'];
         $teamId = (int) $source['team_id'];
         $context = new EventContext(self::EDITOR_NAME, '', EventSource::Import);
 
-        $icsEvents = IcsParser::parse($this->fetcher->fetch((string) $source['ics_url']));
+        $icsEvents ??= IcsParser::parse($this->fetcher->fetch((string) $source['ics_url']));
 
         $defaultPitchByVenue = [];
         foreach ($this->venues->findAll() as $venue) {
@@ -162,7 +243,7 @@ final readonly class IcsImportService
 
         $rules = $this->homePitchRules->findByTeam($teamId);
         $today = new \DateTimeImmutable('today')->format('Y-m-d H:i:s');
-        $nowStr = ($this->now ?? new \DateTimeImmutable('now'))->format('Y-m-d H:i:s');
+        $nowStr = $this->nowStr();
         $spielfreiBegriffe = self::spielfreiBegriffe($this->settings->get('spielfrei_begriffe', 'Spielfrei'));
 
         // One query for the source's whole stock instead of one lookup per
@@ -359,6 +440,11 @@ final readonly class IcsImportService
             deleted: $deleted,
             skipped: $skipped,
         );
+    }
+
+    private function nowStr(): string
+    {
+        return ($this->now ?? new \DateTimeImmutable('now'))->format('Y-m-d H:i:s');
     }
 
     /**

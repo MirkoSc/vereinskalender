@@ -418,6 +418,7 @@ final class Container
             $this->eventStore(),
             $this->importSourceRepository(),
             $this->teamRepository(),
+            $this->matchRepository(),
         ));
     }
 
@@ -531,6 +532,7 @@ final class Container
             $this->session(),
             $this->importSourceRepository(),
             $this->teamRepository(),
+            $this->matchRepository(),
             $this->importSourceService(),
             $this->icsImportService(),
         ));

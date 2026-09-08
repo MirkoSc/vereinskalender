@@ -15,7 +15,28 @@ final readonly class ImportSourceResult
         public int $deleted = 0,
         public int $skipped = 0,
         public ?string $fehlertext = null,
+        public int $purged = 0,
     ) {
+    }
+
+    /**
+     * Purged matches (a reset's own removal, CLAUDE.md section 6) are
+     * counted separately from $deleted (the feed-rebuild cleanup) so the
+     * two causes stay distinguishable in the admin log.
+     */
+    public function withPurged(int $purged): self
+    {
+        return new self(
+            $this->sourceId,
+            $this->ok,
+            $this->inserted,
+            $this->updated,
+            $this->cancelled,
+            $this->deleted,
+            $this->skipped,
+            $this->fehlertext,
+            $purged,
+        );
     }
 
     /**
@@ -30,6 +51,7 @@ final readonly class ImportSourceResult
             'aktualisiert' => $this->updated,
             'abgesagt' => $this->cancelled,
             'geloescht' => $this->deleted,
+            'entfernt' => $this->purged,
             'unveraendert' => $this->skipped,
             'fehlertext' => $this->fehlertext,
         ];

@@ -35,6 +35,11 @@
                         <?php endif; ?>
                     </td>
                     <td>
+                        <form method="post" action="/admin/import-quellen/<?= e($source['id']) ?>/reset" class="inline-form"
+                              data-confirm="Alle importierten Spiele dieser Quelle ab jetzt löschen und den Feed neu abrufen? Vergangene und manuell angelegte Spiele bleiben erhalten.">
+                            <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
+                            <button type="submit" class="linklike">Spiele zurücksetzen</button>
+                        </form>
                         <form method="post" action="/admin/import-quellen/<?= e($source['id']) ?>/loeschen" class="inline-form"
                               data-confirm="Import-Quelle wirklich löschen?">
                             <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
@@ -48,5 +53,36 @@
             <?php endforeach; ?>
             </tbody>
         </table>
+    <?php endif; ?>
+    <?php if ($verwaiste !== []): ?>
+        <h3>Verwaiste Import-Spiele</h3>
+        <p>
+            Diese Spiele stammen aus einer Import-Quelle, die es nicht mehr gibt (z. B. gelöscht
+            und neu angelegt). Kein Import fasst sie mehr an – sie werden nie aktualisiert,
+            abgesagt oder ersetzt und können zu Doppel-Terminen führen. Manuell angelegte Spiele
+            sind hiervon nie betroffen.
+        </p>
+        <table>
+            <thead>
+                <tr><th>Team</th><th>Anstoß</th><th>Gegner</th><th>Tote Quellen-ID</th></tr>
+            </thead>
+            <tbody>
+            <?php foreach ($verwaiste as $match): ?>
+                <tr>
+                    <td><?= e($match['team_name']) ?></td>
+                    <td><?= e($match['anstoss']) ?></td>
+                    <td><?= e($match['gegner']) ?></td>
+                    <td><?= e($match['import_source_id']) ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <p>
+            <form method="post" action="/admin/import-spiele/verwaist/loeschen" class="inline-form"
+                  data-confirm="<?= e(count($verwaiste)) ?> verwaiste Import-Spiele endgültig löschen? Auch vergangene Spiele sind dabei.">
+                <input type="hidden" name="_csrf" value="<?= e($csrf) ?>">
+                <button type="submit" class="danger"><?= e(count($verwaiste)) ?> verwaiste Import-Spiele löschen</button>
+            </form>
+        </p>
     <?php endif; ?>
 </section>

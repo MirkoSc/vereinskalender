@@ -362,6 +362,18 @@ abstract class DatabaseTestCase extends TestCase
         );
     }
 
+    protected function importSourceService(): \App\Service\Import\ImportSourceService
+    {
+        $pdo = $this->pdo();
+
+        return new \App\Service\Import\ImportSourceService(
+            $this->eventStore(),
+            new \App\Repository\ImportSourceRepository($pdo),
+            new \App\Repository\TeamRepository($pdo),
+            new \App\Repository\MatchRepository($pdo),
+        );
+    }
+
     protected function bookingService(): \App\Service\Kalender\BookingService
     {
         $pdo = $this->pdo();
