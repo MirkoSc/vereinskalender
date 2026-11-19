@@ -1152,7 +1152,71 @@
         return true;
     };
 
-    const listeNeuRendern = () => {
+    // Issue #113: Anzahl der TATSÄCHLICH gerenderten Listen-Termine - nach
+    // den clientseitigen Filtern (Termintyp/Manuell/Sportheim/Art/Platz) und
+    // sichtbareListenEvents, exakt wie im `events`-Callback unten. Daran (und
+    // nicht an listeEvents.length) misst sich, ob ein Batch "leer" war: ein
+    // Batch, der nur weggefilterte Termine bringt (z. B. Trainings bei "Nur
+    // Spiele"), ändert die Liste nicht und muss wie ein leerer Batch zum
+    // Weiterladen führen.
+    const listeSichtbareAnzahl = () => window.VKNachlade.sichtbareListenEvents(
+        applyClientFilters(listeEvents),
+        window.VKNachlade.toIsoDate(listeStart()),
+        listeVergangenheitAktiv,
+    ).length;
+
+    // Issue #113: `danach` einmalig aufrufen, sobald FullCalendar nach einem
+    // refetchEvents() das DOM von #kalender tatsächlich geändert hat
+    // (MutationObserver, s. Begründung bei listeVergangenheitNeuRendern) -
+    // oder spätestens nach LISTE_RENDER_FALLBACK_MS, falls sich gar nichts
+    // ändert. Genau das ist der Fall, um den es geht: ein Batch, der nur
+    // weggefilterte Termine brachte, rendert nichts Neues, eine Mutation
+    // bleibt dann womöglich aus.
+    const LISTE_RENDER_FALLBACK_MS = 300;
+    const nachListenRender = (danach, beiMutation) => {
+        let fertig = false;
+        const einmal = () => {
+            if (!fertig) {
+                fertig = true;
+                danach();
+            }
+        };
+        const kalenderEl = document.querySelector('#kalender');
+        if (kalenderEl) {
+            const observer = new MutationObserver(() => {
+                observer.disconnect();
+                beiMutation?.();
+                einmal();
+            });
+            observer.observe(kalenderEl, { childList: true, subtree: true });
+        }
+        setTimeout(einmal, LISTE_RENDER_FALLBACK_MS);
+    };
+
+    // Issue #113: nach JEDEM abgeschlossenen Nachlade-Vorgang auf Mobile
+    // (und erst nach dem Neu-Rendern) geometrisch prüfen, ob der Sentinel
+    // noch im Viewport liegt, und dann selbst weiterladen. Der vom
+    // IntersectionObserver gemeldete Zustand (listeSentinelSichtbar) reicht
+    // dafür nicht: er ist vor dem Neu-Rendern veraltet, und die #87-
+    // Nachprüfung in listeIndikatorSetzen läuft INNERHALB der laufenden
+    // listeWeiterLaden()-Kette und wird dort vom Reentrancy-Schutz verworfen.
+    // Kein Endlosschleifen-Risiko: listeWeiterLaden() bricht bei
+    // listeErschoepft (naechster === null) ab, und jeder Aufruf schiebt
+    // listeGeladenBis weiter. Desktop braucht das nicht - listeLadeKette()
+    // läuft dort ohnehin bis zur Erschöpfung durch.
+    const listeSentinelNachpruefen = () => {
+        if (!isMobile || !listeSentinel || listeErschoepft) {
+            return;
+        }
+        if (window.VKNachlade.sentinelImViewport(listeSentinel.getBoundingClientRect(), window.innerHeight)) {
+            listeWeiterLaden();
+        }
+    };
+
+    const listeNeuRendern = (danach) => {
+        if (danach) {
+            nachListenRender(danach);
+        }
         calendar.refetchEvents();
         listeTitelAktualisieren();
     };
@@ -1235,20 +1299,35 @@
     // Tab-Sichtbarkeit; `scrollHeight` direkt im Callback zu lesen erzwingt
     // bereits synchron ein aktuelles Layout, ein zusätzliches rAF ist dafür
     // nicht nötig.
-    const listeVergangenheitNeuRendern = () => {
+    //
+    // Issue #113: `danach` (die Sentinel-Nachprüfung) läuft erst NACH dieser
+    // Scroll-Korrektur - vorher stünde der obere Sentinel noch im Viewport
+    // und würde fälschlich einen weiteren Batch auslösen. Ändert sich das
+    // DOM gar nicht (Batch nur mit weggefilterten Terminen), gibt es auch
+    // nichts zu korrigieren; dann greift der Zeit-Fallback von
+    // nachListenRender.
+    const listeVergangenheitNeuRendern = (danach) => {
         const vorherigeHoehe = document.documentElement.scrollHeight;
         const vorherigerScrollY = window.scrollY;
-        const kalenderEl = document.querySelector('#kalender');
-        if (kalenderEl) {
-            const observer = new MutationObserver(() => {
-                observer.disconnect();
-                const neueHoehe = document.documentElement.scrollHeight;
-                window.scrollTo(0, window.VKNachlade.scrollAnkerZiel(vorherigeHoehe, neueHoehe, vorherigerScrollY));
-            });
-            observer.observe(kalenderEl, { childList: true, subtree: true });
-        }
+        nachListenRender(() => danach?.(), () => {
+            const neueHoehe = document.documentElement.scrollHeight;
+            window.scrollTo(0, window.VKNachlade.scrollAnkerZiel(vorherigeHoehe, neueHoehe, vorherigerScrollY));
+        });
         calendar.refetchEvents();
         listeTitelAktualisieren();
+    };
+
+    // Issue #113: Spiegelbild von listeSentinelNachpruefen für den oberen
+    // Sentinel (Schalter "Vergangenheit anzeigen"). Der Sentinel liegt in der
+    // per `hidden` ausgeblendeten Leiste - außerhalb der Liste liefert
+    // sentinelImViewport() für ihn deshalb nie "sichtbar".
+    const listeVergangenheitSentinelNachpruefen = () => {
+        if (!isMobile || !listeVergangenheitSentinel || !listeVergangenheitAktiv || listeVergangenheitErschoepft) {
+            return;
+        }
+        if (window.VKNachlade.sentinelImViewport(listeVergangenheitSentinel.getBoundingClientRect(), window.innerHeight)) {
+            listeVergangenheitWeiterLaden();
+        }
     };
 
     // Lädt Vergangenheits-Batches, solange der Schalter an ist - auf
@@ -1266,10 +1345,11 @@
                 if (!nochAktuell()) {
                     return;
                 }
-                listeVergangenheitNeuRendern();
                 if (isMobile) {
+                    listeVergangenheitNeuRendern(listeVergangenheitSentinelNachpruefen);
                     return;
                 }
+                listeVergangenheitNeuRendern();
             }
         } catch (error) {
             console.error('Terminliste: Vergangenheit laden fehlgeschlagen', error);
@@ -1289,14 +1369,17 @@
         try {
             let batchWarLeer;
             do {
-                const vorLaenge = listeEvents.length;
+                const vorAnzahl = listeSichtbareAnzahl();
                 if (!await ladeVergangenheitsNaechstenBatch(params)) {
                     break;
                 }
-                batchWarLeer = listeEvents.length === vorLaenge;
+                batchWarLeer = window.VKNachlade.batchWarSichtbarLeer(vorAnzahl, listeSichtbareAnzahl());
             } while (listeVergangenheitAktiv
                 && window.VKNachlade.sollAutomatischWeiterladen(batchWarLeer, listeVergangenheitErschoepft));
-            listeVergangenheitNeuRendern();
+            // Issue #113: die Nachprüfung läuft asynchron NACH Render und
+            // Scroll-Korrektur, also erst nach dem `finally` unten - der
+            // Reentrancy-Schutz ist dann bereits freigegeben.
+            listeVergangenheitNeuRendern(listeVergangenheitSentinelNachpruefen);
         } catch (error) {
             console.error('Terminliste: Vergangenheit nachladen fehlgeschlagen', error);
         } finally {
@@ -1329,10 +1412,11 @@
             if (!nochAktuell()) {
                 return;
             }
-            listeNeuRendern();
             if (isMobile) {
+                listeNeuRendern(listeSentinelNachpruefen);
                 return;
             }
+            listeNeuRendern();
             while (listeAktiv && !listeErschoepft && nochAktuell()) {
                 if (!await ladeNaechstenBatch(params)) {
                     return;
@@ -1370,13 +1454,15 @@
         try {
             let batchWarLeer;
             do {
-                const vorLaenge = listeEvents.length;
+                const vorAnzahl = listeSichtbareAnzahl();
                 if (!await ladeNaechstenBatch(params)) {
                     break;
                 }
-                batchWarLeer = listeEvents.length === vorLaenge;
+                batchWarLeer = window.VKNachlade.batchWarSichtbarLeer(vorAnzahl, listeSichtbareAnzahl());
             } while (listeAktiv && window.VKNachlade.sollAutomatischWeiterladen(batchWarLeer, listeErschoepft));
-            listeNeuRendern();
+            // Issue #113: Nachprüfung asynchron nach dem Neu-Rendern, also
+            // erst nach dem `finally` unten (Reentrancy-Schutz freigegeben).
+            listeNeuRendern(listeSentinelNachpruefen);
         } catch (error) {
             console.error('Terminliste: Nachladen fehlgeschlagen', error);
         } finally {
