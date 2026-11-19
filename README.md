@@ -62,8 +62,9 @@ Admin → Update: Versionscheck gegen GitHub, dann läuft die Schrittkette
 Migrationen → Selbsttest). Bei Fehlern: Schritt wiederholen oder Rollback auf
 das vorherige Release.
 
-**Release-Prozess**: Jedes Tag `vX.Y.Z` wird automatisch als **Pre-Release**
-gebaut. Die Testinstanz (Update-Kanal „beta") spielt es zuerst ein; nach
+**Release-Prozess**: Jedes Tag `vX.Y.Z` – oder ein Start von Actions →
+„Release" auf `main` mit Versionsnummer – wird automatisch als
+**Pre-Release** gebaut. Die Testinstanz (Update-Kanal „beta") spielt es zuerst ein; nach
 erfolgreichem Test wird das Release auf GitHub als „latest" markiert, dann
 zieht es die Produktivinstanz (Kanal „stable").
 
@@ -81,7 +82,7 @@ Voraussetzung: Docker. PHP/Composer werden lokal nicht benötigt.
 
 ```sh
 # Abhängigkeiten installieren (einmalig bzw. nach composer.json-Änderungen)
-docker run --rm -v ${PWD}:/app -w /app composer:2 install
+docker compose run --rm --no-deps app composer install
 
 # Umgebung starten → http://localhost:8080
 docker compose up --build
@@ -96,6 +97,9 @@ docker compose exec app php bin/migrate.php
 # setup.php neu generieren (nach Änderungen an ReleaseDownloader/Template)
 docker compose run --rm --no-deps app php bin/build_setup.php
 ```
+
+Neue Aufgaben laufen automatisiert als Runden (Issues anlegen, umsetzen,
+prüfen, mergen, Pre-Release) – siehe [docs/VORGEHEN.md](docs/VORGEHEN.md).
 
 Die Docker-Umgebung spiegelt das Layout eines typischen Shared-Hosting-Anbieters: `docker/web/` ist der
 DocumentRoot mit dem Produktions-Shim, das Repo ist als `current/` gemountet,

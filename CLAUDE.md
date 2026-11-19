@@ -6,6 +6,11 @@ implementiert und in Betrieb; dieses Dokument ist die verbindliche
 Architektur-Referenz. Bei Widersprüchen zwischen Code und Dokument gilt das
 Dokument – oder es wird hier im selben PR bewusst geändert.
 Änderungswünsche werden als GitHub Issues geführt, nicht in dieser Datei.
+**Beschreibt Mirko in einer Sitzung Änderungswünsche** (ohne ein
+bestimmtes Issue zu nennen), folge `.claude/commands/runde.md` – auch ohne
+`/runde`: klären, Issues vorschlagen, nach seinem OK anlegen und die
+Umsetzung starten (`docs/VORGEHEN.md`). Kleine Einzelfragen oder ein
+genanntes Issue (`/issue <nr>`) laufen wie gewohnt direkt.
 
 ## 1. Harte Umgebungs-Constraints (niemals verletzen)
 
@@ -1412,18 +1417,35 @@ Download/Prüf/Entpack-Code von setup.php und Updater ist derselbe.
 
 - Je Version: Tag als **Pre-Release** → Testinstanz (beta) prüft →
   Release auf „latest" umstellen → Produktivinstanz (stable) zieht nach.
-- GitHub Action bei Tag vX.Y.Z: `composer install --no-dev
-  --optimize-autoloader`, VERSION schreiben, ZIP (app/, public/, vendor/,
-  bin/, migrations/, VERSION) + checksums.txt (SHA-256) + setup.php als
-  Release-Assets.
+- GitHub Action bei Tag vX.Y.Z **oder per `workflow_dispatch` auf `main`
+  mit Versionsnummer** (dann legt der Publish-Schritt den Tag selbst an –
+  Claude-Code-Sitzungen dürfen Branches, aber keine Tags pushen):
+  `composer install --no-dev --optimize-autoloader`, VERSION schreiben, ZIP
+  (app/, public/, vendor/, bin/, migrations/, VERSION) + checksums.txt
+  (SHA-256) + setup.php als Release-Assets, immer als Pre-Release.
+- **Automatische Entwicklung** (`docs/VORGEHEN.md`): `/runde` legt aus
+  Änderungswünschen ein Sammel-Issue + Issues (Labels `auto`,
+  `modell:*`, `effort:*`, Zeile `Abhängig von:`) an; der Workflow
+  `entwicklung` (`.claude/workflows/entwicklung.js`) setzt sie je Issue in
+  eigenem Worktree/Docker-Projekt um, lässt jeden PR von Opus prüfen,
+  mergt und löst danach optional das Pre-Release aus. „latest" markiert
+  weiterhin ein Mensch.
 - Lizenz GPLv3 (Voraussetzung für den FullCalendar-Key).
 
 ## 11. Entwicklungs-Konventionen
 
-- Lokal: docker-compose mit PHP 8.5 + MySQL, produktionsnah zum
+- Lokal: docker-compose mit PHP 8.5 + MariaDB, produktionsnah zum
   Shared-Hosting-Anbieter (disable_functions=exec,shell_exec,…; realistische
   Limits); App läuft per
-  `docker compose up`.
+  `docker compose up`. Das Image baut ohne Debian-Paketspiegel (Basis
+  `mirror.gcr.io/library/drupal:php8.5-apache`, Drupal entfernt), die
+  Datenbank veröffentlicht keinen Port – parallele Agenten testen je in
+  eigenem Projekt (`docker compose -p issue-<nr> run --rm app
+  vendor/bin/phpunit`).
+- **Migrationsnummern** sind fortlaufend und werden beim Merge auf die
+  nächste freie Nummer nach `main` gesetzt: `Migrator` wendet nur Nummern
+  > `MAX(schema_version)` an, eine später gemergte kleinere Nummer liefe auf
+  bestehenden Installationen nie.
 - CI unter PHP 8.5 mit `error_reporting(E_ALL)`; Deprecations = Fehler.
   Fremdbibliotheken vor Aufnahme auf PHP-8.5-Kompatibilität prüfen.
 - **Pflicht-Testabdeckung (PHPUnit)**: Event-Schreibpfad (Events + Projektion
