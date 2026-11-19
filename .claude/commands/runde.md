@@ -27,7 +27,9 @@ Mirko die Runde startet.
    - **Effort**: `low` | `medium` | `high` | `xhigh`.
 4. **Vorlegen.** Zeige Mirko die Liste (Titel, Modell, Effort,
    Abhängigkeiten, je 1–2 Sätze Inhalt) und hole sein OK ein, bevor du
-   etwas auf GitHub anlegst.
+   etwas auf GitHub anlegst. Sag dazu, dass sein OK zugleich die Umsetzung
+   startet (viele Agenten, danach Pre-Release) – will er nur die Issues,
+   sagt er es.
 5. **Anlegen** in `MirkoSc/vereinskalender` (GitHub-MCP,
    `mcp__github__issue_write`):
    - Je Aufgabe ein Issue, Labels `auto`, `modell:<m>`, `effort:<e>`.
@@ -43,5 +45,8 @@ Mirko die Runde startet.
      Führe den Workflow entwicklung aus mit
      { sammelIssue: <nr>, release: true }
      ```
-6. Zum Schluss Mirko die Links nennen und sagen, wie er startet
-   (`docs/VORGEHEN.md`, „Start").
+6. **Starten.** Mirkos OK aus Schritt 4 gilt als Auftrag für die
+   Umsetzung: Nenne ihm die Links und führe dann sofort den Workflow
+   `entwicklung` aus (Workflow-Tool, Name `entwicklung`, args
+   `{ sammelIssue: <nr>, release: true }`). Nur wenn er „nur anlegen" o. Ä.
+   gesagt hat, nicht starten, sondern den Startbefehl nennen.

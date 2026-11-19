@@ -6,6 +6,11 @@ implementiert und in Betrieb; dieses Dokument ist die verbindliche
 Architektur-Referenz. Bei Widersprüchen zwischen Code und Dokument gilt das
 Dokument – oder es wird hier im selben PR bewusst geändert.
 Änderungswünsche werden als GitHub Issues geführt, nicht in dieser Datei.
+**Beschreibt Mirko in einer Sitzung Änderungswünsche** (ohne ein
+bestimmtes Issue zu nennen), folge `.claude/commands/runde.md` – auch ohne
+`/runde`: klären, Issues vorschlagen, nach seinem OK anlegen und die
+Umsetzung starten (`docs/VORGEHEN.md`). Kleine Einzelfragen oder ein
+genanntes Issue (`/issue <nr>`) laufen wie gewohnt direkt.
 
 ## 1. Harte Umgebungs-Constraints (niemals verletzen)
 

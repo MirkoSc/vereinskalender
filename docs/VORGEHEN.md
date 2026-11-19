@@ -7,15 +7,13 @@ starten und bei `braucht-hilfe` nachsehen.
 
 ## 1. Runde anlegen
 
-In einer Claude-Code-Sitzung mit diesem Repository:
-
-```
-/runde <Wünsche in Stichworten>
-```
-
-(`.claude/commands/runde.md`). Claude liest den betroffenen Code, stellt
+In einer Claude-Code-Sitzung mit diesem Repository einfach die Wünsche
+beschreiben, z. B. „Ich hätte gern einen Filter für … und beim Training
+soll …". (`/runde <Wünsche>` macht dasselbe ausdrücklich,
+`.claude/commands/runde.md`.) Claude liest den betroffenen Code, stellt
 fachliche Rückfragen, schlägt einen Schnitt in Issues vor und legt nach
-deinem OK an:
+deinem OK an – **dasselbe OK startet auch gleich die Umsetzung** (Abschnitt
+2) samt Pre-Release. Willst du nur die Issues, sag „nur anlegen".
 
 - je Aufgabe ein Issue mit Labels `auto`, `modell:opus|sonnet|haiku`,
   `effort:low|medium|high|xhigh` und der Zeile `Abhängig von: #…`,
@@ -27,7 +25,9 @@ Label `auto` setzt, gibt das Issue für die Automatik frei.
 
 ## 2. Runde starten
 
-In der Sitzung sagen:
+Passiert normalerweise automatisch nach dem OK aus Abschnitt 1. Von Hand
+(z. B. nach einem Container-Neustart oder für von Hand angelegte Issues)
+in der Sitzung sagen:
 
 ```
 Führe den Workflow entwicklung aus mit { sammelIssue: 123, release: true }
