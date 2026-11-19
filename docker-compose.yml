@@ -1,9 +1,25 @@
+# Local development (CLAUDE.md section 11).
+#
+#   docker compose up --build                      # http://localhost:8080
+#   docker compose run --rm app composer install
+#   docker compose run --rm app vendor/bin/phpunit
+#
+# Several agents test in parallel (docs/VORGEHEN.md): each uses its own
+# project, e.g. `docker compose -p issue-7 run --rm app vendor/bin/phpunit`.
+# `run` publishes no ports, and the database publishes none at all, so
+# parallel projects never collide; only a deliberate `docker compose up`
+# takes 8080.
 services:
   app:
     build: ./docker/php
     ports:
       - "8080:80"
     working_dir: /var/www/html/current
+    environment:
+      # The PHPUnit suite creates vereinskalender_test next to the dev DB.
+      TEST_DB_HOST: db
+      TEST_DB_USER: root
+      TEST_DB_PASSWORD: dev-root
     volumes:
       - ./:/var/www/html/current
       - ./docker/web:/var/www/html/web
@@ -13,7 +29,7 @@ services:
         condition: service_healthy
 
   db:
-    image: mariadb:10.11
+    image: mirror.gcr.io/library/mariadb:10.11
     environment:
       MARIADB_DATABASE: vereinskalender
       MARIADB_USER: vereinskalender
@@ -27,8 +43,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 12
-    ports:
-      - "3306:3306"
 
 volumes:
   dbdata:
