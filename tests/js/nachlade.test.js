@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const {
     mitternacht, naechsterMonatEnde, naechsteBatchGrenze, naechsteLadeGrenzen, istErschoepft,
     mergeEvents, sollAutomatischWeiterladen, vorherigeBatchGrenze, vorherigeLadeGrenzen,
-    sichtbareListenEvents, scrollAnkerZiel,
+    sichtbareListenEvents, scrollAnkerZiel, sentinelImViewport, batchWarSichtbarLeer,
 } = require('../../public/js/nachlade.js');
 
 // Issue #81: "heute" ist der oberste Tag der Terminliste (statt des früheren
@@ -429,4 +429,84 @@ test('Vergangenheit lädt gebatcht nach oben, ohne Duplikate, bis "keine früher
     // erzeugen
     const nochmal = mergeEvents(events, server.feed(geladenAb, heute).events);
     assert.equal(nochmal.length, events.length);
+});
+
+// ---- Issue #113: Nachladen bleibt bei clientseitigem Filter stehen ----
+
+const rect = (top, height = 0, width = 343) => ({ top, bottom: top + height, height, width });
+
+test('sentinelImViewport: Sentinel innerhalb des Viewports ist sichtbar', () => {
+    assert.equal(sentinelImViewport(rect(400), 640), true);
+});
+
+test('sentinelImViewport: genau an der Unter- bzw. Oberkante zählt wie beim IntersectionObserver mit', () => {
+    assert.equal(sentinelImViewport(rect(640), 640), true);
+    assert.equal(sentinelImViewport(rect(0), 640), true);
+});
+
+test('sentinelImViewport: unterhalb bzw. oberhalb des Viewports ist nicht sichtbar', () => {
+    assert.equal(sentinelImViewport(rect(641), 640), false);
+    assert.equal(sentinelImViewport(rect(-1), 640), false);
+});
+
+test('sentinelImViewport: ausgeblendetes Element (leeres Rect) ist nie sichtbar', () => {
+    assert.equal(sentinelImViewport({ top: 0, bottom: 0, height: 0, width: 0 }, 640), false);
+    assert.equal(sentinelImViewport(null, 640), false);
+});
+
+test('batchWarSichtbarLeer: nur weggefilterte Termine zählen als leerer Batch', () => {
+    assert.equal(batchWarSichtbarLeer(4, 4), true);
+    assert.equal(batchWarSichtbarLeer(4, 5), false);
+    assert.equal(batchWarSichtbarLeer(0, 0), true);
+});
+
+// Gemeldeter Fall: Filter "Nur Spiele", heute 19.11.; Spiele bis 12.12.,
+// Dez-Feb nur Trainings, nächstes Spiel 07.03. Simuliert die mobile
+// listeWeiterLaden()-Schleife mit der Leer-Messung am SICHTBAREN Bestand:
+// Batches voller Trainings sind "leer" und führen zum Weiterladen, bis das
+// Spiel am 07.03. gerendert ist.
+test('Batch mit nur weggefilterten Terminen zählt als leer und lädt bis zum nächsten sichtbaren Termin weiter (Issue #113)', () => {
+    const trainings = [];
+    for (const tag of ['2026-12-15', '2027-01-05', '2027-01-19', '2027-02-02', '2027-02-16', '2027-03-02']) {
+        trainings.push({ id: `b-${tag}`, typ: 'belegung', start: `${tag}T18:00:00` });
+    }
+    const spiele = ['2026-11-21', '2026-11-22', '2026-12-05', '2026-12-12', '2027-03-07', '2027-03-14']
+        .map((tag) => ({ id: `s-${tag}`, typ: 'spiel', start: `${tag}T15:00:00` }));
+    const alle = [...trainings, ...spiele];
+    const feed = (von, bis) => {
+        const events = alle.filter((e) => e.start.slice(0, 10) >= von && e.start.slice(0, 10) < bis);
+        const spaeter = alle.map((e) => e.start.slice(0, 10)).filter((d) => d >= bis).sort();
+        return { events, naechster: spaeter[0] ?? null };
+    };
+    const nurSpiele = (events) => events.filter((e) => e.typ === 'spiel');
+    const sichtbar = (cache) => sichtbareListenEvents(nurSpiele(cache), '2026-11-19', false).length;
+
+    // Erster Batch (19.11. bis Ende Dezember)
+    let geladenBis = '2026-12-31';
+    let { events: cache, naechster } = feed('2026-11-19', geladenBis);
+    assert.equal(sichtbar(cache), 4);
+
+    // Ein Scroll-Trigger (bzw. die geometrische Nachprüfung danach)
+    let erschoepft = false;
+    let batchWarLeer;
+    let batches = 0;
+    do {
+        const vor = sichtbar(cache);
+        const schritt = naechsteLadeGrenzen(geladenBis, naechster, 31);
+        if (schritt === null) {
+            break;
+        }
+        const antwort = feed(schritt.von, schritt.bis);
+        cache = mergeEvents(cache, antwort.events);
+        geladenBis = schritt.bis;
+        naechster = antwort.naechster;
+        erschoepft = istErschoepft(naechster);
+        batches += 1;
+        // Ungefiltert waren diese Batches NICHT leer (Trainings) - genau das
+        // beendete die Schleife vor Issue #113 schon nach dem ersten.
+        batchWarLeer = batchWarSichtbarLeer(vor, sichtbar(cache));
+    } while (sollAutomatischWeiterladen(batchWarLeer, erschoepft));
+
+    assert.ok(batches > 1, 'lädt über die Trainings-Lücke hinweg mehr als einen Batch');
+    assert.ok(nurSpiele(cache).some((e) => e.start.startsWith('2027-03-07')), 'Spiel am 07.03. ist geladen');
 });

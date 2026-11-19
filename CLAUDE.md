@@ -1045,6 +1045,26 @@ Kopiervorlage), Vereinswappen hochladen (Abschnitt 8).
   verhindert dabei einen doppelten Fetch derselben Range, falls dieser
   erneute Check innerhalb der eigenen laufenden `listeWeiterLaden()`-Kette
   feuert.
+  **Clientseitiger Filter lässt die Kette stehen** (Issue #113, dritter
+  Fall derselben Wurzel): Termintyp/Manuell/Sportheim/Art/Platz filtern
+  clientseitig, `listeEvents` und `naechster` sind ungefiltert. Ein Batch
+  voller Trainings bei „Nur Spiele" galt deshalb als „nicht leer", die
+  Schleife endete, gerendert wurde trotzdem nichts – und die #87-Nachprüfung
+  lief innerhalb der noch laufenden Kette ins Reentrancy-Aus. Seither misst
+  `batchWarLeer` (vorwärts UND Vergangenheit) am **sichtbaren** Bestand
+  (`listeSichtbareAnzahl()` = `applyClientFilters` + `sichtbareListenEvents`,
+  `VKNachlade.batchWarSichtbarLeer()`), und nach JEDEM abgeschlossenen
+  mobilen Ladevorgang (Ende von `listeWeiterLaden()`/
+  `listeVergangenheitWeiterLaden()`, erster Batch der jeweiligen
+  `…LadeKette()`) prüft `listeSentinelNachpruefen()`/
+  `listeVergangenheitSentinelNachpruefen()` **geometrisch**
+  (`getBoundingClientRect`, reine Entscheidung in
+  `VKNachlade.sentinelImViewport()`) statt über den Observer-Zustand, ob der
+  Sentinel noch im Viewport liegt – erst NACH dem Neu-Rendern
+  (`nachListenRender()`: erste DOM-Mutation von `#kalender` oder 300-ms-
+  Fallback, wenn sich nichts ändert), in der Vergangenheits-Richtung NACH der
+  Scrollanker-Korrektur, und nach Freigabe des Reentrancy-Schutzes. Die
+  Kette endet weiterhin ausschließlich bei `naechster`/`vorheriger === null`.
   **Vergangenheit per Schalter** (Issue #81): „Vergangenheit anzeigen"
   (Checkbox oberhalb der Liste, Touch-Ziel ≥ 44 px, Default „aus", Zustand
   in localStorage `kalender_liste_vergangenheit` gemerkt) lädt Termine VOR

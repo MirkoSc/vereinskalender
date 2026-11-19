@@ -149,6 +149,30 @@
         vorherigerScrollY + (neueHoehe - vorherigeHoehe)
     );
 
+    // Issue #113: geometrische Nachprüfung, ob ein (null Pixel hoher)
+    // Sentinel gerade im Viewport liegt - nach JEDEM abgeschlossenen
+    // Nachlade-Vorgang auf Mobile, statt sich auf den zuletzt vom
+    // IntersectionObserver gemeldeten Zustand zu verlassen (der feuert nur bei
+    // einem WECHSEL, Issue #46/#87, und ist vor dem Neu-Rendern veraltet).
+    // `rect` ist ein getBoundingClientRect()-Ergebnis. Ein ausgeblendetes
+    // Element (`hidden`/display:none, z. B. der Vergangenheits-Sentinel bei
+    // inaktiver Liste) liefert ein komplett leeres Rect und zählt nie als
+    // sichtbar; die Kanten zählen wie beim IntersectionObserver mit.
+    const sentinelImViewport = (rect, viewportHoehe) => {
+        if (!rect || (rect.width === 0 && rect.height === 0)) {
+            return false;
+        }
+        return rect.top <= viewportHoehe && rect.bottom >= 0;
+    };
+
+    // Issue #113: ob ein Batch "leer" war, entscheidet der SICHTBARE Bestand
+    // (nach den clientseitigen Filtern Termintyp/Manuell/Sportheim/Art/Platz
+    // und sichtbareListenEvents), nicht der ungefilterte Cache. Ein Batch mit
+    // ausschließlich weggefilterten Terminen (z. B. nur Trainings bei "Nur
+    // Spiele") rendert nichts Neues, der Sentinel bleibt stehen - er muss
+    // deshalb genau wie ein wirklich leerer Batch zum Weiterladen führen.
+    const batchWarSichtbarLeer = (sichtbarVorher, sichtbarNachher) => sichtbarNachher <= sichtbarVorher;
+
     const api = {
         toIsoDate,
         mitternacht,
@@ -162,6 +186,8 @@
         vorherigeLadeGrenzen,
         sichtbareListenEvents,
         scrollAnkerZiel,
+        sentinelImViewport,
+        batchWarSichtbarLeer,
     };
 
     if (typeof module !== 'undefined' && module.exports) {
